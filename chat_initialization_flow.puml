@@ -1,0 +1,55 @@
+@startuml Chat Initialization Flow
+
+title Chat Window Initialization Flow
+
+start
+
+:WebApplication.CreateBuilder();
+:Register Services;
+
+:builder.Services.AddInsuranceTopics();
+note right: Registers all topics including\nConversationStartTopic with highest priority
+
+:Register other services;
+:Build WebApplication;
+:Configure middleware;
+:app.Run();
+
+partition "Topic Registration" {
+  #lightgreen:AddInsuranceTopics() method executes;
+  :Register DefaultTopic;
+  :Register QuestionnaireCompletionTopic;
+  :Register PremiumQuotationTopic;
+  :Register BeneficiaryInformationTopic;
+  :Register ConversationStartTopic;
+  note right: services.AddSingleton<ITopic>(sp => {\n  var context = sp.GetRequiredService<IConversationContext>();\n  var logger = sp.GetService<ILogger<ConversationStartTopic>>();\n  return new ConversationStartTopic(context, logger);\n});
+}
+
+partition "Chat Initialization" {
+  :User navigates to chat page;
+  :InsuranceAgentChat.razor component loads;
+  :Component initializes;
+  :Direct Line connection established;
+  :OnInitialized() method executes;
+}
+
+partition "Message Processing" {
+  :User or system sends first message;
+  :Message received by InsuranceAgentService;
+  :TopicManager.SelectTopic() is called;
+  note right: Topics are evaluated by priority\nConversationStartTopic has int.MaxValue priority
+  
+  if (Is this the first message?) then (yes)
+    :ConversationStartTopic is selected;
+    :ConversationStartTopic.ProcessMessageAsync() executes;
+    :Welcome message is sent;
+  else (no)
+    :Another topic is selected based on context;
+  endif
+  
+  :Message processing completes;
+}
+
+stop
+
+@enduml

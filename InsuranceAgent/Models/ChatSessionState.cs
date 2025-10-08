@@ -1,0 +1,11 @@
+namespace InsuranceAgent.Models
+{
+    public class ChatSessionState : ConversaCore.Models.ChatSessionStateBase
+    {
+        public bool HasConsent { get; set; }
+        public string? UserConsentType { get; set; }
+        public bool ShowQuestionnaire { get; set; }
+        public bool ShowAgentConsole { get; set; }
+        public List<string> BeneficiaryInfo { get; set; } = new();
+    }
+}

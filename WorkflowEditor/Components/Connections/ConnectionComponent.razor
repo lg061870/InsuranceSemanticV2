@@ -1,0 +1,31 @@
+@using WorkflowEditorLib.Models
+
+<div class="connection @(Connection.IsSelected ? "selected" : "")">
+    <svg>
+        <path d="M @StartX,@StartY C @ControlX1,@ControlY1 @ControlX2,@ControlY2 @EndX,@EndY" />
+    </svg>
+    @if (!string.IsNullOrEmpty(Connection.Label))
+    {
+        <div class="connection-label" style="left: @LabelX; top: @LabelY;">
+            @Connection.Label
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Connection Connection { get; set; } = default!;
+    [Parameter] public Port? SourcePort { get; set; }
+    [Parameter] public Port? TargetPort { get; set; }
+    
+    // These properties would be calculated from the port positions in a real implementation
+    private double StartX => 0;
+    private double StartY => 0;
+    private double EndX => 100;
+    private double EndY => 100;
+    private double ControlX1 => 50;
+    private double ControlY1 => 0;
+    private double ControlX2 => 50;
+    private double ControlY2 => 100;
+    private double LabelX => 50;
+    private double LabelY => 50;
+}

@@ -1,0 +1,107 @@
+.page {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    margin: 0 auto;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+main.full-width {
+    width: 100%;
+}
+
+.top-row {
+    background-color: #f7f7f7;
+    border-bottom: 1px solid #d6d5d5;
+    justify-content: space-between;
+    height: 2.25rem; /* Thinner top bar */
+    display: flex;
+    align-items: center;
+}
+
+    .top-row ::deep a, .top-row .btn-link {
+        white-space: nowrap;
+        margin-left: 1.5rem;
+        font-size: 0.85rem; /* Smaller font for the thinner top bar */
+    }
+
+    .top-row a:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    /* Status indicators styling */
+    .status-indicators {
+        display: flex;
+        align-items: center;
+    }
+    
+    .status-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        margin-right: 0.75rem;
+        color: #505050;
+        transition: color 0.2s ease;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    
+    .status-icon:hover {
+        color: #0078d4;
+    }
+
+@media (max-width: 640.98px) {
+    .top-row:not(.auth) {
+        display: flex;
+        height: 2rem;
+    }
+
+    .top-row.auth {
+        justify-content: space-between;
+    }
+
+    .top-row a, .top-row .btn-link {
+        margin-left: 0;
+        font-size: 0.75rem;
+    }
+    
+    .status-icon {
+        width: 1.25rem;
+        height: 1.25rem;
+        margin-right: 0.5rem;
+        font-size: 0.75rem;
+    }
+}
+
+@media (min-width: 641px) {
+    .page {
+        flex-direction: column;
+    }
+
+    .top-row {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    .top-row {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    article {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+}

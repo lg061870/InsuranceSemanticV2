@@ -1,0 +1,104 @@
+@* @using System.Linq
+@using System.Text.Json
+@using InsuranceAgent.Models
+@inject IJSRuntime JS
+
+<h1 class="text-2xl font-semibold text-gray-800 mb-4 px-2">Health Questionnaire</h1>
+<div id="accordion-container" class="scrollbar-hide h-screen p-2 space-y-2">
+
+    @for (var i = 0; i < Categories.Count; i++) {
+        var localIndex = i;
+        var cat = Categories[localIndex];
+
+        <DiseaseCategoryAccordion @key=localIndex
+                                  Title="@cat.Title"
+                                  Questions="@cat.Questions"
+                                  Answers="@AnswersByCategory[cat.Title]"
+                                  IsOpen="@(OpenIndex == localIndex)"
+                                  ToggleRequested="@(() => Toggle(localIndex))"
+                                  Changed="OnAnyAnswerChanged" />
+    }
+
+    <div class="pt-4 flex items-center gap-3">
+        <button class="px-4 py-2 rounded-lg bg-primary text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled="@(!AllAnswered || _submitting)"
+                @onclick="Submit">
+            @(_submitting ? "Submitting..." : "Submit")
+        </button>
+
+        @if (!AllAnswered) {
+            <span class="text-sm text-red-600">
+                Please answer all questions before submitting.
+            </span>
+        }
+    </div>
+</div>
+
+@code {
+    // [Parameter, EditorRequired] public List<CategoryViewModel> Categories { get; set; } = new();
+
+    [Parameter] public EventCallback<string> OnSubmittedJson { get; set; }
+
+    private int? OpenIndex { get; set; } = 0;
+
+    // Use case-insensitive keys for safer lookup
+    private readonly Dictionary<string, Dictionary<string, bool?>> AnswersByCategory =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private bool _submitting;
+
+    protected override void OnParametersSet() {
+        // foreach (var cat in Categories) {
+        //     if (!AnswersByCategory.ContainsKey(cat.Title))
+        //         AnswersByCategory[cat.Title] = new Dictionary<string, bool?>();
+
+        //     foreach (var q in cat.Questions)
+        //         if (!AnswersByCategory[cat.Title].ContainsKey(q.Name))
+        //             AnswersByCategory[cat.Title][q.Name] = null;
+        // }
+    }
+
+    private void Toggle(int index) {
+        OpenIndex = OpenIndex == index ? (int?)null : index;
+    }
+
+    private Task OnAnyAnswerChanged((string Name, bool? Value) change) => Task.CompletedTask;
+
+    // private bool AllAnswered =>
+    //     Categories.All(cat =>
+    //         cat.Questions.All(q =>
+    //             AnswersByCategory.TryGetValue(cat.Title, out var dict)
+    //             && dict.TryGetValue(q.Name, out var v)
+    //             && v.HasValue));
+
+    private async Task Submit() {
+        if (!AllAnswered || _submitting) return;
+        _submitting = true;
+        StateHasChanged();
+
+        try {
+            var payload = Categories
+                .Where(cat => AnswersByCategory.ContainsKey(cat.Title)) // safety check
+                .Select(cat => new {
+                    category = cat.Title,
+                    answers = AnswersByCategory[cat.Title]!
+                        .ToDictionary(kvp => kvp.Key, kvp => kvp.Value!.Value)
+                });
+
+            var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions {
+                PropertyNamingPolicy = null, // Use original casing
+                WriteIndented = false
+            });
+
+            if (OnSubmittedJson.HasDelegate)
+                await OnSubmittedJson.InvokeAsync(json);
+
+            await JS.InvokeVoidAsync("sendHealthQuestionnaireToBot", json);
+        } finally {
+            _submitting = false;
+            StateHasChanged();
+        }
+    }
+}
+
+ *@

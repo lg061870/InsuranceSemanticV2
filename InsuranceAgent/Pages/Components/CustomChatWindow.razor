@@ -1,0 +1,353 @@
+@* @using ConversaCore.Services
+@using ConversaCore.Models
+@using ConversaCore.TopicFlow
+@using InsuranceAgent.Services
+@using InsuranceAgent.Models
+@using System.Text.Json
+@using System.Collections.Generic
+
+@implements IDisposable
+
+@inject HybridChatService ChatService
+@inject IChatInteropService ChatInteropService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<div class="chat-window-container">
+    <div class="chat-header">
+        <div class="chat-header-avatar">
+            <div class="avatar-circle">
+                <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-ai-1.jpg" alt="Sofia" />
+                <div class="avatar-status"></div>
+            </div>
+        </div>
+        <div class="chat-header-info">
+            <h3 class="chat-header-name">Sofia</h3>
+            <div class="chat-header-status">
+                <div class="status-indicator"></div>
+                <span>AI Assistant • Online</span>
+            </div>
+        </div>
+        <div class="chat-header-actions">
+            <button class="chat-header-button" title="Clear chat" @onclick="ClearChat">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="messages-container" @ref="messagesContainerRef">
+        @foreach (var message in Messages) {
+            @if (message.IsFromUser) {
+                <div class="message-group">
+                    <div class="message user-message">
+                        <div class="message-content">@message.Content</div>
+                        <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                        <div class="message-actions">
+                            <button class="message-action-button" title="Edit" @onclick="() => EditMessage(message)">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+            else {
+                <div class="message-group">
+                    <div class="message bot-message">
+                        @if (message.IsAdaptiveCard && !string.IsNullOrEmpty(message.AdaptiveCardJson)) {
+                            <div class="adaptive-card-container">
+                                <AdaptiveCardRenderer CardJson="@message.AdaptiveCardJson"
+                                                      CardContainerId="@($"card-{message.Timestamp.Ticks}")"
+                                                      OnSubmit="OnAdaptiveCardSubmit"
+                                                      OnAction="HandleCardAction" />
+                            </div>
+                            <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                        }
+                        else {
+                            <div class="message-content">@((MarkupString)FormatMessageContent(message.Content))</div>
+                            <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                            <div class="message-actions">
+                                <button class="message-action-button" title="Copy" @onclick="() => CopyMessageToClipboard(message)">
+                                    <i class="fa-solid fa-copy"></i>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+
+        @if (IsTyping) {
+            <div class="message bot-message typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        }
+    </div>
+
+    <div class="chat-suggestions">
+        @foreach (var suggestion in CurrentSuggestions) {
+            <div class="suggestion-chip" @onclick="() => UseSuggestion(suggestion)">
+                @suggestion
+            </div>
+        }
+    </div>
+
+    <div class="message-input-container">
+        <textarea @bind="CurrentMessage"
+                  @bind:event="oninput"
+                  @onkeydown="HandleKeyDown"
+                  placeholder="Type your message..."
+                  disabled="@IsProcessing"
+                  class="message-input"
+                  rows="1"
+                  @ref="messageInputRef"></textarea>
+        <button class="send-button" @onclick="SendMessage" disabled="@(IsProcessing || string.IsNullOrWhiteSpace(CurrentMessage))">
+            <i class="fa-solid fa-paper-plane"></i>
+        </button>
+    </div>
+</div>
+
+@code {
+
+    private ChatSessionState SessionState { get; set; } = new ChatSessionState();
+    private EventCallback<Dictionary<string, object>> OnAdaptiveCardSubmit => EventCallback.Factory.Create<Dictionary<string, object>>(this, HandleCardSubmit);
+    private List<ChatMessage> Messages { get; set; } = new();
+    private string CurrentMessage { get; set; } = "";
+    private bool IsTyping { get; set; } = false;
+    private bool IsProcessing { get; set; } = false;
+    private ElementReference messagesContainerRef;
+    private ElementReference messageInputRef;
+    private ChatMessage? messageBeingEdited = null;
+    private List<string> CurrentSuggestions { get; set; } = new() {
+        "Tell me about life insurance options",
+        "What health questions will I need to answer?",
+        "How much coverage do I need?",
+        "I'd like to speak with an agent"
+    };
+    private bool _conversationStarted = false;
+
+    public TopicWorkflowContext WorkflowContext { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        if (firstRender && !_conversationStarted) {
+            ChatService.OnConversationStart += HandleConversationStart;
+            ChatService.StartConversation(SessionState);
+            _conversationStarted = true;
+        }
+    }
+
+    private async void HandleConversationStart(ChatSessionState sessionState, ConversaCore.Topics.ITopic topic) {
+        var result = await topic.ProcessMessageAsync("__init__", CancellationToken.None);
+        Messages.Add(new ChatMessage {
+            Content = result.Response,
+            IsFromUser = false,
+            Timestamp = DateTime.Now
+        });
+        StateHasChanged();
+        await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+    }
+
+    private async Task SendWelcomeMessage() {
+        try {
+            IsTyping = true;
+            StateHasChanged();
+
+            var response = await ChatService.ProcessMessageAsync("welcome", SessionState, CancellationToken.None);
+            await Task.Delay(500);
+
+            if (!string.IsNullOrEmpty(response.Content)) {
+                Messages.Add(new ChatMessage {
+                    Content = response.Content,
+                    IsFromUser = false,
+                    Timestamp = DateTime.Now,
+                    IsAdaptiveCard = response.IsAdaptiveCard,
+                    AdaptiveCardJson = response.AdaptiveCardJson
+                });
+
+                if (response.Events?.Any() == true)
+                    await HandleEvents(response.Events);
+
+                UpdateSuggestionsBasedOnContext(response.Content);
+            }
+        } finally {
+            IsTyping = false;
+            StateHasChanged();
+            await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+        }
+    }
+
+    private async Task SendMessage() {
+        if (string.IsNullOrWhiteSpace(CurrentMessage) || IsProcessing)
+            return;
+
+        IsProcessing = true;
+        var userMessage = new ChatMessage {
+            Content = CurrentMessage,
+            IsFromUser = true,
+            Timestamp = DateTime.Now
+        };
+
+        Messages.Add(userMessage);
+        string userMessageText = CurrentMessage;
+        CurrentMessage = "";
+        StateHasChanged();
+
+        UpdateSuggestions(new List<string>());
+        await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+
+        IsTyping = true;
+        StateHasChanged();
+
+        try {
+            var response = await ChatService.ProcessMessageAsync(userMessageText, SessionState, CancellationToken.None);
+            WorkflowContext = response.wfContext;
+            await Task.Delay(500);
+            IsTyping = false;
+
+            Messages.Add(new ChatMessage {
+                Content = response.Content,
+                IsFromUser = false,
+                Timestamp = DateTime.Now,
+                IsAdaptiveCard = response.IsAdaptiveCard,
+                AdaptiveCardJson = response.AdaptiveCardJson
+            });
+
+            if (response.Events?.Any() == true)
+                await HandleEvents(response.Events);
+
+            UpdateSuggestionsBasedOnContext(response.Content);
+        } catch (Exception ex) {
+            Messages.Add(new ChatMessage {
+                Content = "I'm sorry, I encountered an error. Please try again.",
+                IsFromUser = false,
+                Timestamp = DateTime.Now
+            });
+            Console.WriteLine($"Error processing message: {ex.Message}");
+        } finally {
+            IsTyping = false;
+            IsProcessing = false;
+            StateHasChanged();
+            await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+        }
+    }
+
+    private async Task HandleEvents(List<ChatEvent> events) {
+        foreach (var chatEvent in events) {
+            switch (chatEvent.Type) {
+                case "startHealthQuestionnaire":
+                    SessionState.ShowQuestionnaire = true;
+                    break;
+
+                case "userTCPAAuthorizationReceived":
+                    SessionState.HasConsent = true;
+                    SessionState.UserConsentType = "TCPA";
+                    SessionState.ShowAgentConsole = true;
+                    break;
+
+                case "requestConsent":
+                    await JSRuntime.InvokeVoidAsync("recordChatEvent", "consent_requested", new { type = "TCPA" });
+                    break;
+
+                case "requestAgent":
+                    SessionState.ShowAgentConsole = true;
+                    break;
+            }
+        }
+    }
+
+    private async Task HandleCardSubmit(Dictionary<string, object> data) {
+        try
+        {
+            var response = await ChatService.HandleCardSubmitAsync(data, SessionState, CancellationToken.None);
+            Messages.Add(new ChatMessage {
+                Content = response.Content,
+                IsFromUser = false,
+                Timestamp = DateTime.Now,
+                IsAdaptiveCard = response.IsAdaptiveCard,
+                AdaptiveCardJson = response.AdaptiveCardJson
+            });
+            StateHasChanged();
+            await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[HandleCardSubmit] Error: {ex}");
+            Messages.Add(new ChatMessage {
+                Content = "⚠️ An error occurred while processing the form. Please try again.",
+                IsFromUser = false,
+                Timestamp = DateTime.Now
+            });
+            StateHasChanged();
+            await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+        }
+    }
+
+
+    public void Dispose() {
+        ChatService.OnConversationStart -= HandleConversationStart;
+    }
+
+    // === Utility / Action stubs ===
+
+    // Clears the chat window
+    private void ClearChat() {
+        Messages.Clear();
+        StateHasChanged();
+    }
+
+    // Copies a message to clipboard
+    private async Task CopyMessageToClipboard(ChatMessage message) {
+        if (message == null || string.IsNullOrEmpty(message.Content)) return;
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", message.Content);
+        await JSRuntime.InvokeVoidAsync("recordChatEvent", "message_copied", new { content = message.Content });
+    }
+
+    // Allows editing a previous message
+    private void EditMessage(ChatMessage message) {
+        if (message == null) return;
+        messageBeingEdited = message;
+        CurrentMessage = message.Content;
+        StateHasChanged();
+    }
+
+    // Formats bot message content (supports Markdown/HTML if desired)
+    private string FormatMessageContent(string content) {
+        return string.IsNullOrEmpty(content) ? string.Empty : content;
+    }
+
+    // Handles adaptive card action (button clicks etc.)
+    private Task HandleCardAction(string actionId) {
+        Console.WriteLine($"Card action triggered: {actionId}");
+        return Task.CompletedTask;
+    }
+
+    // Handles key press in the input box (e.g. Enter to send)
+    private async Task HandleKeyDown(KeyboardEventArgs e) {
+        if (e.Key == "Enter" && !e.ShiftKey) {
+            // preventDefault handled in Razor attribute
+            await SendMessage();
+        }
+    }
+
+
+    // Updates the suggestion chips
+    private void UpdateSuggestions(List<string> suggestions) {
+        CurrentSuggestions = suggestions ?? new();
+        StateHasChanged();
+    }
+
+    // Updates suggestions based on conversation context
+    private void UpdateSuggestionsBasedOnContext(string contextText) {
+        // Example: you could parse keywords in contextText
+        // For now just keep defaults
+        Console.WriteLine($"UpdateSuggestionsBasedOnContext called with: {contextText}");
+    }
+
+    // Uses a suggestion as the current message
+    private async Task UseSuggestion(string suggestion) {
+        CurrentMessage = suggestion;
+        await SendMessage();
+    }
+
+} *@

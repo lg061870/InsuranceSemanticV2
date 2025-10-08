@@ -1,0 +1,78 @@
+@* @using InsuranceAgent.Models
+
+<div class="accordion-item border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+
+    <button type="button"
+            class="@($"w-full flex items-center justify-between p-4 md:p-5 transition-colors {(IsOpen ? "bg-blue-50" : "bg-white hover:bg-gray-50")}")"
+            aria-expanded="@(IsOpen ? "true" : "false")"
+            @onclick="HandleToggleClick">
+
+        <span class="font-semibold text-blue-700">@Title</span>
+
+        <div class="flex items-center gap-3 text-xs">
+            @if (Questions?.Count > 0) {
+                <span class="@CounterClass">
+                    @AnsweredCount / @Questions.Count
+                </span>
+            }
+            <i class="fa-solid fa-chevron-down text-blue-600 transition-transform @(IsOpen ? "rotate-180" : "")"></i>
+        </div>
+    </button>
+
+    <div class="accordion-content @((IsOpen ? "block" : "hidden"))">
+        <div class="p-4 md:p-6 max-h-[480px] overflow-y-auto">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                @if (Questions != null) {
+                    @foreach (var q in Questions) {
+                        <div class="@QuestionCardClass(q.Name)">
+                            <YesNoQuestion Label="@q.Label"
+                                           Name="@q.Name"
+                                           @bind-Value='Answers[q.Name]'
+                                           Changed="OnChildChanged" />
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = default!;
+    [Parameter, EditorRequired] public List<QuestionViewModel> Questions { get; set; } = new List<QuestionViewModel>();
+    [Parameter, EditorRequired] public Dictionary<string, bool?> Answers { get; set; } = new();
+
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback ToggleRequested { get; set; }
+    [Parameter] public EventCallback<(string Name, bool? Value)> Changed { get; set; }
+
+    private bool HasBeenOpened = false;
+
+    private int AnsweredCount =>
+        Questions.Count(q => Answers.TryGetValue(q.Name, out var v) && v.HasValue);
+
+    private async Task HandleToggleClick() {
+        if (!HasBeenOpened)
+            HasBeenOpened = true;
+
+        if (ToggleRequested.HasDelegate)
+            await ToggleRequested.InvokeAsync();
+    }
+
+    private Task OnChildChanged((string Name, bool? Value) change)
+        => Changed.HasDelegate ? Changed.InvokeAsync(change) : Task.CompletedTask;
+
+    private string QuestionCardClass(string name) {
+        var has = Answers.TryGetValue(name, out var v) && v.HasValue;
+        return $"rounded-lg border p-3 md:p-4 bg-white transition-colors " +
+               $"{(has ? "border-gray-200 hover:bg-gray-50" : "border-amber-300 bg-amber-50/40 hover:bg-amber-50")}";
+    }
+
+    private string CounterClass =>
+        $"px-2 py-0.5 rounded-full border text-xs font-semibold " +
+        (!HasBeenOpened || IsOpen || AnsweredCount == Questions.Count
+            ? "bg-gray-100 border-gray-200 text-gray-500"
+            : "bg-red-50 border-red-300 text-red-600");
+}
+
+ *@

@@ -1,0 +1,125 @@
+@using Microsoft.JSInterop
+@using System.Threading.Tasks
+@inject IJSRuntime JSRuntime
+
+<div class="adaptive-card-container @ContainerClass" id="@CardContainerId">
+    @if (!string.IsNullOrEmpty(CardJson)) {
+        <div class="adaptive-card-wrapper" id="@CardWrapperId">
+            <!-- Blazor NEVER writes inside .adaptive-card-host -->
+            <div class="adaptive-card-host"></div>
+
+            @if (ShowLoading) {
+                <div class="adaptive-card-loading">
+                    <div class="spinner">
+                        <div class="bounce1"></div>
+                        <div class="bounce2"></div>
+                        <div class="bounce3"></div>
+                    </div>
+                    <p>Loading card content...</p>
+                </div>
+            }
+
+            @if (ShowActionButtons && CardActions?.Count > 0) {
+                <div class="adaptive-card-actions">
+                    @foreach (var action in CardActions) {
+                        <button class="ac-pushButton @(action.Style?.ToLower() ?? "")"
+                                @onclick="() => OnActionClicked(action)"
+                                @onclick:preventDefault>
+                            @action.Title
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? CardJson { get; set; }
+    [Parameter] public string CardContainerId { get; set; } = $"card-container-{Guid.NewGuid()}";
+    [Parameter] public string CardWrapperId { get; set; } = $"card-wrapper-{Guid.NewGuid()}";
+    [Parameter] public bool ShowActionButtons { get; set; } = false;
+    [Parameter] public EventCallback<Dictionary<string, object>> OnSubmit { get; set; }
+    [Parameter] public EventCallback<string> OnAction { get; set; }
+    [Parameter] public string ContainerClass { get; set; } = "";
+    [Parameter] public bool ShowAnimation { get; set; } = true;
+
+    private List<CardAction> CardActions = new();
+    private bool ShowLoading { get; set; } = true;
+    private bool HasRendered { get; set; } = false;
+    private string _lastRenderedCardJson = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        if (firstRender) {
+            try {
+                await JSRuntime.InvokeVoidAsync("ensureAdaptiveCardsLoaded");
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Error initializing adaptive cards: {ex.Message}");
+            }
+        }
+
+        if (!string.IsNullOrEmpty(CardJson) && (!HasRendered || CardJsonChanged())) {
+            HasRendered = true;
+            _lastRenderedCardJson = CardJson;
+
+            try {
+                await JSRuntime.InvokeVoidAsync("ensureAdaptiveCardsLoaded");
+
+                bool success = await JSRuntime.InvokeAsync<bool>(
+                    "adaptiveCards.renderAdaptiveCard",
+                    CardWrapperId,
+                    CardJson,
+                    DotNetObjectReference.Create(this));
+
+                ShowLoading = false;
+                StateHasChanged();
+
+                if (ShowActionButtons && success) {
+                    CardActions = await JSRuntime.InvokeAsync<List<CardAction>>(
+                        "adaptiveCards.extractCardActions",
+                        CardJson);
+                    StateHasChanged();
+                }
+            } catch (Exception ex) {
+                ShowLoading = false;
+                Console.Error.WriteLine($"Error rendering adaptive card: {ex.Message}");
+                StateHasChanged();
+            }
+        }
+    }
+
+    private bool CardJsonChanged() => _lastRenderedCardJson != CardJson;
+
+
+    [JSInvokable]
+    public async Task OnCardSubmit(Dictionary<string, object> data)
+    {
+        Console.WriteLine($"Card submit with data: {System.Text.Json.JsonSerializer.Serialize(data)}");
+        // Model-agnostic: just forward the raw data
+        await OnSubmit.InvokeAsync(data);
+
+        await JSRuntime.InvokeVoidAsync(
+            "adaptiveCards.handleCardSubmit",
+            "submit",
+            data);
+    }
+
+    [JSInvokable]
+    public async Task OnCardAction(string actionId) {
+        await OnAction.InvokeAsync(actionId);
+    }
+
+    private async Task OnActionClicked(CardAction action) {
+        if (action.Data != null)
+            await OnSubmit.InvokeAsync(action.Data);
+        else
+            await OnAction.InvokeAsync(action.Id);
+    }
+
+    public class CardAction {
+        public string Id { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public Dictionary<string, object>? Data { get; set; }
+        public string Style { get; set; } = "default";
+    }
+}

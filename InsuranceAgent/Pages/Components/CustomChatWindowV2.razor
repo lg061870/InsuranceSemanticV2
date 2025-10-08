@@ -1,0 +1,312 @@
+@using ConversaCore.Events
+@using ConversaCore.Services
+@using ConversaCore.Models
+@using ConversaCore.TopicFlow
+@using InsuranceAgent.Services
+@using InsuranceAgent.Models
+@using System.Text.Json
+@using System.Collections.Generic
+
+@implements IDisposable
+
+@inject HybridChatService ChatService
+@inject IChatInteropService ChatInteropService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<!-- ========== CHAT WINDOW LAYOUT ========== -->
+<div class="chat-window-container">
+
+    <!-- Header -->
+    <div class="chat-header">
+        <div class="chat-header-avatar">
+            <div class="avatar-circle">
+                <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-ai-1.jpg" alt="Sofia" />
+                <div class="avatar-status"></div>
+            </div>
+        </div>
+        <div class="chat-header-info">
+            <h3 class="chat-header-name">Sofia</h3>
+            <div class="chat-header-status">
+                <div class="status-indicator"></div>
+                <span>V2 -- AI Assistant • Online</span>
+            </div>
+        </div>
+        <div class="chat-header-actions">
+            <button class="chat-header-button" title="Clear chat" @onclick="ClearChat">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Message history -->
+    <div class="messages-container" @ref="messagesContainerRef">
+        @foreach (var message in Messages) {
+            @if (message.IsFromUser) {
+                <!-- User messages -->
+                <div class="message-group">
+                    <div class="message user-message">
+                        <div class="message-content">@message.Content</div>
+                        <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                        <div class="message-actions">
+                            <button class="message-action-button" title="Edit" @onclick="() => EditMessage(message)">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+            else {
+                <!-- Bot messages -->
+                <div class="message-group">
+                    <div class="message bot-message">
+
+                        @if (message.IsAdaptiveCard && !string.IsNullOrEmpty(message.AdaptiveCardJson)) {
+                            <!-- Adaptive Card -->
+                            <div class="adaptive-card-container">
+                                <AdaptiveCardRenderer CardJson="@message.AdaptiveCardJson"
+                                                      CardContainerId="@($"card-{message.Timestamp.Ticks}")"
+                                                      OnSubmit="OnAdaptiveCardSubmit"
+                                                      OnAction="HandleCardAction" />
+                            </div>
+                            <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                        }
+                        else {
+                            <!-- Plain text message -->
+                            <div class="message-content">@((MarkupString)FormatMessageContent(message.Content))</div>
+                            <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                            <div class="message-actions">
+                                <button class="message-action-button" title="Copy" @onclick="() => CopyMessageToClipboard(message)">
+                                    <i class="fa-solid fa-copy"></i>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+
+        <!-- Typing indicator -->
+        @if (IsTyping) {
+            <div class="message bot-message typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        }
+    </div>
+
+    <!-- Suggestion chips -->
+    <div class="chat-suggestions">
+        @foreach (var suggestion in CurrentSuggestions) {
+            <div class="suggestion-chip" @onclick="() => UseSuggestion(suggestion)">
+                @suggestion
+            </div>
+        }
+    </div>
+
+    <!-- Message input -->
+    <div class="message-input-container">
+        <textarea @bind="CurrentMessage"
+                  @bind:event="oninput"
+                  @onkeydown="HandleKeyDown"
+                  placeholder="Type your message..."
+                  disabled="@IsProcessing"
+                  class="message-input"
+                  rows="1"
+                  @ref="messageInputRef"></textarea>
+        <button class="send-button" @onclick="SendMessage" disabled="@(IsProcessing || string.IsNullOrWhiteSpace(CurrentMessage))">
+            <i class="fa-solid fa-paper-plane"></i>
+        </button>
+    </div>
+</div>
+
+
+@code {
+
+    // ========== EVENTS ==========
+    public event EventHandler<MessageEventArgs>? UserMessageEntered;
+    public event EventHandler<ChatCardSubmitEventArgs>? AdaptiveCardSubmitted;
+    public event EventHandler<ChatWinowCardActionEventArgs>? CardActionInvoked;
+    public event EventHandler<ChatWindowBotMessageEventArgs>? BotMessageRendered;
+
+    // ========== STATE ==========
+    private ChatSessionState SessionState { get; set; } = new ChatSessionState();
+    private List<ChatMessage> Messages { get; set; } = new();
+    private string CurrentMessage { get; set; } = "";
+    private bool IsTyping { get; set; } = false;
+    private bool IsProcessing { get; set; } = false;
+    private ChatMessage? messageBeingEdited = null;
+    private bool _conversationStarted = false;
+
+    private ElementReference messagesContainerRef;
+    private ElementReference messageInputRef;
+
+    private List<string> CurrentSuggestions { get; set; } = new() {
+        "California Resident",
+        "Beneficiary info",
+        "repeat demo"
+    };
+
+    public TopicWorkflowContext WorkflowContext { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        if (firstRender && !_conversationStarted) {
+            // Subscribe Service → ChatWindow FIRST
+            ChatService.HybridBotMessageReady += (s, e) => {
+                Console.WriteLine($"[ChatWindow] Received HybridBotMessageReady: {e.Message.Content}");
+                Messages.Add(e.Message);
+                StateHasChanged();
+
+                BotMessageRendered?.Invoke(this, new ChatWindowBotMessageEventArgs(e.Message.Content));
+            };
+
+            ChatService.HybridAdaptiveCardReady += (s, e) => {
+                if (e.RenderMode == ConversaCore.Events.RenderMode.Replace && !string.IsNullOrEmpty(e.CardId)) {
+                    var existing = Messages.FirstOrDefault(m => m.IsAdaptiveCard && m.CardId == e.CardId);
+                    if (existing != null) {
+                        existing.AdaptiveCardJson = e.CardJson;
+                        existing.Timestamp = DateTime.Now;
+                        StateHasChanged();
+                        return;
+                    }
+                }
+
+                // fallback: append new card
+                Messages.Add(new ChatMessage {
+                    IsFromUser = false,
+                    IsAdaptiveCard = true,
+                    AdaptiveCardJson = e.CardJson,
+                    CardId = e.CardId,
+                    Timestamp = DateTime.Now
+                });
+                StateHasChanged();
+            };
+
+
+            ChatService.HybridTypingIndicatorChanged += (s, e) => {
+                IsTyping = e.IsTyping;
+                StateHasChanged();
+            };
+
+            ChatService.HybridSuggestionsUpdated += (s, e) => {
+                CurrentSuggestions = e.Suggestions.ToList();
+                StateHasChanged();
+            };
+
+            ChatService.HybridChatEventRaised += (s, e) => {
+                HandleWorkflowEvent(e.ChatEvent);
+                StateHasChanged();
+            };
+
+            // Subscribe ChatWindow → Service
+            UserMessageEntered += ChatService.HandleUserMessage;
+            BotMessageRendered += ChatService.HandleBotMessage;
+            AdaptiveCardSubmitted += ChatService.HandleCardSubmit;
+            CardActionInvoked += ChatService.HandleCardAction;
+
+            // NOW safe to start the conversation
+            ChatService.OnConversationStart += HandleConversationStart;
+            ChatService.StartConversation(SessionState);
+
+            _conversationStarted = true;
+        }
+    }
+
+
+
+    public void Dispose() {
+        ChatService.OnConversationStart -= HandleConversationStart;
+    }
+
+    // ========== CONVERSATION ==========
+    private async void HandleConversationStart(ChatSessionState sessionState, ConversaCore.Topics.ITopic topic) {
+        var result = await topic.ProcessMessageAsync("__init__", CancellationToken.None);
+        Messages.Add(new ChatMessage {
+            Content = result.Response,
+            IsFromUser = false,
+            Timestamp = DateTime.Now
+        });
+        StateHasChanged();
+        await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+    }
+
+    private async Task SendMessage() {
+        if (string.IsNullOrWhiteSpace(CurrentMessage) || IsProcessing)
+            return;
+
+        IsProcessing = true;
+
+        var userMessage = new ChatMessage {
+            Content = CurrentMessage,
+            IsFromUser = true,
+            Timestamp = DateTime.Now
+        };
+
+        // Add immediately to UI
+        Messages.Add(userMessage);
+
+        // Trigger event to service
+        UserMessageEntered?.Invoke(this, new MessageEventArgs(CurrentMessage));
+
+        CurrentMessage = "";
+        StateHasChanged();
+        await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+
+        IsProcessing = false;
+    }
+
+    // ========== UTILITY ==========
+    private void ClearChat() {
+        Messages.Clear();
+        StateHasChanged();
+    }
+
+    private async Task CopyMessageToClipboard(ChatMessage message) {
+        if (message == null || string.IsNullOrEmpty(message.Content)) return;
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", message.Content);
+        await JSRuntime.InvokeVoidAsync("recordChatEvent", "message_copied", new { content = message.Content });
+    }
+
+    private void EditMessage(ChatMessage message) {
+        if (message == null) return;
+        messageBeingEdited = message;
+        CurrentMessage = message.Content;
+        StateHasChanged();
+    }
+
+    private string FormatMessageContent(string content) =>
+        string.IsNullOrEmpty(content) ? string.Empty : content;
+
+    private Task HandleCardAction(string actionId) {
+        CardActionInvoked?.Invoke(this, new ChatWinowCardActionEventArgs(actionId));
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e) {
+        if (e.Key == "Enter" && !e.ShiftKey) {
+            await SendMessage();
+        }
+    }
+
+    private void UpdateSuggestions(List<string> suggestions) {
+        CurrentSuggestions = suggestions ?? new();
+        StateHasChanged();
+    }
+
+    private async Task UseSuggestion(string suggestion) {
+        CurrentMessage = suggestion;
+        await SendMessage();
+    }
+
+    // Called by AdaptiveCardRenderer when a card is submitted
+    private Task OnAdaptiveCardSubmit(Dictionary<string, object> data) {
+        AdaptiveCardSubmitted?.Invoke(this, new ChatCardSubmitEventArgs(data));
+        return Task.CompletedTask;
+    }
+
+    // === Workflow event stub (expand later if needed) ===
+    private void HandleWorkflowEvent(ChatEvent chatEvent) {
+        Console.WriteLine($"[ChatWindow] Workflow event: {chatEvent.Type}");
+    }
+}

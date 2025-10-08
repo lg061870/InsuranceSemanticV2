@@ -1,0 +1,20 @@
+@code {
+    private int currentCount = 0;
+
+    private void IncrementCount() {
+        currentCount++;
+    }
+}
+
+<div class="p-4 border rounded-lg shadow-md bg-white">
+    <h3 class="text-lg font-semibold mb-2">Fake Questionnaire</h3>
+    <p class="mb-4">This is just a placeholder. Click the button to increase the counter.</p>
+
+    <p class="mb-2">Current count: <strong>@currentCount</strong></p>
+
+    <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+            @onclick="IncrementCount">
+        Increment
+    </button>
+</div>
+

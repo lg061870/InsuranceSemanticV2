@@ -1,0 +1,138 @@
+@using WorkflowEditorLib.Models
+
+<div class="properties-panel">
+    <h3>Properties</h3>
+    @if (SelectedNode != null)
+    {
+        <div class="property-group">
+            <h4>Node Properties</h4>
+            <div class="property-item">
+                <label for="node-name">Name</label>
+                <input id="node-name" type="text" @bind="SelectedNode.Name" />
+            </div>
+            <div class="property-item">
+                <label for="node-title">Title</label>
+                <input id="node-title" type="text" @bind="SelectedNode.Title" />
+            </div>
+            <div class="property-item">
+                <label for="node-type">Type</label>
+                <select id="node-type" @bind="SelectedNode.Type" disabled>
+                    @foreach (NodeType nodeType in Enum.GetValues(typeof(NodeType)))
+                    {
+                        <option value="@nodeType">@nodeType</option>
+                    }
+                </select>
+            </div>
+            <div class="property-item">
+                <label for="node-description">Description</label>
+                <textarea id="node-description" @bind="SelectedNode.Description"></textarea>
+            </div>
+            
+            <!-- Custom properties based on node type -->
+            @if (SelectedNode.Type == NodeType.Action)
+            {
+                <div class="property-item">
+                    <label for="action-type">Action Type</label>
+                    <select id="action-type" @bind="ActionType">
+                        <option value="function">Function</option>
+                        <option value="api">API Call</option>
+                        <option value="script">Script</option>
+                        <option value="email">Send Email</option>
+                    </select>
+                </div>
+            }
+            else if (SelectedNode.Type == NodeType.Condition)
+            {
+                <div class="property-item">
+                    <label for="condition-expression">Condition Expression</label>
+                    <input id="condition-expression" type="text" @bind="ConditionExpression" />
+                </div>
+            }
+        </div>
+        
+        <div class="property-group">
+            <h4>Ports</h4>
+            @foreach (var port in SelectedNode.Ports)
+            {
+                <div class="property-item">
+                    <label>@port.Name (@port.Type)</label>
+                    <div>
+                        <button @onclick="@(() => OnAddConnection.InvokeAsync(port.Id))">Create Connection</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else if (SelectedConnection != null)
+    {
+        <div class="property-group">
+            <h4>Connection Properties</h4>
+            <div class="property-item">
+                <label for="connection-name">Name</label>
+                <input id="connection-name" type="text" @bind="SelectedConnection.Name" />
+            </div>
+            <div class="property-item">
+                <label for="connection-label">Label</label>
+                <input id="connection-label" type="text" @bind="SelectedConnection.Label" />
+            </div>
+            <div class="property-item">
+                <label for="connection-condition">Condition</label>
+                <input id="connection-condition" type="text" @bind="SelectedConnection.Condition" />
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="property-group">
+            <p>Select a node or connection to view and edit its properties.</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Node? SelectedNode { get; set; }
+    [Parameter] public Connection? SelectedConnection { get; set; }
+    [Parameter] public EventCallback<string> OnAddConnection { get; set; }
+    [Parameter] public EventCallback OnNodePropertyChanged { get; set; }
+    [Parameter] public EventCallback OnConnectionPropertyChanged { get; set; }
+    
+    private string ActionType
+    {
+        get
+        {
+            if (SelectedNode != null && SelectedNode.Properties.TryGetValue("actionType", out var value))
+            {
+                return value?.ToString() ?? "function";
+            }
+            return "function";
+        }
+        set
+        {
+            if (SelectedNode != null)
+            {
+                SelectedNode.Properties["actionType"] = value;
+                OnNodePropertyChanged.InvokeAsync();
+            }
+        }
+    }
+    
+    private string ConditionExpression
+    {
+        get
+        {
+            if (SelectedNode != null && SelectedNode.Properties.TryGetValue("expression", out var value))
+            {
+                return value?.ToString() ?? string.Empty;
+            }
+            return string.Empty;
+        }
+        set
+        {
+            if (SelectedNode != null)
+            {
+                SelectedNode.Properties["expression"] = value;
+                OnNodePropertyChanged.InvokeAsync();
+            }
+        }
+    }
+}

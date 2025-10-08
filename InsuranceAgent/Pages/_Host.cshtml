@@ -1,0 +1,99 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.Web
+@namespace InsuranceAgent.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="~/" />
+
+    <!-- Local styles -->
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="css/chat-enhanced.css" asp-append-version="true" />
+    <link rel="stylesheet" href="css/adaptive-cards.css" asp-append-version="true" />
+    <link rel="stylesheet" href="InsuranceAgent.styles.css" asp-append-version="true" />
+    <!-- WorkflowEditor styles -->
+    <link rel="stylesheet" href="_content/WorkflowEditor/css/WorkflowEditor.css" asp-append-version="true" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;500;600;700;800;900&display=swap" />
+
+    <!-- Tailwind (CDN) - dev/prototyping -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Font Awesome (JS, autoReplaceSvg mode) -->
+    <script>
+        window.FontAwesomeConfig = { autoReplaceSvg: 'nest' };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <!-- Custom Adaptive Cards stack -->
+    <script src="js/custom-adaptive-card-renderer.js" asp-append-version="true"></script>
+    <script src="js/chat-interop.js" asp-append-version="true"></script>
+    <script src="js/adaptive-cards-consolidated.js" asp-append-version="true"></script>
+
+    <!-- Utilities -->
+    <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"
+            integrity="sha256-qXBd/EfAdjOA2FGrGAG+b3YBn2tn5A6bhz+LSgYD96k="
+            crossorigin="anonymous"></script>
+
+    <!-- Cytoscape.js and extensions (for WorkflowEditor) -->
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.25.0/dist/cytoscape.min.js"
+            integrity="sha256-of4+ZbUl9wdQlCW3KL+XiG5J1OOHmy5K6fnRW9JdxA="
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-grid-guide@2.3.3/cytoscape-grid-guide.min.js"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-edgehandles@4.0.1/cytoscape-edgehandles.min.js"
+            crossorigin="anonymous"></script>
+
+    <!-- WorkflowEditor JS -->
+    <script src="_content/WorkflowEditor/js/workflow-canvas.js" asp-append-version="true"></script>
+    <script src="_content/WorkflowEditor/js/workflow-diagnostics.js" asp-append-version="true"></script>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="favicon.png" />
+
+    <style>
+        .scrollbar-hide {
+            overflow-y: scroll; /* Enables vertical scrolling */
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* Internet Explorer and Edge */
+        }
+
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none; /* Chrome, Safari, Opera */
+            }
+    </style>
+
+    <!-- Blazor HeadOutlet -->
+    <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
+</head>
+
+<body>
+    <component type="typeof(InsuranceAgent.App)" render-mode="ServerPrerendered" />
+
+    <div id="blazor-error-ui">
+        <environment include="Staging,Production">
+            An error has occurred. This application may no longer respond until reloaded.
+        </environment>
+        <environment include="Development">
+            An unhandled exception has occurred. See browser dev tools for details.
+        </environment>
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">✖</a>
+    </div>
+
+    <!-- Blazor Server -->
+    <script src="_framework/blazor.server.js"></script>
+</body>
+</html>

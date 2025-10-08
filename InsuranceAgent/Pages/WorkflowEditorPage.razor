@@ -1,0 +1,58 @@
+@page "/workflow-editor"
+@using WorkflowEditorLib.Components
+
+<h1>Workflow Editor</h1>
+
+<div class="workflow-editor-page-container">
+    <WorkflowEditor />
+</div>
+
+<style>
+    .workflow-editor-page-container {
+        height: 800px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 20px;
+    }
+    
+    .workflow-main-content {
+        display: flex;
+        flex: 1;
+        flex-direction: row;
+        height: calc(100% - 50px);
+        overflow: hidden;
+    }
+    
+    .workflow-canvas-container {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        min-height: 600px;
+        border: 1px solid #ddd;
+    }
+    
+    .workflow-editor-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+    }
+    
+    .workflow-canvas {
+        flex: 1;
+        position: relative;
+        background-color: #f5f5f5;
+        background-image: 
+            linear-gradient(to right, #e0e0e0 1px, transparent 1px),
+            linear-gradient(to bottom, #e0e0e0 1px, transparent 1px);
+        background-size: 20px 20px;
+    }
+</style>
+
+@code {
+    // Page code
+}

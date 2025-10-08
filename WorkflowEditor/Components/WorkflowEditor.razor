@@ -1,0 +1,301 @@
+@using System
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@using WorkflowEditorLib.Models
+@using WorkflowEditorLib.Services
+@using WorkflowEditorLib.Components.Canvas
+@using WorkflowEditorLib.Components.PropertyPanel
+@using WorkflowEditorLib.Components.Palette
+
+<div class="workflow-editor-container" style="height: 800px; width: 100%; display: flex; flex-direction: column;">
+    <div class="workflow-toolbar" style="display: flex; padding: 8px; background-color: #f0f0f0; border-bottom: 1px solid #ddd;">
+        <button @onclick="CreateNewWorkflow" title="New Workflow">New</button>
+        <button @onclick="SaveWorkflow" title="Save Workflow">Save</button>
+        <button @onclick="LoadWorkflow" title="Load Workflow">Load</button>
+        <div class="toolbar-separator" style="margin: 0 8px; border-right: 1px solid #ddd;"></div>
+        <button @onclick="UndoAction" title="Undo">Undo</button>
+        <button @onclick="RedoAction" title="Redo">Redo</button>
+        <div class="toolbar-separator" style="margin: 0 8px; border-right: 1px solid #ddd;"></div>
+        <button @onclick="ApplyGridLayout" title="Grid Layout">Grid Layout</button>
+        <button @onclick="ApplyDagreLayout" title="Hierarchical Layout">Hierarchical Layout</button>
+        <button @onclick="FitContent" title="Fit Content">Fit Content</button>
+        <div class="toolbar-separator" style="margin: 0 8px; border-right: 1px solid #ddd;"></div>
+        <button @onclick="ZoomIn" title="Zoom In">+</button>
+        <button @onclick="ZoomOut" title="Zoom Out">-</button>
+        <button @onclick="ResetZoom" title="Reset Zoom">100%</button>
+    </div>
+    
+    <div class="workflow-main-content" style="display: flex; flex: 1; overflow: hidden;">
+        <WorkflowEditorLib.Components.Palette.NodePalette OnNodeDragStart="OnDragNodeStart" />
+        
+        <div class="workflow-canvas-container" style="flex: 1; position: relative; overflow: hidden; border: 1px solid #ddd;">
+            <WorkflowEditorLib.Components.Canvas.WorkflowCanvas 
+                @ref="Canvas"
+                CanvasId="workflow-canvas"
+                NodeSelected="HandleNodeSelected"
+                ConnectionSelected="HandleConnectionSelected"
+                SelectionCleared="HandleSelectionCleared" />
+        </div>
+        
+        <WorkflowEditorLib.Components.PropertyPanel.PropertyPanel 
+            SelectedNode="SelectedNode" 
+            SelectedConnection="SelectedConnection" 
+            OnAddConnection="HandleAddConnection"
+            OnNodePropertyChanged="HandleNodePropertyChanged"
+            OnConnectionPropertyChanged="HandleConnectionPropertyChanged" />
+    </div>
+</div>
+
+@code {
+    [Inject] private WorkflowStateService StateService { get; set; } = default!;
+    [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
+    
+    private WorkflowCanvas? Canvas { get; set; }
+    private Node? SelectedNode { get { return StateService.SelectedNode; } }
+    private Connection? SelectedConnection { get { return StateService.SelectedConnection; } }
+    private NodeType? DraggingNodeType { get; set; }
+    
+    protected override async Task OnInitializedAsync()
+    {
+        // Subscribe to state changes
+        StateService.OnNodeSelected += async (node) => {
+            StateInHasChanged();
+        };
+        
+        StateService.OnConnectionSelected += async (connection) => {
+            StateInHasChanged();
+        };
+        
+        StateService.OnSelectionCleared += async () => {
+            StateInHasChanged();
+        };
+        
+        StateService.OnWorkflowChanged += async () => {
+            StateInHasChanged();
+        };
+        
+        await base.OnInitializedAsync();
+    }
+
+    private async Task CreateNewWorkflow()
+    {
+        await StateService.CreateNewWorkflow();
+    }
+    
+    private async Task SaveWorkflow()
+    {
+        // In a real app, you'd save the workflow to a database or file
+        // For now, we'll just show a console message
+        Console.WriteLine($"Saving workflow: {StateService.CurrentWorkflow.Name}");
+        
+        // For demo purposes, serialize to JSON and show in an alert
+        var json = System.Text.Json.JsonSerializer.Serialize(StateService.CurrentWorkflow);
+        await JSRuntime.InvokeVoidAsync("alert", "Workflow saved to console");
+    }
+    
+    private async Task LoadWorkflow()
+    {
+        // In a real app, you'd load from a database or file
+        // For now, we'll just create a demo workflow
+        var workflow = CreateDemoWorkflow();
+        await StateService.LoadWorkflow(workflow);
+    }
+    
+    private Workflow CreateDemoWorkflow()
+    {
+        // Create a simple demo workflow
+        var workflow = new Workflow
+        {
+            Name = "Demo Workflow",
+            Description = "A demo workflow created for testing"
+        };
+        
+        // Add trigger node
+        var triggerNode = new Node("Start", NodeType.Trigger, new Position(100, 100));
+        workflow.AddNode(triggerNode);
+        
+        // Add action node
+        var actionNode = new Node("Process Data", NodeType.Action, new Position(300, 100));
+        workflow.AddNode(actionNode);
+        
+        // Add condition node
+        var conditionNode = new Node("Check Result", NodeType.Condition, new Position(500, 100));
+        workflow.AddNode(conditionNode);
+        
+        // Add success node
+        var successNode = new Node("Success", NodeType.Action, new Position(700, 50));
+        workflow.AddNode(successNode);
+        
+        // Add failure node
+        var failureNode = new Node("Failure", NodeType.Action, new Position(700, 150));
+        workflow.AddNode(failureNode);
+        
+        // Add end node
+        var endNode = new Node("End", NodeType.End, new Position(900, 100));
+        workflow.AddNode(endNode);
+        
+        // Connect the nodes
+        var triggerOutPort = triggerNode.Ports.First(p => p.Type == PortType.Output);
+        var actionInPort = actionNode.Ports.First(p => p.Type == PortType.Input);
+        workflow.AddConnection(triggerOutPort.Id, actionInPort.Id);
+        
+        var actionOutPort = actionNode.Ports.First(p => p.Type == PortType.Output);
+        var conditionInPort = conditionNode.Ports.First(p => p.Type == PortType.Input);
+        workflow.AddConnection(actionOutPort.Id, conditionInPort.Id);
+        
+        var conditionTruePort = conditionNode.Ports.First(p => p.Name == "True");
+        var successInPort = successNode.Ports.First(p => p.Type == PortType.Input);
+        workflow.AddConnection(conditionTruePort.Id, successInPort.Id);
+        
+        var conditionFalsePort = conditionNode.Ports.First(p => p.Name == "False");
+        var failureInPort = failureNode.Ports.First(p => p.Type == PortType.Input);
+        workflow.AddConnection(conditionFalsePort.Id, failureInPort.Id);
+        
+        var successOutPort = successNode.Ports.First(p => p.Type == PortType.Output);
+        var endInPort = endNode.Ports.First(p => p.Type == PortType.Input);
+        workflow.AddConnection(successOutPort.Id, endInPort.Id);
+        
+        var failureOutPort = failureNode.Ports.First(p => p.Type == PortType.Output);
+        workflow.AddConnection(failureOutPort.Id, endInPort.Id);
+        
+        return workflow;
+    }
+    
+    private async Task UndoAction()
+    {
+        await StateService.Undo();
+    }
+    
+    private async Task RedoAction()
+    {
+        await StateService.Redo();
+    }
+    
+    private async Task ApplyGridLayout()
+    {
+        if (Canvas != null)
+        {
+            await Canvas.ApplyLayout("grid");
+        }
+    }
+    
+    private async Task ApplyDagreLayout()
+    {
+        if (Canvas != null)
+        {
+            await Canvas.ApplyLayout("dagre");
+        }
+    }
+    
+    private async Task FitContent()
+    {
+        if (Canvas != null)
+        {
+            await Canvas.FitContent();
+        }
+    }
+    
+    private async Task ZoomIn()
+    {
+        if (Canvas != null)
+        {
+            await Canvas.ZoomIn();
+        }
+    }
+    
+    private async Task ZoomOut()
+    {
+        if (Canvas != null)
+        {
+            await Canvas.ZoomOut();
+        }
+    }
+    
+    private async Task ResetZoom()
+    {
+        if (Canvas != null)
+        {
+            await Canvas.ResetZoom();
+        }
+    }
+    
+    private void OnDragNodeStart(NodeType nodeType)
+    {
+        DraggingNodeType = nodeType;
+        // In a real implementation, you'd need to handle the drag and drop operations
+        // This would involve JS interop to track the drag position and create a node on drop
+    }
+    
+    private async Task HandleNodeSelected(Node node)
+    {
+        // This will be called from the canvas component when a node is selected
+        StateInHasChanged();
+    }
+    
+    private async Task HandleConnectionSelected(Connection connection)
+    {
+        // This will be called from the canvas component when a connection is selected
+        StateInHasChanged();
+    }
+    
+    private async Task HandleSelectionCleared()
+    {
+        // This will be called from the canvas component when the selection is cleared
+        StateInHasChanged();
+    }
+    
+    private async Task HandleNodePropertyChanged()
+    {
+        if (SelectedNode != null)
+        {
+            await StateService.UpdateNode(SelectedNode);
+        }
+    }
+    
+    private async Task HandleNodeTypeChanged()
+    {
+        if (SelectedNode != null)
+        {
+            SelectedNode.InitializePorts();
+            await StateService.UpdateNode(SelectedNode);
+        }
+    }
+    
+    private async Task HandleConnectionPropertyChanged()
+    {
+        // In a real implementation, you'd update the connection properties
+        // For now, we'll just trigger a workflow changed event
+        await StateService.NotifyWorkflowChanged();
+    }
+    
+    private async Task HandleAddConnection(string sourcePortId)
+    {
+        // In a real implementation, you'd start the connection creation process
+        // This would involve JS interop to draw a connection from the source port
+        // to the cursor, and then finalize it when the user clicks on a target port
+        Console.WriteLine($"Starting connection from port: {sourcePortId}");
+    }
+    
+    private string GetNodeProperty(string key)
+    {
+        if (SelectedNode != null && SelectedNode.Properties.TryGetValue(key, out var value))
+        {
+            return value?.ToString() ?? string.Empty;
+        }
+        
+        return string.Empty;
+    }
+    
+    private void SetNodeProperty(string key, string value)
+    {
+        if (SelectedNode != null)
+        {
+            SelectedNode.Properties[key] = value;
+        }
+    }
+    
+    private void StateInHasChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+}

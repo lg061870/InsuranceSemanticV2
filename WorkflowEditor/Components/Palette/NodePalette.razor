@@ -1,0 +1,39 @@
+@using WorkflowEditorLib.Models
+
+<div class="node-palette">
+    <h3>Components</h3>
+    <div class="palette-group">
+        <h4>Nodes</h4>
+        @foreach (NodeType nodeType in Enum.GetValues(typeof(NodeType)))
+        {
+            <div class="palette-item" draggable="true" @ondragstart="@(() => OnDragNodeStart(nodeType))">
+                <span class="palette-item-icon" style="background-color: @GetNodeColor(nodeType);"></span>
+                @nodeType.ToString()
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback<NodeType> OnNodeDragStart { get; set; }
+
+    private async Task OnDragNodeStart(NodeType nodeType)
+    {
+        await OnNodeDragStart.InvokeAsync(nodeType);
+    }
+
+    private string GetNodeColor(NodeType nodeType)
+    {
+        return nodeType switch
+        {
+            NodeType.Trigger => "#FF5733",
+            NodeType.Action => "#6FB1FC",
+            NodeType.Condition => "#FFBD33",
+            NodeType.Connector => "#2BAE66",
+            NodeType.Variable => "#A569BD",
+            NodeType.Loop => "#F39C12",
+            NodeType.End => "#E74C3C",
+            _ => "#CCCCCC"
+        };
+    }
+}

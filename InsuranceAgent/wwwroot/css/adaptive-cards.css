@@ -1,0 +1,696 @@
+﻿/* Enhanced Adaptive Card Styles - 2023 Design System */
+
+/* =========================
+   Containers / Wrappers
+   ========================= */
+.adaptive-card-container {
+    width: 100%;
+    margin: 0.5rem 0;
+    max-width: none;
+    transition: box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+    .adaptive-card-container:hover {
+        box-shadow: 0 6px 24px rgba(0, 120, 212, 0.10);
+    }
+
+.adaptive-card-wrapper {
+    background-color: #fff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    border-left: 4px solid rgba(0, 120, 212, 0.7);
+    transform-origin: center;
+    padding: 5px 15px;
+}
+
+.ac-container {
+    padding: 12px !important;
+}
+
+/* =========================
+   Text Blocks
+   ========================= */
+.ac-textBlock {
+    color: #222;
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+    .ac-textBlock strong {
+        color: #0078d4;
+        font-weight: 600;
+    }
+
+    .ac-textBlock.ac-header {
+        color: #0078d4;
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #e8f1fa;
+        letter-spacing: -0.01em;
+    }
+
+/* =========================
+   Inputs (base)
+   NOTE: do NOT style checkboxes/radios like text inputs.
+   ========================= */
+.ac-input,
+.ac-input-container input:not([type="checkbox"]):not([type="radio"]),
+.ac-input-container select,
+.ac-input-container textarea {
+    font-size: 15px;
+    padding: 6px 10px;
+    border: 1.5px solid #ccdcec;
+    border-radius: 12px;
+    background: #fafafa;
+    color: #222;
+    margin-bottom: 8px;
+    box-sizing: border-box;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+}
+
+    .ac-input:focus,
+    .ac-input-container input:focus,
+    .ac-input-container select:focus,
+    .ac-input-container textarea:focus {
+        border-color: #0078d4;
+        background: #fff;
+        box-shadow: 0 0 0 4px rgba(0, 120, 212, 0.12);
+    }
+
+.ac-input-container {
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+/* Text / Number / Date inputs with “floating” feel */
+.ac-input.ac-textInput input,
+.ac-input.ac-numberInput input,
+.ac-input.ac-dateInput input,
+.ac-input.ac-timeInput input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid #d2d2d2;
+    border-radius: 12px;
+    font-size: 16px;
+    background-color: #fafafa;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+    .ac-input.ac-textInput input:focus,
+    .ac-input.ac-numberInput input:focus,
+    .ac-input.ac-dateInput input:focus,
+    .ac-input.ac-timeInput input:focus {
+        outline: none;
+        border-color: #0078d4;
+        box-shadow: 0 0 0 4px rgba(0, 120, 212, 0.15);
+        background-color: #fff;
+    }
+
+/* Textarea */
+.ac-input.ac-textInput textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid #d2d2d2;
+    border-radius: 12px;
+    font-size: 16px;
+    resize: vertical;
+    min-height: 100px;
+    background-color: #fafafa;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+    font-family: inherit;
+}
+
+    .ac-input.ac-textInput textarea:focus {
+        outline: none;
+        border-color: #0078d4;
+        box-shadow: 0 0 0 4px rgba(0, 120, 212, 0.15);
+        background-color: white;
+    }
+
+/* =========================
+   ChoiceSet
+   ========================= */
+.ac-choiceSetInput-compact select,
+.ac-input.ac-choiceSetInput.ac-choiceSetInput-compact select {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid #d2d2d2;
+    border-radius: 12px;
+    font-size: 16px;
+    background-color: #fafafa;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23007CB2%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px top 50%;
+    background-size: 14px auto;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+    .ac-choiceSetInput-compact select:focus,
+    .ac-input.ac-choiceSetInput.ac-choiceSetInput-compact select:focus {
+        outline: none;
+        border-color: #0078d4;
+        box-shadow: 0 0 0 4px rgba(0, 120, 212, 0.15);
+        background-color: white;
+    }
+
+/* --- ChoiceSet layout / fix radios stretched to 100% --- */
+.ac-input-container.ac-choiceSetInput .ac-choiceSet-expanded {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+/* Treat radio + label as one horizontal unit; equal-size tiles that wrap */
+.ac-input-container.ac-choiceSetInput .ac-choice-row {
+    flex: 1 1 260px; /* min 260px, grows equally; wraps on small screens */
+    display: flex;
+    align-items: center;
+    gap: 8px; /* 5–8px between radio and label */
+    border: 1.5px solid #ccdcec;
+    border-radius: 12px;
+    padding: 12px 16px;
+    background-color: #fafafa;
+    transition: background 0.2s, border-color 0.2s, transform 0.2s;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+    /* ⛔ override the global .ac-input rule for radios */
+    .ac-input-container.ac-choiceSetInput .ac-choice-row .ac-input[type="radio"] {
+        width: auto !important; /* undo width:100% from .ac-input */
+        padding: 0 !important;
+        margin: 0; /* remove any browser default */
+        flex: 0 0 auto;
+        accent-color: #0078d4;
+    }
+
+    /* Label spans the rest of the row, wraps nicely next to the radio */
+    .ac-input-container.ac-choiceSetInput .ac-choice-row label {
+        flex: 1 1 auto;
+        margin: 0;
+        line-height: 1.35;
+        font-size: 15px;
+        color: #333;
+        cursor: pointer;
+    }
+
+    /* Hover/active affordances (optional) */
+    .ac-input-container.ac-choiceSetInput .ac-choice-row:hover {
+        background-color: #f0f7ff;
+        border-color: #0078d4;
+        transform: translateY(-2px);
+    }
+
+    /* Selected state (works in modern browsers with :has) */
+    .ac-input-container.ac-choiceSetInput .ac-choice-row:has(input[type="radio"]:checked) {
+        background-color: #e9f3ff;
+        border-color: #2b88d8;
+    }
+
+
+/* =========================
+   Toggle / Radio (our current DOM)
+   DOM we style:
+   <div class="ac-input-container ac-toggleInput">
+     <input class="ac-input ac-toggle" type="checkbox" id="...">
+     <label for="...">Label</label>
+   </div>
+   ========================= */
+.ac-input-container.ac-toggleInput {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+}
+
+    /* Do NOT apply full-width text-input styles to the checkbox */
+    .ac-input-container.ac-toggleInput .ac-input.ac-toggle {
+        width: auto;
+        padding: 0;
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        outline: none;
+        accent-color: #0078d4; /* modern browsers */
+    }
+
+    /* Label click target + spacing */
+    .ac-input-container.ac-toggleInput label {
+        margin: 0;
+        cursor: pointer;
+        user-select: none;
+    }
+
+/* Inputs marked with style:error */
+.ac-input[style="error"],
+.ac-input.ac-error {
+    border: 1.5px solid #d93025 !important;
+    border-radius: 6px;
+    background-color: #fff5f5; /* faint red background */
+}
+
+/* Disabled inputs (success state) */
+.ac-input:disabled,
+.ac-input[disabled] {
+    background-color: #f3f2f1 !important;
+    border-color: #d2d0ce !important;
+    color: #605e5c !important;
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+/* Disabled choice rows */
+.ac-choice-row:has(input:disabled) {
+    background-color: #f3f2f1 !important;
+    border-color: #d2d0ce !important;
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+.ac-choice-row:has(input:disabled) label {
+    color: #605e5c !important;
+    cursor: not-allowed;
+}
+
+/* Error message styling */
+.ac-error-message, .ac-textBlock[color="Attention"] {
+    color: #d93025 !important;
+    font-size: 13px;
+    margin-top: 2px;
+    margin-left: 2px;
+}
+
+
+
+/* (Optional) custom checkbox aesthetic – uncomment for fancier box
+.ac-input-container.ac-toggleInput .ac-input.ac-toggle {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px; height: 20px;
+    border: 2px solid #d2d2d2;
+    border-radius: 6px;
+    display: grid; place-content: center;
+    transition: all .2s ease;
+}
+.ac-input-container.ac-toggleInput .ac-input.ac-toggle:checked {
+    background-color: #0078d4; border-color: #0078d4;
+}
+.ac-input-container.ac-toggleInput .ac-input.ac-toggle::before {
+    content: ""; width: 12px; height: 12px; transform: scale(0);
+    transition: transform .2s ease; box-shadow: inset 1em 1em #fff;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+.ac-input-container.ac-toggleInput .ac-input.ac-toggle:checked::before {
+    transform: scale(1);
+}
+*/
+
+/* =========================
+   Action Set / Buttons
+   ========================= */
+.ac-actionSet {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #f0f5fa;
+}
+
+.ac-pushButton {
+    background: linear-gradient(135deg, #0078d4 0%, #106ebe 100%);
+    color: white;
+    border: none;
+    border-radius: 24px;
+    padding: 10px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 2px 8px rgba(0, 120, 212, 0.25);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+
+    .ac-pushButton:hover {
+        background: linear-gradient(135deg, #106ebe 0%, #005a9e 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0, 120, 212, 0.3);
+    }
+
+    .ac-pushButton:active {
+        transform: translateY(1px);
+        box-shadow: 0 2px 4px rgba(0, 120, 212, 0.2);
+    }
+
+    .ac-pushButton.ac-secondary {
+        background: transparent;
+        border: 1.5px solid #0078d4;
+        color: #0078d4;
+        box-shadow: none;
+    }
+
+        .ac-pushButton.ac-secondary:hover {
+            background: #f0f7ff;
+            color: #106ebe;
+            border-color: #106ebe;
+        }
+
+    .ac-pushButton.destructive {
+        background: linear-gradient(135deg, #d13438 0%, #a4262c 100%);
+        box-shadow: 0 2px 8px rgba(209, 52, 56, 0.25);
+    }
+
+        .ac-pushButton.destructive:hover {
+            background: linear-gradient(135deg, #a4262c 0%, #881c21 100%);
+            box-shadow: 0 6px 12px rgba(209, 52, 56, 0.3);
+        }
+
+    .ac-pushButton.positive {
+        background: linear-gradient(135deg, #107c10 0%, #0b5a0b 100%);
+        box-shadow: 0 2px 8px rgba(16, 124, 16, 0.25);
+    }
+
+        .ac-pushButton.positive:hover {
+            background: linear-gradient(135deg, #0b5a0b 0%, #094509 100%);
+            box-shadow: 0 6px 12px rgba(16, 124, 16, 0.3);
+        }
+
+    /* Disabled after click */
+    .ac-pushButton:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+        filter: grayscale(15%);
+        transform: none; /* no lift on hover */
+        box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+
+        /* Prevent hover/active effects while disabled */
+        .ac-pushButton:disabled:hover,
+        .ac-pushButton:disabled:active {
+            background: inherit;
+            box-shadow: inherit;
+            transform: none;
+        }
+
+    /* Busy state: keep color but show spinner and block pointer events */
+    .ac-pushButton.is-busy {
+        pointer-events: none;
+        position: relative;
+    }
+
+        /* Spinner to the right of the label */
+        .ac-pushButton.is-busy::after {
+            content: "";
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            margin-left: 10px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.5);
+            border-top-color: #fff;
+            animation: ac-spin .8s linear infinite;
+        }
+
+    /* Keep spinner visible for alt styles too */
+    .ac-pushButton.ac-secondary.is-busy::after {
+        border-color: rgba(0,120,212,0.5);
+        border-top-color: #0078d4;
+    }
+
+    .ac-pushButton.destructive.is-busy::after {
+        border-color: rgba(255,255,255,0.5);
+        border-top-color: #fff;
+    }
+
+    .ac-pushButton.positive.is-busy::after {
+        border-color: rgba(255,255,255,0.5);
+        border-top-color: #fff;
+    }
+
+@keyframes ac-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Focus ring (keyboard accessibility) */
+.ac-pushButton:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0,120,212,0.4);
+}
+
+/* Optional ripple */
+.ac-ripple {
+    position: absolute;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.4);
+    transform: scale(0);
+    animation: ripple 0.6s linear;
+    pointer-events: none;
+}
+
+@keyframes ripple {
+    to {
+        transform: scale(4);
+        opacity: 0;
+    }
+}
+
+/* =========================
+   Misc Components
+   ========================= */
+.ac-horizontal-separator {
+    margin: 4px 0 !important;
+}
+
+.ac-input-label {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: #444;
+    display: block;
+}
+
+.ac-input.ac-staggered {
+    animation: fadeInUp 0.4s ease forwards;
+    animation-delay: calc(var(--ac-index, 0) * 0.08s);
+    opacity: 0;
+}
+
+/* Factset */
+.ac-factset {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px 20px;
+    background-color: #f8f8f8;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.ac-factset-term {
+    color: #555;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.ac-factset-value {
+    color: #333;
+    font-size: 14px;
+}
+
+/* Images */
+.ac-image {
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform 0.3s ease;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+    .ac-image:hover {
+        transform: scale(1.02);
+    }
+
+/* Loading / Error */
+.adaptive-card-loading {
+    padding: 20px;
+    text-align: center;
+    background-color: #f0f7ff;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    margin: 10px 0;
+}
+
+    .adaptive-card-loading p {
+        margin: 10px 0 0;
+        color: #0078d4;
+        font-weight: 500;
+    }
+
+.spinner {
+    margin: 0 auto;
+    width: 70px;
+    text-align: center;
+}
+
+    .spinner > div {
+        width: 12px;
+        height: 12px;
+        background-color: #0078d4;
+        border-radius: 100%;
+        display: inline-block;
+        animation: sk-bouncedelay 1.4s infinite ease-in-out both;
+        margin: 0 2px;
+    }
+
+    .spinner .bounce1 {
+        animation-delay: -0.32s;
+    }
+
+    .spinner .bounce2 {
+        animation-delay: -0.16s;
+    }
+
+@keyframes sk-bouncedelay {
+    0%, 80%, 100% {
+        transform: scale(0);
+    }
+
+    40% {
+        transform: scale(1.0);
+    }
+}
+
+.adaptive-card-error {
+    padding: 20px;
+    border-radius: 12px;
+    background-color: #fde7e9;
+    color: #d13438;
+    margin: 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+    .adaptive-card-error p {
+        margin: 0;
+        font-size: 14px;
+    }
+
+/* Toasts */
+.ac-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #323130;
+    color: white;
+    padding: 0;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    z-index: 9999;
+    max-width: 320px;
+    overflow: hidden;
+}
+
+    .ac-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+.ac-toast-content {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ac-toast-title {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.ac-toast-message {
+    font-size: 13px;
+    opacity: 0.9;
+    word-break: break-word;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.ac-staggered {
+    opacity: 0;
+    animation: fadeInUp 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+    animation-delay: calc(var(--ac-index, 0) * 0.08s);
+}
+
+/* =========================
+   Responsive
+   ========================= */
+@media (max-width: 768px) {
+    .adaptive-card-container {
+        max-width: 100%;
+    }
+
+    .ac-columnSet {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .ac-column {
+        width: 100% !important;
+    }
+
+    .ac-pushButton {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .ac-actionSet {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .ac-toast {
+        left: 20px;
+        right: 20px;
+        max-width: calc(100% - 40px);
+    }
+}
+
+/* =========================
+   Dark mode (reserved)
+   ========================= */
+@media (prefers-color-scheme: dark) {
+    /* Add dark mode adjustments here if desired */
+}

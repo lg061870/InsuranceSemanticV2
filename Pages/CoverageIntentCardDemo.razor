@@ -1,0 +1,81 @@
+@page "/CoverageIntentDemo"
+@using ConversaCore.Models
+@using ConversaCore.Services.Cards
+@using System.Text.Json
+
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+
+<div class="p-4">
+    <h3 class="mb-4">Coverage Intent Card Demo</h3>
+    <div class="mb-4">
+        <div id="adaptiveCardContainer" class="card p-3 mb-4" style="max-width: 600px;"></div>
+    </div>
+    <div class="mb-4">
+        <button class="btn btn-primary" @onclick="RenderCard">Render Card</button>
+        <button class="btn btn-secondary ms-2" @onclick="NavigateHome">Back</button>
+    </div>
+    <div class="mt-4">
+        <h5>Submitted Data:</h5>
+        <pre class="bg-light p-3 rounded">@_submittedData</pre>
+    </div>
+</div>
+
+@code {
+    private LeadSummaryModel _model = new LeadSummaryModel();
+    private string _submittedData = "No data submitted yet";
+    private CoverageIntentCardBuilder _cardBuilder = new CoverageIntentCardBuilder();
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        await RenderCard();
+    }
+    
+    private async Task RenderCard()
+    {
+        var cardJson = _cardBuilder.Build(_model);
+        await JS.InvokeVoidAsync("renderAdaptiveCard", "adaptiveCardContainer", cardJson, DotNetObjectReference.Create(this));
+    }
+    
+    [JSInvokable]
+    public void OnSubmit(JsonElement data)
+    {
+        try
+        {
+            // Extract card data
+            if (data.TryGetProperty("intent_type", out var intentType))
+            {
+                _model.PlanningIntent.IntentType = intentType.GetString();
+            }
+            
+            if (data.TryGetProperty("coverage_duration", out var duration))
+            {
+                _model.PlanningIntent.CoverageDuration = duration.GetString();
+            }
+            
+            if (data.TryGetProperty("desired_coverage_amount_band", out var coverageAmount))
+            {
+                _model.PlanningIntent.DesiredCoverageAmountBand = coverageAmount.GetString();
+            }
+            
+            // Display submitted data
+            _submittedData = JsonSerializer.Serialize(_model.PlanningIntent, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _submittedData = $"Error processing data: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+    
+    private void NavigateHome()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+}

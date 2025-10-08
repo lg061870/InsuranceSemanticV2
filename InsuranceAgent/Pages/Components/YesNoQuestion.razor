@@ -1,0 +1,40 @@
+@* YesNoQuestion.razor *@
+<div class="flex items-start gap-4">
+    <!-- Label: wraps, takes ~2/3 -->
+    <label class="flex-1 basis-2/3 min-w-0 whitespace-normal break-words text-gray-800 text-sm md:text-base leading-6">
+        @Label
+    </label>
+    <!-- Control: fixed width so every row lines up -->
+    <div class="flex-none w-[132px] shrink-0 ml-auto">
+        <div class="inline-flex w-full rounded-full border border-gray-300 overflow-hidden">
+            <label class="group flex-1 text-center">
+                <input type="radio" class="sr-only" name="@Name"
+                       checked="@(Value == true)" @onchange="@(_ => OnChanged(true))" />
+                <span class="block px-3 py-1.5 text-sm md:text-base cursor-pointer transition-colors duration-200 @(Value == true ? "bg-blue-600 text-white" : "bg-white text-gray-700 group-hover:bg-gray-50")">
+                    Yes
+                </span>
+            </label>
+            <label class="group flex-1 text-center border-l border-gray-300">
+                <input type="radio" class="sr-only" name="@Name"
+                       checked="@(Value == false)" @onchange="@(_ => OnChanged(false))" />
+                <span class="block px-3 py-1.5 text-sm md:text-base cursor-pointer transition-colors duration-200 @(Value == false ? "bg-blue-600 text-white" : "bg-white text-gray-700 group-hover:bg-gray-50")">
+                    No
+                </span>
+            </label>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = default!;
+    [Parameter, EditorRequired] public string Label { get; set; } = default!;
+    [Parameter] public bool? Value { get; set; }
+    [Parameter] public EventCallback<bool?> ValueChanged { get; set; }
+    [Parameter] public EventCallback<(string Name, bool? Value)> Changed { get; set; }
+
+    private async Task OnChanged(bool? v) {
+        Value = v;
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(v);
+        if (Changed.HasDelegate) await Changed.InvokeAsync((Name, v));
+    }
+}

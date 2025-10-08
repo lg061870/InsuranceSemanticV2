@@ -1,0 +1,19 @@
+@using WorkflowEditorLib.Models
+
+<div class="node @NodeClass" style="left: @Node.Position.X; top: @Node.Position.Y; width: @Node.Size.Width; height: @Node.Size.Height">
+    <div class="node-header">
+        @Node.Title
+    </div>
+    <div class="node-body">
+        @if (!string.IsNullOrEmpty(Node.Description))
+        {
+            <div class="node-description">@Node.Description</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public Node Node { get; set; } = default!;
+    
+    private string NodeClass => $"{Node.Type.ToString().ToLowerInvariant()}-node{(Node.IsSelected ? " selected" : "")}";
+}

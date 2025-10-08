@@ -1,0 +1,314 @@
+@page "/workflow-diagnostics"
+@using Microsoft.JSInterop
+@using System.Text.Json
+@using WorkflowEditorLib.Models
+@using WorkflowEditorLib.Services
+
+@inject WorkflowStateService StateService
+@inject IJSRuntime JSRuntime
+
+<h3>Workflow Editor Diagnostics</h3>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>System Information</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Browser:</strong> <span id="browser-info">Loading...</span></p>
+                <p><strong>Cytoscape Status:</strong> <span id="cytoscape-status">Checking...</span></p>
+                <p><strong>Container Status:</strong> <span id="container-status">Unknown</span></p>
+                <p><strong>Render Timestamp:</strong> @DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")</p>
+                <button class="btn btn-primary" @onclick="RefreshDiagnostics">Refresh</button>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Current Workflow</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Name:</strong> @StateService.CurrentWorkflow.Name</p>
+                <p><strong>Nodes:</strong> @(StateService.CurrentWorkflow.Nodes?.Count ?? 0)</p>
+                <p><strong>Connections:</strong> @(StateService.CurrentWorkflow.Connections?.Count ?? 0)</p>
+                <p><strong>Last Modified:</strong> @StateService.CurrentWorkflow.LastModified.ToString("yyyy-MM-dd HH:mm:ss")</p>
+                
+                <button class="btn btn-success" @onclick="GenerateTestWorkflow">Generate Test Workflow</button>
+                <button class="btn btn-danger" @onclick="ClearWorkflow">Clear Workflow</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Test Canvas</h5>
+            </div>
+            <div class="card-body" style="height: 300px; position: relative; border: 1px solid #ccc;">
+                <div id="diagnostic-canvas" style="width: 100%; height: 100%;"></div>
+                
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-danger">
+                        @errorMessage
+                    </div>
+                }
+            </div>
+            <div class="card-footer">
+                <button class="btn btn-primary" @onclick="InitializeCanvas">Initialize Canvas</button>
+                <button class="btn btn-secondary" @onclick="LoadCurrentWorkflow">Load Current Workflow</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Workflow JSON</h5>
+            </div>
+            <div class="card-body">
+                <textarea class="form-control" rows="10" readonly>@workflowJson</textarea>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string workflowJson = "";
+    private string errorMessage = "";
+    private DotNetObjectReference<DiagnosticPage>? _dotNetObjRef;
+    private bool isCanvasInitialized = false;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await UpdateWorkflowJson();
+        _dotNetObjRef = DotNetObjectReference.Create(this);
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("detectBrowser", "browser-info");
+            await RefreshDiagnostics();
+        }
+    }
+    
+    private async Task UpdateWorkflowJson()
+    {
+        try
+        {
+            workflowJson = JsonSerializer.Serialize(StateService.CurrentWorkflow, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error serializing workflow: {ex.Message}";
+        }
+    }
+    
+    private async Task RefreshDiagnostics()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("checkCytoscapeStatus", "cytoscape-status");
+            await JSRuntime.InvokeVoidAsync("checkContainerStatus", "diagnostic-canvas", "container-status");
+            await UpdateWorkflowJson();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error refreshing diagnostics: {ex.Message}";
+        }
+    }
+    
+    private async Task InitializeCanvas()
+    {
+        try
+        {
+            errorMessage = "";
+            await JSRuntime.InvokeVoidAsync("workflowCanvas.initialize", "diagnostic-canvas", _dotNetObjRef);
+            isCanvasInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error initializing canvas: {ex.Message}";
+        }
+    }
+    
+    private async Task LoadCurrentWorkflow()
+    {
+        try
+        {
+            errorMessage = "";
+            if (!isCanvasInitialized)
+            {
+                await InitializeCanvas();
+                await Task.Delay(500); // Give canvas time to initialize
+            }
+            await JSRuntime.InvokeVoidAsync("workflowCanvas.loadWorkflow", StateService.CurrentWorkflow);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading workflow: {ex.Message}";
+        }
+    }
+    
+    private async Task GenerateTestWorkflow()
+    {
+        try
+        {
+            errorMessage = "";
+            
+            // Create a new workflow
+            var workflow = new Workflow
+            {
+                Name = "Test Workflow",
+                Description = "A test workflow with 3 nodes"
+            };
+            
+            // Add some nodes
+            var startNode = new Node
+            {
+                Id = "start-node",
+                Name = "Start",
+                Type = NodeType.Trigger,
+                Position = new Position(100, 100),
+                Size = new Size(120, 80)
+            };
+            
+            var processNode = new Node
+            {
+                Id = "process-node",
+                Name = "Process",
+                Type = NodeType.Action,
+                Position = new Position(300, 100),
+                Size = new Size(120, 80)
+            };
+            
+            var endNode = new Node
+            {
+                Id = "end-node",
+                Name = "End",
+                Type = NodeType.End,
+                Position = new Position(500, 100),
+                Size = new Size(120, 80)
+            };
+            
+            // Add ports
+            var startOutputPort = new Port
+            {
+                Id = "start-output",
+                Name = "Out",
+                Type = PortType.Output,
+                RelativePosition = new Position(120, 40)
+            };
+            startNode.Ports.Add(startOutputPort);
+            
+            var processInputPort = new Port
+            {
+                Id = "process-input",
+                Name = "In",
+                Type = PortType.Input,
+                RelativePosition = new Position(0, 40)
+            };
+            var processOutputPort = new Port
+            {
+                Id = "process-output",
+                Name = "Out",
+                Type = PortType.Output,
+                RelativePosition = new Position(120, 40)
+            };
+            processNode.Ports.Add(processInputPort);
+            processNode.Ports.Add(processOutputPort);
+            
+            var endInputPort = new Port
+            {
+                Id = "end-input",
+                Name = "In",
+                Type = PortType.Input,
+                RelativePosition = new Position(0, 40)
+            };
+            endNode.Ports.Add(endInputPort);
+            
+            // Add nodes to workflow
+            workflow.AddNode(startNode);
+            workflow.AddNode(processNode);
+            workflow.AddNode(endNode);
+            
+            // Add connections
+            workflow.AddConnection(startOutputPort.Id, processInputPort.Id);
+            workflow.AddConnection(processOutputPort.Id, endInputPort.Id);
+            
+            // Update the current workflow
+            await StateService.LoadWorkflow(workflow);
+            await UpdateWorkflowJson();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error generating test workflow: {ex.Message}";
+        }
+    }
+    
+    private async Task ClearWorkflow()
+    {
+        try
+        {
+            errorMessage = "";
+            await StateService.CreateNewWorkflow();
+            await UpdateWorkflowJson();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error clearing workflow: {ex.Message}";
+        }
+    }
+    
+    [JSInvokable]
+    public Task OnJavaScriptError(string error)
+    {
+        errorMessage = error;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+    
+    [JSInvokable]
+    public Task OnNodeSelected(string nodeId)
+    {
+        Console.WriteLine($"Node selected: {nodeId}");
+        return Task.CompletedTask;
+    }
+    
+    [JSInvokable]
+    public Task OnEdgeSelected(string edgeId)
+    {
+        Console.WriteLine($"Edge selected: {edgeId}");
+        return Task.CompletedTask;
+    }
+    
+    [JSInvokable]
+    public Task OnSelectionCleared()
+    {
+        Console.WriteLine("Selection cleared");
+        return Task.CompletedTask;
+    }
+    
+    [JSInvokable]
+    public Task OnNodePositionChanged(string nodeId, double x, double y)
+    {
+        Console.WriteLine($"Node position changed: {nodeId} to ({x}, {y})");
+        return Task.CompletedTask;
+    }
+    
+    public void Dispose()
+    {
+        _dotNetObjRef?.Dispose();
+    }
+}

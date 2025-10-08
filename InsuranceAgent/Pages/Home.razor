@@ -1,0 +1,226 @@
+@page "/"
+@implements IDisposable
+@using ConversaCore.Services
+@using InsuranceAgent.Models
+@using InsuranceAgent.Services
+@using InsuranceAgent.Pages.Components
+@using System.Text.Json
+
+
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject InsuranceAgent.Services.HybridChatService ChatService
+
+<!-- Top navigation button removed -->
+
+<div class="flex flex-row w-full h-screen font-sans overflow-hidden max-w-screen-2xl mx-auto p-2">
+    <!-- Left 2/3: Content container -->
+    <div class="relative w-2/3 h-full overflow-hidden">
+        <!-- Questionnaire slides in/out (highest z-index) -->
+        <div class="absolute top-0 left-0 w-full h-full bg-white transition-transform duration-500 ease-in-out z-30"
+             style="@(currentView == ViewState.Questionnaire ? "transform: translateX(0);" : "transform: translateX(-100%);")">
+@*             <QuestionnaireAccordion Categories="Questionnaire"
+                                    OnSubmittedJson="HandleSubmittedJson" /> *@
+        </div>
+
+        <!-- Agent Console (middle z-index) -->
+        <div class="absolute top-0 left-0 w-full h-full transition-opacity duration-500 ease-in-out z-20"
+             style="@(currentView == ViewState.AgentConsole ? "opacity: 1;" : "opacity: 0; pointer-events: none;")">
+            <AgentConsole />
+        </div>
+
+        <!-- Consent Denied View -->
+        <div class="absolute top-0 left-0 w-full h-full transition-opacity duration-500 ease-in-out z-15"
+             style="@(currentView == ViewState.ConsentDenied ? "opacity: 1;" : "opacity: 0; pointer-events: none;")">
+            <div class="flex flex-col items-center justify-center h-full p-8 bg-white">
+                <div class="max-w-2xl mx-auto p-6 bg-red-50 rounded-lg border border-red-200 text-center">
+                    <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fa-solid fa-shield-xmark text-red-500 text-2xl"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Consent Required</h2>
+                    <p class="text-gray-700 mb-6">@consentDeniedMessage</p>
+                    <div class="flex justify-center space-x-4">
+                        <button @onclick="() => currentView = ViewState.LandingPage" 
+                                class="px-5 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-800 font-medium transition-colors">
+                            Return to Homepage
+                        </button>
+                        <button @onclick="RequestConsentAgain" 
+                                class="px-5 py-2 bg-primary hover:bg-primary-dark rounded-lg text-white font-medium transition-colors">
+                            Provide Consent
+                        </button>
+                    </div>
+                    <p class="mt-4 text-sm text-gray-500">
+                        If you have questions about our data practices, please review our <a href="#" class="text-primary hover:underline">Privacy Policy</a>.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Landing page (lowest z-index) -->
+        <div class="absolute top-0 left-0 w-full h-full transition-opacity duration-500 ease-in-out z-10"
+             style="@(currentView == ViewState.LandingPage ? "opacity: 1;" : "opacity: 0; pointer-events: none;")">
+            <InsuranceLandingPage />
+        </div>
+    </div>
+
+    <!-- Right 1/3: Chat container -->
+    <div class="w-1/3 p-4 h-full">
+        <!-- Custom chat component replaces WebChat -->
+    <CustomChatWindowV2 />
+    </div>
+</div>
+
+@code {
+    [Inject]
+    public INavigationEventService NavEvents { get; set; } = default!;
+
+    private enum ViewState { LandingPage, AgentConsole, Questionnaire, ConsentDenied }
+    private ViewState currentView = ViewState.LandingPage;
+
+   
+    private string userConsentType = string.Empty;
+    private string userConsentData = string.Empty;
+    private bool hasConsent = false;
+    private string consentDenialReason = string.Empty;
+    
+    // Messages to display based on consent outcome
+    private string consentDeniedMessage = "We respect your privacy choice. Without consent, we can't proceed with personalized insurance recommendations. You can still explore our general information, or consent anytime to unlock personalized assistance.";
+
+    private Task HandleSubmittedJson(string json) {
+        Console.WriteLine($"Questionnaire JSON: {json}");
+        // TODO: send to CRM / API
+        return Task.CompletedTask;
+    }
+
+    protected override void OnInitialized() {
+        NavEvents.NavigateRequested += OnNavigateRequested;
+        // QuestionnaireEvents.QuestionnaireRequested += OnQuestionnaireRequested;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        if (firstRender) {
+            // Register this component instance as a reference for JS interop
+            var thisRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("window.registerHomeComponent", thisRef);
+        }
+    }
+
+    private Task OnNavigateRequested(string url)
+        => InvokeAsync(() => Nav.NavigateTo(url));
+
+    private Task OnQuestionnaireRequested(string data) {
+        Console.WriteLine($"Questionnaire data from bot: {data}");
+        currentView = ViewState.Questionnaire;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    // Instance method that will be called by the JS interop for consent approval
+    [JSInvokable]
+    public Task ProcessConsent(string consentType, string consentData)
+    {
+        userConsentType = consentType;
+        userConsentData = consentData;
+        hasConsent = true;
+        
+        // Log the consent type and data
+        Console.WriteLine($"Consent received - Type: {consentType}");
+        Console.WriteLine($"Consent data: {consentData}");
+        
+        // Different handling based on consent type
+        if (consentType == "userTCPAAuthorizationReceived") {
+            // Standard TCPA consent received
+            Console.WriteLine("Standard TCPA consent received, activating agent console");
+            // Record consent for compliance purposes
+            RecordConsent(consentType, consentData, true);
+        }
+        else if (consentType == "userCCPAAuthorizationReceived") {
+            // California-specific CCPA consent received
+            Console.WriteLine("CCPA consent received, activating agent console with California-specific options");
+            // Record consent for CCPA compliance
+            RecordConsent(consentType, consentData, true);
+        }
+        
+        // Switch view to Agent Console after receiving consent (for both types)
+        currentView = ViewState.AgentConsole;
+        
+        return InvokeAsync(StateHasChanged);
+    }
+    
+    // Instance method that will be called when consent is denied
+    [JSInvokable]
+    public Task ProcessConsentDenied(string denialData)
+    {
+        hasConsent = false;
+        
+        try {
+            // Try to parse the denial data if available
+            var denialInfo = JsonDocument.Parse(denialData);
+            if (denialInfo.RootElement.TryGetProperty("reason", out var reasonElement)) {
+                consentDenialReason = reasonElement.GetString() ?? "No specific reason provided";
+            }
+        }
+        catch (JsonException) {
+            consentDenialReason = "Unknown reason";
+        }
+        
+        Console.WriteLine($"Consent denied. Reason: {consentDenialReason}");
+        
+        // Record the denial for compliance records
+        RecordConsent("userTCPAConsentDenied", denialData, false);
+        
+        // Switch to a consent denied view or stay on landing page with a message
+        currentView = ViewState.ConsentDenied;
+        
+        return InvokeAsync(StateHasChanged);
+    }
+    
+    // Helper method to record consent for compliance purposes
+    private void RecordConsent(string consentType, string consentData, bool isApproved)
+    {
+        // In a real application, this would save to a database or other persistent storage
+        // Here we just log to the console for demonstration
+        Console.WriteLine($"COMPLIANCE RECORD: {DateTime.UtcNow} - Type: {consentType}, Approved: {isApproved}");
+        
+        // TODO: Implement actual recording of consent for compliance purposes
+        // This should include timestamp, IP address, consent text shown, user response, etc.
+    }
+    
+    // Method to request consent again from the bot
+    private async Task RequestConsentAgain()
+    {
+        // Reset to landing page
+        currentView = ViewState.LandingPage;
+        
+        // Trigger the bot to request consent again by sending an event
+        await JS.InvokeVoidAsync("sendEventToBot", "requestConsentForm", new { retry = true });
+        
+        Console.WriteLine("Requesting consent form again from bot");
+    }
+
+    public void Dispose() {
+        NavEvents.NavigateRequested -= OnNavigateRequested;
+        // QuestionnaireEvents.QuestionnaireRequested -= OnQuestionnaireRequested;
+        
+        // Clean up the JS interop reference
+        _ = JS.InvokeVoidAsync("window.cleanupHomeComponent");
+    }
+}
+
+
+<div id="page-context"
+     data-page-id="landing-page"
+     data-landing-id="LP-2025-08-13-A"
+     data-campaign="august_term_push"
+     data-locale="en-US"
+     data-tenant="ksl-ai"
+     data-environment="prod"
+     data-ab-test="variant-b"
+     data-ribbon-ui="on"
+     data-utm-source="google"
+     data-utm-medium="cpc"
+     data-utm-campaign="term-insurance-keywords"
+     data-referrer-doc="">
+</div>
+
+
+

@@ -1,0 +1,52 @@
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Linq.Expressions
+
+<div class="flex items-center gap-4">
+    <InputRadioGroup TValue="bool?"
+                     Value="Value"
+                     ValueChanged="ValueChanged"
+                     ValueExpression="ValueExpression"
+                     class="flex gap-6">
+        <label class="inline-flex items-center gap-2 cursor-pointer">
+            <InputRadio TValue="bool?" Value="true" />
+            <span>@(YesText ?? "Yes")</span>
+        </label>
+
+        <label class="inline-flex items-center gap-2 cursor-pointer">
+            <InputRadio TValue="bool?" Value="false" />
+            <span>@(NoText ?? "No")</span>
+        </label>
+    </InputRadioGroup>
+
+    @if (ShowClear) {
+        <button type="button" class="text-sm text-blue-700 hover:underline" @onclick="Clear">
+            @(ClearText ?? "Clear")
+        </button>
+    }
+
+    @if (ShowStatus) {
+        <span class="text-sm text-gray-500">
+            @(Value is null ? (NotAnsweredText ?? "Not answered") : string.Empty)
+        </span>
+    }
+</div>
+
+@code {
+    // tri-state: Yes/No/Not answered
+    [Parameter] public bool? Value { get; set; }
+    [Parameter] public EventCallback<bool?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<bool?>>? ValueExpression { get; set; }
+
+    [Parameter] public string? YesText { get; set; }
+    [Parameter] public string? NoText { get; set; }
+    [Parameter] public string? ClearText { get; set; }
+    [Parameter] public string? NotAnsweredText { get; set; }
+    [Parameter] public bool ShowClear { get; set; } = true;
+    [Parameter] public bool ShowStatus { get; set; } = false;
+
+    private Task Clear() {
+        Value = null;
+        return ValueChanged.InvokeAsync(Value);
+    }
+}
+

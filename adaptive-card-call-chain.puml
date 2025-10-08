@@ -1,0 +1,102 @@
+@startuml Adaptive Card ID & Render Mode Call Chain
+!theme plain
+skinparam backgroundColor white
+skinparam defaultFontSize 10
+skinparam sequenceMessageAlign center
+
+title Adaptive Card ID & Render Mode Call Chain
+
+actor User
+participant "ChatWindow" as CW
+participant "HybridChatService" as HCS
+participant "InsuranceAgentService" as IAS
+participant "TopicFlow" as TF
+participant "AdaptiveCardActivity" as ACA
+participant "ValidationHelper" as VH
+
+== Initial Card Render ==
+User -> CW: Submit message
+CW -> HCS: HandleUserMessage()
+HCS -> IAS: ProcessUserMessageAsync()
+IAS -> TF: RunAsync()
+TF -> ACA: RunActivity()
+activate ACA
+ACA -> ACA: GetCardJson(context)
+ACA -> ACA: TransitionTo(Rendered)
+ACA -> ACA: CardJsonEmitted(cardJson, "Generated", Replace, **activityId**)
+note right: Card ID = Activity ID
+deactivate ACA
+
+ACA -> IAS: CardJsonSent event
+note right: (cardJson, message, Replace, cardId)
+IAS -> HCS: ActivityAdaptiveCardReady event
+note right: ActivityAdaptiveCardEventArgs
+HCS -> CW: HybridAdaptiveCardReady event
+note right: HybridAdaptiveCardEventArgs
+
+CW -> CW: Check RenderMode & CardId
+note right
+if (RenderMode.Replace && cardId exists) {
+  existing = find by cardId
+  if (existing) UPDATE else APPEND
+} else APPEND
+end note
+CW -> CW: Messages.Add() or Update existing
+CW -> CW: StateHasChanged()
+CW -> User: Display card
+
+== User Input with Validation Failure ==
+User -> CW: Submit card data
+CW -> HCS: HandleCardSubmit()
+HCS -> IAS: HandleCardSubmitAsync()
+IAS -> ACA: OnInputCollected()
+activate ACA
+ACA -> ACA: RunInputCollected(data)
+ACA -> ACA: BindModel(data)
+ACA -> ACA: ValidateModel(model)
+note right: Validation FAILS
+ACA -> VH: InjectErrors(cardJson, results)
+VH -> ACA: Enhanced cardJson with errors
+ACA -> ACA: CardJsonEmitted(errorCardJson, "Fix errors", **Replace**, **same cardId**)
+note right: SAME Card ID for replacement
+deactivate ACA
+
+ACA -> IAS: CardJsonSent event
+note right: (errorCardJson, message, Replace, cardId)
+IAS -> HCS: ActivityAdaptiveCardReady event
+HCS -> CW: HybridAdaptiveCardReady event
+
+CW -> CW: RenderMode.Replace + existing cardId found
+note right
+existing = Messages.FirstOrDefault(
+  m => m.CardId == e.CardId
+)
+existing.AdaptiveCardJson = errorCardJson
+end note
+CW -> CW: StateHasChanged()
+CW -> User: Display validation errors (replaces original card)
+
+== Successful Validation ==
+User -> CW: Submit corrected data
+CW -> HCS: HandleCardSubmit()
+HCS -> IAS: HandleCardSubmitAsync()
+IAS -> ACA: OnInputCollected()
+activate ACA
+ACA -> ACA: RunInputCollected(data)
+ACA -> ACA: BindModel(data) ✓
+ACA -> ACA: ValidateModel(model) ✓
+note right: Validation SUCCESS
+ACA -> ACA: TransitionTo(Completed)
+ACA -> ACA: ModelBound event
+deactivate ACA
+
+ACA -> IAS: ActivityCompleted event
+IAS -> TF: Continue to next activity
+TF -> TF: StepAsync() - next in queue
+
+note over User, VH
+**Key Pattern**: Card ID flows unchanged through validation cycles,
+enabling clean UX with in-place error display instead of card stacking
+end note
+
+@enduml

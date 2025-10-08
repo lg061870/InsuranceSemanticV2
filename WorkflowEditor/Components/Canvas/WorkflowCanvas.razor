@@ -1,0 +1,284 @@
+@using Microsoft.JSInterop
+@using System.Collections.Generic
+@using System.Linq
+@implements IAsyncDisposable
+
+<div class="workflow-editor-container" style="width: 100%; height: 100%; position: relative;">
+    <div class="workflow-canvas" id="@CanvasId" style="width: 100%; height: 100%; min-height: 600px;"></div>
+    
+    @if (!_isInitialized)
+    {
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+            <div>Initializing workflow canvas...</div>
+            <div style="margin-top: 10px; width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; margin: 0 auto;" class="spinner"></div>
+        </div>
+    }
+    
+    @if (_jsError != null)
+    {
+        <div class="alert alert-danger mt-3" style="position: absolute; top: 10px; left: 10px; right: 10px; z-index: 100;">
+            <strong>JavaScript Error:</strong> @_jsError
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
+    [Inject] private WorkflowEditorLib.Services.WorkflowStateService StateService { get; set; } = default!;
+
+    [Parameter] public string CanvasId { get; set; } = "workflow-canvas";
+    [Parameter] public EventCallback<WorkflowEditorLib.Models.Node> NodeSelected { get; set; }
+    [Parameter] public EventCallback<WorkflowEditorLib.Models.Connection> ConnectionSelected { get; set; }
+    [Parameter] public EventCallback SelectionCleared { get; set; }
+
+    private DotNetObjectReference<WorkflowCanvas>? _dotNetObjRef;
+    private bool _isInitialized = false;
+    private string? _jsError = null;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                Console.WriteLine("Creating DotNetObjectReference...");
+                _dotNetObjRef = DotNetObjectReference.Create(this);
+                Console.WriteLine("DotNetObjectReference created successfully");
+
+                // Initialize the canvas
+                await InitializeCanvasAsync();
+
+                // Subscribe to workflow state changes
+                StateService.OnWorkflowChanged += OnWorkflowChangedAsync;
+                Console.WriteLine("Subscribed to workflow state changes");
+
+                _isInitialized = true;
+                Console.WriteLine("WorkflowCanvas initialization complete");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error in OnAfterRenderAsync: {ex.Message}");
+                Console.Error.WriteLine($"Stack trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Console.Error.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                }
+            }
+        }
+    }
+
+    private async Task InitializeCanvasAsync()
+    {
+        try
+        {
+            // Clear any previous errors
+            _jsError = null;
+            
+            Console.WriteLine("Initializing canvas...");
+            Console.WriteLine($"Canvas ID: {CanvasId}");
+            Console.WriteLine($"DotNetObjectReference is null: {_dotNetObjRef == null}");
+            
+            // Check if the JavaScript function exists before invoking it
+            bool workflowCanvasExists = await JSRuntime.InvokeAsync<bool>("window.hasOwnProperty", "workflowCanvas");
+            if (!workflowCanvasExists)
+            {
+                string errorMessage = "workflowCanvas JavaScript object not found. Script may not be loaded correctly.";
+                Console.Error.WriteLine(errorMessage);
+                _jsError = errorMessage;
+                return;
+            }
+            
+            // Call the JavaScript initialize function
+            await JSRuntime.InvokeVoidAsync("workflowCanvas.initialize", CanvasId, _dotNetObjRef);
+            Console.WriteLine("Canvas initialization call completed");
+
+            // Wait a short moment to ensure initialization is complete
+            await Task.Delay(500);
+            
+            // Load the current workflow
+            Console.WriteLine("Loading workflow...");
+            if (StateService.CurrentWorkflow != null)
+            {
+                Console.WriteLine($"Workflow has {StateService.CurrentWorkflow.Nodes?.Count ?? 0} nodes and {StateService.CurrentWorkflow.Connections?.Count ?? 0} connections");
+                await LoadWorkflowAsync(StateService.CurrentWorkflow);
+                Console.WriteLine("Workflow loaded successfully");
+            }
+            else
+            {
+                Console.WriteLine("Current workflow is null, creating a new one");
+                await StateService.CreateNewWorkflow();
+            }
+        }
+        catch (Exception ex)
+        {
+            string errorMessage = $"Error initializing canvas: {ex.Message}";
+            Console.Error.WriteLine(errorMessage);
+            Console.Error.WriteLine($"Stack trace: {ex.StackTrace}");
+            
+            if (ex.InnerException != null)
+            {
+                Console.Error.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                Console.Error.WriteLine($"Inner exception stack trace: {ex.InnerException.StackTrace}");
+            }
+            
+            _jsError = errorMessage;
+        }
+    }
+    
+    [JSInvokable]
+    public Task OnCanvasInitialized()
+    {
+        Console.WriteLine("Canvas initialized successfully from JavaScript");
+        return Task.CompletedTask;
+    }
+    
+    [JSInvokable]
+    public Task OnJavaScriptError(string errorMessage)
+    {
+        Console.Error.WriteLine($"JavaScript error: {errorMessage}");
+        _jsError = errorMessage;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task OnWorkflowChangedAsync()
+    {
+        if (!_isInitialized) return;
+
+        await LoadWorkflowAsync(StateService.CurrentWorkflow);
+    }
+
+    private async Task LoadWorkflowAsync(WorkflowEditorLib.Models.Workflow workflow)
+    {
+        if (!_isInitialized) 
+        {
+            Console.WriteLine("Canvas not initialized yet, skipping workflow loading");
+            return;
+        }
+
+        try
+        {
+            Console.WriteLine($"Loading workflow with {workflow.Nodes?.Count ?? 0} nodes and {workflow.Connections?.Count ?? 0} connections");
+            await JSRuntime.InvokeVoidAsync("workflowCanvas.loadWorkflow", workflow);
+            Console.WriteLine("Workflow loaded successfully");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error loading workflow: {ex.Message}");
+            Console.Error.WriteLine($"Stack trace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                Console.Error.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                Console.Error.WriteLine($"Inner exception stack trace: {ex.InnerException.StackTrace}");
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnNodeSelected(string nodeId)
+    {
+        await StateService.SelectNode(nodeId);
+        
+        var node = StateService.CurrentWorkflow.Nodes.FirstOrDefault(n => n.Id == nodeId);
+        if (node != null)
+        {
+            await NodeSelected.InvokeAsync(node);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnEdgeSelected(string connectionId)
+    {
+        await StateService.SelectConnection(connectionId);
+        
+        var connection = StateService.CurrentWorkflow.Connections.FirstOrDefault(c => c.Id == connectionId);
+        if (connection != null)
+        {
+            await ConnectionSelected.InvokeAsync(connection);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnSelectionCleared()
+    {
+        StateService.ClearSelection();
+        await SelectionCleared.InvokeAsync(null);
+    }
+
+    [JSInvokable]
+    public async Task OnNodePositionChanged(string nodeId, double x, double y)
+    {
+        var position = new WorkflowEditorLib.Models.Position(x, y);
+        await StateService.UpdateNodePosition(nodeId, position);
+    }
+
+    [JSInvokable]
+    public Task OnZoomChanged(double zoom)
+    {
+        StateService.SetZoomLevel(zoom);
+        return Task.CompletedTask;
+    }
+
+    public async Task ZoomIn()
+    {
+        var currentZoom = StateService.ZoomLevel;
+        var newZoom = Math.Min(currentZoom * 1.2, 3.0);
+        await SetZoomAsync(newZoom);
+    }
+
+    public async Task ZoomOut()
+    {
+        var currentZoom = StateService.ZoomLevel;
+        var newZoom = Math.Max(currentZoom * 0.8, 0.1);
+        await SetZoomAsync(newZoom);
+    }
+
+    public async Task ResetZoom()
+    {
+        await SetZoomAsync(1.0);
+    }
+
+    private async Task SetZoomAsync(double zoomLevel)
+    {
+        StateService.SetZoomLevel(zoomLevel);
+        await JSRuntime.InvokeVoidAsync("workflowCanvas.setZoom", zoomLevel);
+    }
+
+    public async Task FitContent()
+    {
+        await JSRuntime.InvokeVoidAsync("workflowCanvas.fitContent");
+    }
+
+    public async Task CenterOnNode(string nodeId)
+    {
+        await JSRuntime.InvokeVoidAsync("workflowCanvas.centerOnNode", nodeId);
+    }
+
+    public async Task ApplyLayout(string layoutName)
+    {
+        await JSRuntime.InvokeVoidAsync("workflowCanvas.applyLayout", layoutName);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        try
+        {
+            Console.WriteLine("Disposing WorkflowCanvas...");
+            if (_dotNetObjRef != null)
+            {
+                _dotNetObjRef.Dispose();
+                Console.WriteLine("DotNetObjectReference disposed");
+            }
+
+            StateService.OnWorkflowChanged -= OnWorkflowChangedAsync;
+            Console.WriteLine("Unsubscribed from workflow state changes");
+            
+            return ValueTask.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error during dispose: {ex.Message}");
+            return ValueTask.CompletedTask;
+        }
+    }
+}
