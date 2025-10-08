@@ -44,6 +44,8 @@ namespace InsuranceAgent.Topics {
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.LeadDetailsTopic.LeadDetailsTopic>());
             services.AddScoped<ILogger<InsuranceAgent.Topics.LifeGoalsTopic.LifeGoalsTopic>>(sp =>
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.LifeGoalsTopic.LifeGoalsTopic>());
+            services.AddScoped<ILogger<HandDownDemoTopic>>(sp =>
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger<HandDownDemoTopic>());
 
             // Register BeneficiaryInfoDemoTopic with all required dependencies
             services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
@@ -154,6 +156,14 @@ namespace InsuranceAgent.Topics {
                 new InsuranceAgent.Topics.LifeGoalsTopic.LifeGoalsTopic(
                     sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
                     sp.GetRequiredService<ILogger<InsuranceAgent.Topics.LifeGoalsTopic.LifeGoalsTopic>>(),
+                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
+                ));
+
+            // Register HandDownDemoTopic for testing hand-down/regain control mechanism
+            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
+                new HandDownDemoTopic(
+                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
+                    sp.GetRequiredService<ILogger<HandDownDemoTopic>>(),
                     sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
                 ));
 

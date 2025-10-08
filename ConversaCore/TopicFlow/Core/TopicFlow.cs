@@ -212,6 +212,20 @@ public class TopicFlow : ITopic {
                 return TopicResult.CreateResponse(ar.Message ?? "Waiting for user input…", _context, requiresInput: true);
             }
 
+            // NEW: Handle sub-topic waiting - pause this topic and signal orchestrator
+            if (ar.IsWaitingForSubTopic) {
+                _logger.LogInformation("Activity {ActivityId} is waiting for sub-topic '{SubTopic}' to complete", activity.Id, ar.SubTopicName);
+                
+                // DON'T dequeue the activity - we need to resume from here
+                // DON'T mark activity as completed - it's still waiting
+                
+                await _fsm.TryTransitionAsync(FlowState.WaitingForInput, "Activity waiting for sub-topic");
+                OnTopicLifecycleChanged(TopicLifecycleState.WaitingForSubTopic, ar);
+                
+                // Return special result that signals orchestrator to start sub-topic
+                return TopicResult.CreateSubTopicTrigger(ar.SubTopicName!, ar.Message, _context);
+            }
+
             OnActivityCompleted(activity.Id);
 
             _activityQueue.Dequeue();

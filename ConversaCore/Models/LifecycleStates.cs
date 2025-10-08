@@ -20,6 +20,7 @@ namespace ConversaCore.Models
         Starting,
         Running,
         WaitingForUserInput,
+        WaitingForSubTopic,  // NEW: Waiting for sub-topic to complete
         Resuming,
         Completed,
         Failed,

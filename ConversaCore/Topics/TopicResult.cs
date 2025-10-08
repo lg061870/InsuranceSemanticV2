@@ -13,6 +13,13 @@ namespace ConversaCore.Models {
         public bool IsHandled { get; set; }
         public bool KeepActive { get; set; }
         public string? NextTopicName { get; set; }
+        
+        /// <summary>
+        /// Indicates this result is requesting a sub-topic to be started.
+        /// The calling topic should remain paused until the sub-topic completes.
+        /// </summary>
+        public bool IsWaitingForSubTopic => !string.IsNullOrEmpty(NextTopicName) && KeepActive;
+        
         public TopicFlow.TopicWorkflowContext? wfContext { get; set; }
 
         /// <summary>
@@ -63,6 +70,24 @@ namespace ConversaCore.Models {
                 Response = message,
                 IsCompleted = true,
                 IsHandled = true,
+                wfContext = wfContext
+            };
+        }
+
+        /// <summary>
+        /// Create a result that signals the orchestrator to start a sub-topic.
+        /// The calling topic will remain paused until the sub-topic completes.
+        /// </summary>
+        public static TopicResult CreateSubTopicTrigger(
+            string subTopicName,
+            string? message,
+            TopicFlow.TopicWorkflowContext wfContext) {
+            return new TopicResult {
+                Response = message ?? $"Starting sub-topic '{subTopicName}'...",
+                NextTopicName = subTopicName,
+                IsHandled = true,
+                KeepActive = true,  // Keep calling topic active/paused
+                RequiresInput = false,
                 wfContext = wfContext
             };
         }

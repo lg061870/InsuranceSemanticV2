@@ -12,6 +12,7 @@ public class InsuranceAgentService {
     private readonly ILogger<InsuranceAgentService> _logger;
 
     private ITopic? _activeTopic;
+    private readonly Stack<TopicFlow> _pausedTopics = new Stack<TopicFlow>(); // Track paused topics
 
     // Outbound events → HybridChatService
     public event EventHandler<ActivityMessageEventArgs>? ActivityMessageReady;
@@ -122,17 +123,33 @@ public class InsuranceAgentService {
             // Handle topic triggers
             if (act is TriggerTopicActivity trigger) {
                 trigger.TopicTriggered += async (s, e) => {
-                    _logger.LogInformation("[InsuranceAgentService] Triggering topic {Next}", e.TopicName);
+                    _logger.LogInformation("[InsuranceAgentService] Topic triggered: {TopicName} (WaitForCompletion: {WaitForCompletion})", 
+                        e.TopicName, trigger.WaitForCompletion);
 
                     var nextTopic = _topicRegistry.GetTopic(e.TopicName);
                     if (nextTopic is TopicFlow nextFlow) {
+                        
+                        if (trigger.WaitForCompletion) {
+                            // NEW: Sub-topic pattern - pause current topic
+                            if (_activeTopic is TopicFlow currentFlow) {
+                                _logger.LogInformation("[InsuranceAgentService] Pausing topic '{CurrentTopic}' for sub-topic '{SubTopic}'",
+                                    currentFlow.Name, nextFlow.Name);
+                                _pausedTopics.Push(currentFlow);
+                            }
+                        }
+                        
                         _activeTopic = nextFlow;
                         HookTopicEvents(nextFlow);
 
-                        await nextFlow.RunAsync();
+                        var result = await nextFlow.RunAsync();
+                        
+                        // NEW: Handle sub-topic completion and resumption
+                        if (trigger.WaitForCompletion && result.IsCompleted) {
+                            await HandleSubTopicCompletion(nextFlow, result);
+                        }
                     }
                     else {
-                        _logger.LogWarning("[InsuranceAgentService] Triggered topic {Next} not found or not a TopicFlow.", e.TopicName);
+                        _logger.LogWarning("[InsuranceAgentService] Triggered topic {TopicName} not found or not a TopicFlow.", e.TopicName);
                     }
                 };
             }
@@ -163,6 +180,9 @@ public class InsuranceAgentService {
     }
 
     public async Task StartConversationAsync(ChatSessionState sessionState, CancellationToken ct = default) {
+        // Clear any previous execution state
+        _pausedTopics.Clear();
+        
         var topic = _topicRegistry.GetTopic("ConversationStart");
 
         if (topic == null) {
@@ -179,6 +199,64 @@ public class InsuranceAgentService {
         }
         else {
             _logger.LogWarning("ConversationStartTopic is not a TopicFlow: {Type}", topic.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// Handles the completion of a sub-topic and resumes the calling topic.
+    /// </summary>
+    private async Task HandleSubTopicCompletion(TopicFlow completedSubTopic, TopicResult subTopicResult)
+    {
+        if (_pausedTopics.Count == 0)
+        {
+            _logger.LogWarning("[InsuranceAgentService] Sub-topic '{SubTopic}' completed but no paused topics to resume",
+                completedSubTopic.Name);
+            return;
+        }
+
+        var callingTopic = _pausedTopics.Pop();
+        _logger.LogInformation("[InsuranceAgentService] Sub-topic '{SubTopic}' completed, resuming '{CallingTopic}'",
+            completedSubTopic.Name, callingTopic.Name);
+
+        // Set completion data in context for the calling topic to access
+        var completionData = new Dictionary<string, object>();
+        if (subTopicResult.wfContext != null)
+        {
+            // Copy relevant data from the sub-topic's workflow context
+            foreach (var key in subTopicResult.wfContext.GetKeys())
+            {
+                var value = subTopicResult.wfContext.GetValue<object>(key);
+                if (value != null)
+                {
+                    completionData[key] = value;
+                }
+            }
+        }
+        
+        _wfContext.SetValue("SubTopicCompletionData", completionData);
+        
+        // Pop the topic call from conversation context
+        var callInfo = _context.PopTopicCall(completionData);
+        if (callInfo != null)
+        {
+            _wfContext.SetValue("ResumeData", callInfo.ResumeData);
+            _logger.LogInformation("[InsuranceAgentService] Call info retrieved: {CallingTopic} -> {SubTopic}",
+                callInfo.CallingTopicName, callInfo.SubTopicName);
+        }
+
+        // Resume the calling topic
+        _activeTopic = callingTopic;
+        HookTopicEvents(callingTopic);
+        
+        try
+        {
+            // Continue execution from where it left off
+            await callingTopic.StepAsync(null, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[InsuranceAgentService] Error resuming topic '{TopicName}' after sub-topic completion",
+                callingTopic.Name);
         }
     }
 }
