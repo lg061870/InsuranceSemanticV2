@@ -50,7 +50,8 @@ public static class ServiceCollectionExtensions {
         // === System topics (scoped, each gets its own logger) ===
         services.AddScoped<ITopic>(sp => new ConversationStartTopic(
             sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<ConversationStartTopic>>()));
+            sp.GetRequiredService<ILogger<ConversationStartTopic>>(),
+            sp.GetRequiredService<IConversationContext>()));
 
         services.AddScoped<ITopic>(sp => new FallbackTopic(
             sp.GetRequiredService<TopicWorkflowContext>(),

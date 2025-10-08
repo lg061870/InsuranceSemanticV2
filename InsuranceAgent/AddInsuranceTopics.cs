@@ -50,7 +50,8 @@ namespace InsuranceAgent.Topics {
                 new BeneficiaryInfoDemoTopic(
                     sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
                     sp.GetRequiredService<ILogger<BeneficiaryInfoDemoTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
+                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>(),
+                    sp.GetRequiredService<ILoggerFactory>()
                 ));
 
             // Register CaliforniaResidentDemoTopic (update if it needs IConversationContext in future)

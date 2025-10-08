@@ -13,6 +13,7 @@ namespace InsuranceAgent.Topics {
     public class BeneficiaryInfoDemoTopic : TopicFlow {
         public const string ActivityId_ShowCard = "ShowBeneficiaryInfoCard";
         public const string ActivityId_DumpCtx = "DumpCTX";
+        public const string ActivityId_GlobalVariable = "PromoteBeneficiaryToGlobal";
         public const string ActivityId_Trigger = "TriggerCaliforniaResident";
 
         /// <summary>
@@ -24,17 +25,21 @@ namespace InsuranceAgent.Topics {
 
         private readonly ConversaCore.Context.IConversationContext _conversationContext;
         private readonly ILogger<BeneficiaryInfoDemoTopic> _logger;
+        private readonly ILoggerFactory _loggerFactory;
 
         public BeneficiaryInfoDemoTopic(
             TopicWorkflowContext context,
             ILogger<BeneficiaryInfoDemoTopic> logger,
-            ConversaCore.Context.IConversationContext conversationContext
+            ConversaCore.Context.IConversationContext conversationContext,
+            ILoggerFactory loggerFactory
         ) : base(context, logger, name: "BeneficiaryInfoDemoTopic") {
             _logger = logger;
             _conversationContext = conversationContext;
+            _loggerFactory = loggerFactory;
 
-            Context.SetValue("BeneficiaryInfoDemoTopic_create", DateTime.UtcNow.ToString("o"));
-            Context.SetValue("TopicName", "Beneficiary Info Demo");
+            // Store topic metadata in conversation context
+            _conversationContext.SetValue("BeneficiaryInfoDemoTopic_create", DateTime.UtcNow.ToString("o"));
+            _conversationContext.SetValue("TopicName", "Beneficiary Info Demo");
 
             // === Activities in queue order ===
             var showCardActivity = new AdaptiveCardActivity<BeneficiaryInfoCard, BeneficiaryInfoModel>(
@@ -53,6 +58,15 @@ namespace InsuranceAgent.Topics {
             var isDevelopment =
                 Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
             var dumpCtxActivity = new DumpCtxActivity(ActivityId_DumpCtx, isDevelopment);
+
+            // GlobalVariableActivity to promote beneficiary data to conversation-global scope
+            var globalVarActivity = new GlobalVariableActivity(
+                ActivityId_GlobalVariable,
+                _conversationContext,
+                _loggerFactory.CreateLogger<GlobalVariableActivity>()
+            );
+            globalVarActivity.ShouldPromoteToGlobal = (key, value) => 
+                key == "BeneficiaryInfoModel" || value is BeneficiaryInfoModel;
 
             var triggerActivity = new TriggerTopicActivity(
                 ActivityId_Trigger,
@@ -75,8 +89,15 @@ namespace InsuranceAgent.Topics {
             showCardActivity.CardDataReceived += (s, e) =>
                 _logger.LogInformation("[{Topic}] Card data received: {Keys}", Name, string.Join(",", e.Data.Keys));
 
-            showCardActivity.ModelBound += (s, e) =>
+            showCardActivity.ModelBound += (s, e) => {
                 _logger.LogInformation("[{Topic}] Model bound: {ModelType}", Name, e.Model?.GetType().Name);
+                
+                // Store in conversation context using structured model storage
+                if (e.Model is BeneficiaryInfoModel beneficiaryModel) {
+                    _conversationContext.SetModel(beneficiaryModel);
+                    _logger.LogInformation("[{Topic}] Beneficiary model stored in conversation context", Name);
+                }
+            };
 
             showCardActivity.ValidationFailed += (s, e) =>
                 _logger.LogWarning("[{Topic}] Validation failed: {Message}", Name, e.Exception.Message);
@@ -91,6 +112,7 @@ namespace InsuranceAgent.Topics {
             // === Enqueue activities ===
             Add(showCardActivity);
             Add(dumpCtxActivity);
+            Add(globalVarActivity);
             Add(triggerActivity);
         }
 
@@ -115,17 +137,18 @@ namespace InsuranceAgent.Topics {
         /// Also handles optional NextTopic context handoff.
         /// </summary>
         public override Task<TopicResult> RunAsync(CancellationToken cancellationToken = default) {
-            Context.SetValue("BeneficiaryInfoDemoTopic_runasync", DateTime.UtcNow.ToString("o"));
+            _conversationContext.SetValue("BeneficiaryInfoDemoTopic_runasync", DateTime.UtcNow.ToString("o"));
 
             var task = base.RunAsync(cancellationToken);
 
             return task.ContinueWith(t => {
                 var result = t.Result;
 
-                var nextTopic = Context.GetValue<string>("NextTopic");
+                // Check for next topic in conversation context
+                var nextTopic = _conversationContext.GetValue<string>("NextTopic");
                 if (!string.IsNullOrEmpty(nextTopic)) {
                     result.NextTopicName = nextTopic;
-                    Context.SetValue("NextTopic", null); // reset
+                    _conversationContext.SetValue("NextTopic", string.Empty); // reset
                 }
 
                 return result;

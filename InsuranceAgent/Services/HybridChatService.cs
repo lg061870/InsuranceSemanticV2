@@ -4,6 +4,14 @@ using ConversaCore.Models;
 using ConversaCore.Services;
 using ConversaCore.Topics;
 using InsuranceAgent.Models;
+using InsuranceAgent.Topics.BeneficiaryInfoTopic;
+using InsuranceAgent.Topics.EmploymentTopic;
+using InsuranceAgent.Topics.HealthInfoTopic;
+using InsuranceAgent.Topics.ContactInfoTopic;
+using InsuranceAgent.Topics.CoverageIntentTopic;
+using InsuranceAgent.Topics.LeadDetailsTopic;
+using InsuranceAgent.Topics.DependentsTopic;
+using InsuranceAgent.Topics.LifeGoalsTopic;
 
 namespace InsuranceAgent.Services;
 
@@ -81,11 +89,115 @@ public class HybridChatService {
 
     // === Conversation start ===
     public void StartConversation(ChatSessionState sessionState) {
+        // Initialize insurance-specific global variables first
+        InitializeInsuranceGlobals();
+        
         var topic = _topicRegistry.GetTopic("ConversationStart");
         if (topic != null) {
             // Let the agent handle initialization + wiring
             _ = _agentService.StartConversationAsync(sessionState);
         }
+    }
+
+    /// <summary>
+    /// Initialize insurance-specific global variables and context.
+    /// This specializes the generic ConversaCore framework for insurance domain.
+    /// </summary>
+    private void InitializeInsuranceGlobals() {
+        _logger.LogInformation("[HybridChatService] Initializing insurance domain globals");
+        
+        // === Initialize Empty Card Model Instances (BaseCardModel types) ===
+        // These will be populated by topics during adaptive card interactions
+        _context.SetModel(new BeneficiaryInfoModel());
+        _context.SetModel(new EmploymentModel());
+        _context.SetModel(new HealthInfoModel());
+        _context.SetModel(new ContactInfoModel());
+        _context.SetModel(new CoverageIntentModel());
+        _context.SetModel(new LeadDetailsModel());
+        _context.SetModel(new DependentsModel());
+        _context.SetModel(new LifeGoalsModel());
+        
+        // === Initialize Business Domain Models (non-BaseCardModel types) ===  
+        // These are stored as regular values since they don't inherit from BaseCardModel
+        _context.SetValue("BusinessModels_InsuranceContext", new InsuranceContextModel());
+        _context.SetValue("BusinessModels_Compliance", new ComplianceModel());
+        _context.SetValue("BusinessModels_FinancialInfo", new FinancialInfoModel());
+        _context.SetValue("BusinessModels_FamilyAndDependents", new FamilyAndDependentsModel());
+        _context.SetValue("BusinessModels_LifeGoal", new LifeGoalModel());
+        _context.SetValue("BusinessModels_PlanningIntent", new PlanningIntentModel());
+        
+        // === Application Configuration (Static Rules) ===
+        var appConfig = new {
+            InsuranceType = "Term Life",
+            ApplicationStage = "Initial",
+            ComplianceCheckRequired = true,
+            RequiresHealthScreening = true,
+            RequiredTopics = new List<string> {
+                "ContactInfo",
+                "EmploymentInfo", 
+                "HealthInfo",
+                "BeneficiaryInfo",
+                "CoverageIntent"
+            },
+            ValidationRules = new {
+                MinimumAge = 18,
+                MaximumAge = 80,
+                MinimumCoverage = 25000,
+                MaximumCoverage = 5000000
+            }
+        };
+        _context.SetValue("ApplicationConfiguration", appConfig);
+        
+        // === Individual Configuration Values (for backward compatibility) ===
+        _context.SetValue("InsuranceType", appConfig.InsuranceType);
+        _context.SetValue("ApplicationStage", appConfig.ApplicationStage);
+        _context.SetValue("ComplianceCheckRequired", appConfig.ComplianceCheckRequired);
+        _context.SetValue("RequiresHealthScreening", appConfig.RequiresHealthScreening);
+        _context.SetValue("RequiredTopics", appConfig.RequiredTopics);
+        _context.SetValue("MinimumAge", appConfig.ValidationRules.MinimumAge);
+        _context.SetValue("MaximumAge", appConfig.ValidationRules.MaximumAge);
+        _context.SetValue("MinimumCoverage", appConfig.ValidationRules.MinimumCoverage);
+        _context.SetValue("MaximumCoverage", appConfig.ValidationRules.MaximumCoverage);
+        
+        // === Session Tracking ===
+        _context.SetValue("SessionStartTime", DateTime.UtcNow);
+        _context.SetValue("DomainSpecialization", "Insurance");
+        
+        // === Runtime/Workflow Global Variables (Copilot Studio Compatible) ===
+        
+        // Global.IsInsuranceIntent equivalent
+        _context.SetValue("Global_IsInsuranceIntent", new {
+            talkingAboutInsurance = "maybe",
+            whatTypeOfInsurance = "unknown"
+        });
+        
+        // Global.isPersonalInfoComplete equivalent  
+        _context.SetValue("Global_isPersonalInfoComplete", new {
+            isPersonalInfoComplete = false,
+            missingFields = new[] { new { item = "" } }
+        });
+        
+        // Global.CarrierEligibility equivalent
+        _context.SetValue("Global_CarrierEligibility", new {
+            qualified = new object[] {
+                // Will be populated as topics gather information
+            },
+            nearlyQualified90Percent = new object[] {
+                // Will be populated with carrier matching logic
+            }
+        });
+        
+        // Global.healthQuestionnaire equivalent
+        _context.SetValue("Global_healthQuestionnaire", new object[] { });
+        
+        // Additional workflow tracking (legacy compatibility)
+        _context.SetValue("Global_IsLeadQualified", false);
+        _context.SetValue("Global_ConversationPhase", "Initial");
+        _context.SetValue("Global_TopicChain", new List<string>());
+        _context.SetValue("Global_DataCompleteness", 0.0);
+        _context.SetValue("Global_InsuranceModelsInitialized", true);
+        
+        _logger.LogInformation("[HybridChatService] Insurance domain globals initialized with {CardModelCount} card models and {BusinessModelCount} business models", 8, 6);
     }
 
 

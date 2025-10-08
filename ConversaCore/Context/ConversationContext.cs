@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Linq;
+using ConversaCore.Cards;
 #nullable enable
 
 namespace ConversaCore.Context
@@ -66,7 +68,7 @@ namespace ConversaCore.Context
         /// <param name="key">The key for the value.</param>
         /// <param name="defaultValue">The default value to return if the key is not found.</param>
         /// <returns>The value if found; otherwise, the default value.</returns>
-        public T GetValue<T>(string key, T defaultValue = default)
+        public T GetValue<T>(string key, T defaultValue = default!)
         {
             if (_data.TryGetValue(key, out var value))
             {
@@ -79,7 +81,8 @@ namespace ConversaCore.Context
                 {
                     // Try to convert using JSON serialization
                     string json = JsonSerializer.Serialize(value);
-                    return JsonSerializer.Deserialize<T>(json);
+                    var result = JsonSerializer.Deserialize<T>(json);
+                    return result ?? defaultValue;
                 }
                 catch
                 {
@@ -179,6 +182,117 @@ namespace ConversaCore.Context
             {
                 TopicChain.Enqueue(topicName);
             }
+        }
+
+        // === STRUCTURED MODEL STORAGE IMPLEMENTATION ===
+        
+        /// <summary>
+        /// Sets a strongly-typed model in the conversation context with a specific key.
+        /// </summary>
+        /// <typeparam name="T">The type of the model (must inherit from BaseCardModel).</typeparam>
+        /// <param name="key">The key to store the model under.</param>
+        /// <param name="model">The model to store.</param>
+        public void SetModel<T>(string key, T model) where T : BaseCardModel
+        {
+            if (string.IsNullOrEmpty(key))
+                throw new ArgumentNullException(nameof(key));
+            if (model == null)
+                throw new ArgumentNullException(nameof(model));
+                
+            SetValue($"Model_{key}", model);
+        }
+        
+        /// <summary>
+        /// Sets a strongly-typed model in the conversation context using the type name as the key.
+        /// </summary>
+        /// <typeparam name="T">The type of the model (must inherit from BaseCardModel).</typeparam>
+        /// <param name="model">The model to store.</param>
+        public void SetModel<T>(T model) where T : BaseCardModel
+        {
+            if (model == null)
+                throw new ArgumentNullException(nameof(model));
+                
+            var key = typeof(T).Name;
+            SetModel(key, model);
+        }
+        
+        /// <summary>
+        /// Gets a strongly-typed model from the conversation context by key.
+        /// </summary>
+        /// <typeparam name="T">The type of the model (must inherit from BaseCardModel).</typeparam>
+        /// <param name="key">The key to retrieve the model for.</param>
+        /// <returns>The model if found; otherwise, null.</returns>
+        public T? GetModel<T>(string key) where T : BaseCardModel
+        {
+            if (string.IsNullOrEmpty(key))
+                return null;
+                
+            return GetValue<T>($"Model_{key}");
+        }
+        
+        /// <summary>
+        /// Gets a strongly-typed model from the conversation context using the type name as the key.
+        /// </summary>
+        /// <typeparam name="T">The type of the model (must inherit from BaseCardModel).</typeparam>
+        /// <returns>The model if found; otherwise, null.</returns>
+        public T? GetModel<T>() where T : BaseCardModel
+        {
+            var key = typeof(T).Name;
+            return GetModel<T>(key);
+        }
+        
+        /// <summary>
+        /// Checks if a model of the specified type exists in the context.
+        /// </summary>
+        /// <typeparam name="T">The type of the model (must inherit from BaseCardModel).</typeparam>
+        /// <param name="key">The key to check for. If null, uses the type name.</param>
+        /// <returns>True if the model exists; otherwise, false.</returns>
+        public bool HasModel<T>(string? key = null) where T : BaseCardModel
+        {
+            var modelKey = key ?? typeof(T).Name;
+            return HasValue($"Model_{modelKey}");
+        }
+        
+        /// <summary>
+        /// Gets all models of a specific type from the conversation context.
+        /// Useful for models that can have multiple instances (e.g., beneficiaries, dependents).
+        /// </summary>
+        /// <typeparam name="T">The type of the model (must inherit from BaseCardModel).</typeparam>
+        /// <returns>A list of all models of the specified type.</returns>
+        public List<T> GetModels<T>() where T : BaseCardModel
+        {
+            var typeName = typeof(T).Name;
+            var models = new List<T>();
+            
+            foreach (var kvp in _data)
+            {
+                if (kvp.Key.StartsWith($"Model_{typeName}") && kvp.Value is T model)
+                {
+                    models.Add(model);
+                }
+            }
+            
+            return models;
+        }
+        
+        /// <summary>
+        /// Removes a model from the conversation context.
+        /// </summary>
+        /// <typeparam name="T">The type of the model (must inherit from BaseCardModel).</typeparam>
+        /// <param name="key">The key to remove. If null, uses the type name.</param>
+        /// <returns>True if the model was removed; otherwise, false.</returns>
+        public bool RemoveModel<T>(string? key = null) where T : BaseCardModel
+        {
+            var modelKey = key ?? typeof(T).Name;
+            var fullKey = $"Model_{modelKey}";
+            
+            if (_data.ContainsKey(fullKey))
+            {
+                _data.Remove(fullKey);
+                return true;
+            }
+            
+            return false;
         }
     }
 }
