@@ -9,6 +9,16 @@ namespace ConversaCore.TopicFlow {
         public bool IsWaiting { get; private set; }
 
         /// <summary>
+        /// Indicates whether the workflow should pause and wait for a sub-topic to complete.
+        /// </summary>
+        public bool IsWaitingForSubTopic { get; private set; }
+
+        /// <summary>
+        /// The name of the sub-topic to wait for (when IsWaitingForSubTopic is true).
+        /// </summary>
+        public string? SubTopicName { get; private set; }
+
+        /// <summary>
         /// Optional message returned by the activity (for display in the chat window).
         /// </summary>
         public string? Message { get; private set; }
@@ -75,6 +85,28 @@ namespace ConversaCore.TopicFlow {
         /// </summary>
         public static ActivityResult WaitForInput(object payload, object? modelContext = null) =>
             new ActivityResult { IsWaiting = true, ModelContext = payload, Message = null };
+
+        /// <summary>
+        /// Create a result that signals waiting for a sub-topic to complete.
+        /// The calling topic will pause until the sub-topic signals completion.
+        /// </summary>
+        public static ActivityResult WaitForSubTopic(string subTopicName, string? message = null) =>
+            new ActivityResult { 
+                IsWaitingForSubTopic = true, 
+                SubTopicName = subTopicName,
+                Message = message ?? $"Waiting for sub-topic '{subTopicName}' to complete"
+            };
+
+        /// <summary>
+        /// Create a result that signals waiting for a sub-topic with additional context.
+        /// </summary>
+        public static ActivityResult WaitForSubTopic(string subTopicName, object? modelContext, string? message = null) =>
+            new ActivityResult { 
+                IsWaitingForSubTopic = true, 
+                SubTopicName = subTopicName,
+                ModelContext = modelContext,
+                Message = message ?? $"Waiting for sub-topic '{subTopicName}' to complete"
+            };
 
 
     }

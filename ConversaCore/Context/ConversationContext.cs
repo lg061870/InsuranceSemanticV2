@@ -14,6 +14,7 @@ namespace ConversaCore.Context
     {
         private readonly Dictionary<string, object> _data = new Dictionary<string, object>();
         private readonly List<string> _topicHistory = new List<string>();
+        private readonly Stack<TopicCallInfo> _topicCallStack = new Stack<TopicCallInfo>();
 
         /// <summary>
         /// Gets the conversation ID.
@@ -293,6 +294,89 @@ namespace ConversaCore.Context
             }
             
             return false;
+        }
+
+        // === TOPIC EXECUTION STACK IMPLEMENTATION ===
+
+        /// <summary>
+        /// Pushes a topic onto the execution stack when calling a sub-topic.
+        /// </summary>
+        /// <param name="callingTopicName">The name of the topic making the call.</param>
+        /// <param name="subTopicName">The name of the sub-topic being called.</param>
+        /// <param name="resumeData">Optional data to help resume the calling topic.</param>
+        public void PushTopicCall(string callingTopicName, string subTopicName, object? resumeData = null)
+        {
+            var callInfo = new TopicCallInfo
+            {
+                CallingTopicName = callingTopicName,
+                SubTopicName = subTopicName,
+                ResumeData = resumeData,
+                CallTime = DateTime.UtcNow
+            };
+            
+            _topicCallStack.Push(callInfo);
+        }
+
+        /// <summary>
+        /// Pops the most recent topic call from the execution stack when a sub-topic completes.
+        /// </summary>
+        /// <param name="completionData">Optional data returned by the completed sub-topic.</param>
+        /// <returns>Information about the topic to resume, or null if stack is empty.</returns>
+        public TopicCallInfo? PopTopicCall(object? completionData = null)
+        {
+            if (_topicCallStack.Count == 0)
+                return null;
+
+            var callInfo = _topicCallStack.Pop();
+            callInfo.CompletionData = completionData;
+            callInfo.CompletionTime = DateTime.UtcNow;
+            
+            return callInfo;
+        }
+
+        /// <summary>
+        /// Gets the current topic execution stack depth.
+        /// </summary>
+        /// <returns>The number of nested topic calls currently active.</returns>
+        public int GetTopicCallDepth()
+        {
+            return _topicCallStack.Count;
+        }
+
+        /// <summary>
+        /// Checks if a topic is currently in the execution stack to prevent cycles.
+        /// </summary>
+        /// <param name="topicName">The topic name to check.</param>
+        /// <returns>True if the topic is already in the call stack.</returns>
+        public bool IsTopicInCallStack(string topicName)
+        {
+            return _topicCallStack.Any(call => 
+                call.CallingTopicName.Equals(topicName, StringComparison.OrdinalIgnoreCase) ||
+                call.SubTopicName.Equals(topicName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Gets the currently executing topic name (top of stack).
+        /// </summary>
+        /// <returns>The name of the currently executing topic, or null if none.</returns>
+        public string? GetCurrentExecutingTopic()
+        {
+            if (_topicCallStack.Count == 0)
+                return CurrentTopicName;
+                
+            return _topicCallStack.Peek().SubTopicName;
+        }
+
+        /// <summary>
+        /// Signals that a topic has completed and should be removed from execution tracking.
+        /// </summary>
+        /// <param name="topicName">The name of the completed topic.</param>
+        /// <param name="completionData">Optional data about the completion.</param>
+        public void SignalTopicCompletion(string topicName, object? completionData = null)
+        {
+            // For now, this is primarily used for logging/debugging
+            // The actual stack management happens in PopTopicCall
+            // In the future, this could trigger events or additional cleanup
         }
     }
 }

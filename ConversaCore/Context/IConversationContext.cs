@@ -146,5 +146,84 @@ namespace ConversaCore.Context
         /// </summary>
         /// <param name="topicName">The topic name to add to the chain.</param>
         void AddTopicToChain(string topicName);
+
+        // === TOPIC EXECUTION STACK (for sub-topic calls) ===
+        
+        /// <summary>
+        /// Pushes a topic onto the execution stack when calling a sub-topic.
+        /// </summary>
+        /// <param name="callingTopicName">The name of the topic making the call.</param>
+        /// <param name="subTopicName">The name of the sub-topic being called.</param>
+        /// <param name="resumeData">Optional data to help resume the calling topic.</param>
+        void PushTopicCall(string callingTopicName, string subTopicName, object? resumeData = null);
+        
+        /// <summary>
+        /// Pops the most recent topic call from the execution stack when a sub-topic completes.
+        /// </summary>
+        /// <param name="completionData">Optional data returned by the completed sub-topic.</param>
+        /// <returns>Information about the topic to resume, or null if stack is empty.</returns>
+        TopicCallInfo? PopTopicCall(object? completionData = null);
+        
+        /// <summary>
+        /// Gets the current topic execution stack depth.
+        /// </summary>
+        /// <returns>The number of nested topic calls currently active.</returns>
+        int GetTopicCallDepth();
+        
+        /// <summary>
+        /// Checks if a topic is currently in the execution stack to prevent cycles.
+        /// </summary>
+        /// <param name="topicName">The topic name to check.</param>
+        /// <returns>True if the topic is already in the call stack.</returns>
+        bool IsTopicInCallStack(string topicName);
+
+        /// <summary>
+        /// Gets the currently executing topic name (top of stack).
+        /// </summary>
+        /// <returns>The name of the currently executing topic, or null if none.</returns>
+        string? GetCurrentExecutingTopic();
+
+        /// <summary>
+        /// Signals that a topic has completed and should be removed from execution tracking.
+        /// </summary>
+        /// <param name="topicName">The name of the completed topic.</param>
+        /// <param name="completionData">Optional data about the completion.</param>
+        void SignalTopicCompletion(string topicName, object? completionData = null);
+    }
+
+    /// <summary>
+    /// Information about a topic call for managing the execution stack.
+    /// </summary>
+    public class TopicCallInfo
+    {
+        /// <summary>
+        /// The name of the topic that made the call.
+        /// </summary>
+        public string CallingTopicName { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// The name of the sub-topic that was called.
+        /// </summary>
+        public string SubTopicName { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Optional data to help resume the calling topic.
+        /// </summary>
+        public object? ResumeData { get; set; }
+        
+        /// <summary>
+        /// Optional data returned by the completed sub-topic.
+        /// </summary>
+        public object? CompletionData { get; set; }
+        
+        /// <summary>
+        /// When this topic call was initiated.
+        /// </summary>
+        public DateTime CallTime { get; set; } = DateTime.UtcNow;
+        
+        /// <summary>
+        /// When the sub-topic completed (if applicable).
+        /// </summary>
+        public DateTime? CompletionTime { get; set; }
     }
 }
