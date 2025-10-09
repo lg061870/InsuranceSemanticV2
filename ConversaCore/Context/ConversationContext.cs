@@ -378,5 +378,18 @@ namespace ConversaCore.Context
             // The actual stack management happens in PopTopicCall
             // In the future, this could trigger events or additional cleanup
         }
+
+        /// <summary>
+        /// Resets the conversation context to its initial state.
+        /// Clears all data, topic history, and execution stacks.
+        /// </summary>
+        public void Reset()
+        {
+            _data.Clear();
+            _topicHistory.Clear();
+            _topicCallStack.Clear();
+            TopicChain.Clear();
+            CurrentTopicName = null;
+        }
     }
 }

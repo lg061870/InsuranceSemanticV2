@@ -1,0 +1,156 @@
+@startuml HandDown Process Sequence Diagram
+title Hand-Down/Regain Control Process - From "handdown" Input
+
+actor User
+participant "Chat Window" as CW
+participant "HybridChatService" as HCS
+participant "InsuranceAgentService" as IAS
+participant "HandDownDemoTopic" as HDT
+participant "BeneficiaryInfoDemoTopic" as BIDT
+participant "CaliforniaResidentDemoTopic" as CRDT
+participant "TopicFlow Engine" as TFE
+participant "Event System" as ES
+
+== User Input Phase ==
+User -> CW: Types "handdown"
+CW -> HCS: UserMessageEntered("handdown")
+HCS -> IAS: ProcessMessage("handdown")
+
+== Topic Selection Phase ==
+IAS -> IAS: FindBestTopic("handdown")
+note right: Intent recognition\nHandDownDemoTopic.CanHandleAsync() returns 0.8
+
+IAS -> HDT: **new HandDownDemoTopic()** 
+note right: **POTENTIAL DUPLICATE SOURCE #1**\nCheck if constructor called multiple times
+
+HDT -> HDT: Initialize activity queue
+note right: Activities:\n- start-demo\n- call-beneficiary-subtopic\n- after-subtopic-resume\n- final-processing\n- complete-demo
+
+IAS -> IAS: **HookTopicEvents(HDT)**
+note right: **POTENTIAL DUPLICATE SOURCE #2**\nEvent handlers registered:\n- TopicLifecycleChanged\n- ActivityCreated\n- ActivityCompleted\n- TopicInserted
+
+IAS -> HDT: RunAsync()
+
+== HandDownDemoTopic Execution ==
+HDT -> TFE: StepAsync() - start-demo
+TFE -> ES: **ActivityLifecycleChanged: start-demo -> Running**
+note right: **DUPLICATE EVENT POINT #1**\nCheck if this fires once or twice
+
+ES -> IAS: OnActivityLifecycleChanged(start-demo, Running)
+IAS -> CW: ActivityLifecycleChanged event
+
+TFE -> ES: **ActivityLifecycleChanged: start-demo -> Completed**
+ES -> IAS: OnActivityLifecycleChanged(start-demo, Completed)
+ES -> IAS: **ActivityCompleted(start-demo)**
+note right: **DUPLICATE EVENT POINT #2**\nCheck if ActivityCompleted fires once or twice
+
+HDT -> TFE: StepAsync() - call-beneficiary-subtopic
+TFE -> ES: **ActivityLifecycleChanged: call-beneficiary-subtopic -> Running**
+
+== Sub-Topic Triggering ==
+HDT -> ES: **TopicTriggered(BeneficiaryInfoDemoTopic)**
+ES -> IAS: OnTopicTriggered(BeneficiaryInfoDemoTopic)
+
+IAS -> IAS: **_pausedTopics.Push(HDT)**
+IAS -> IAS: **_pendingSubTopics[BeneficiaryInfoDemoTopic] = new PendingSubTopic()**
+
+IAS -> BIDT: **new BeneficiaryInfoDemoTopic()**
+note right: **POTENTIAL DUPLICATE SOURCE #3**\nCheck if sub-topic constructor called multiple times
+
+IAS -> IAS: **HookTopicEvents(BIDT)**
+note right: **POTENTIAL DUPLICATE SOURCE #4**\nAre we hooking events on BIDT multiple times?
+
+IAS -> BIDT: RunAsync()
+
+== BeneficiaryInfoDemoTopic Execution ==
+BIDT -> TFE: StepAsync() - ShowBeneficiaryInfoCard
+TFE -> ES: **ActivityLifecycleChanged: ShowBeneficiaryInfoCard -> Running**
+TFE -> ES: **ActivityLifecycleChanged: ShowBeneficiaryInfoCard -> Rendered**
+TFE -> ES: **ActivityLifecycleChanged: ShowBeneficiaryInfoCard -> WaitingForUserInput**
+
+User -> CW: Fills beneficiary form
+CW -> BIDT: Card submit data
+BIDT -> TFE: ProcessCardInput()
+TFE -> ES: **ActivityLifecycleChanged: ShowBeneficiaryInfoCard -> InputCollected**
+TFE -> ES: **ActivityLifecycleChanged: ShowBeneficiaryInfoCard -> Completed**
+
+BIDT -> TFE: StepAsync() - DumpCTX
+BIDT -> TFE: StepAsync() - PromoteBeneficiaryToGlobal
+BIDT -> TFE: StepAsync() - TriggerCaliforniaResident (CompleteTopicActivity)
+
+== Sub-Topic Completion ==
+TFE -> ES: **TopicLifecycleChanged: BeneficiaryInfoDemoTopic -> Completed**
+note right: **CRITICAL EVENT**\nThis should fire ONCE to trigger resume
+
+ES -> IAS: **OnTopicLifecycleChanged(BIDT, Completed)**
+IAS -> IAS: **HandleSubTopicCompletion(BIDT)**
+note right: **POTENTIAL DUPLICATE SOURCE #5**\nIs HandleSubTopicCompletion called multiple times?
+
+IAS -> IAS: **_pausedTopics.Pop() -> HDT**
+IAS -> IAS: **_pendingSubTopics.Remove(BeneficiaryInfoDemoTopic)**
+
+== Resume HandDownDemoTopic ==
+IAS -> IAS: **HookTopicEvents(HDT)**
+note right: **POTENTIAL DUPLICATE SOURCE #6**\nAre we re-hooking events on HDT here?\nThis could cause double registration!
+
+IAS -> HDT: **ResumeAsync("Sub-topic completed")**
+HDT -> TFE: StepAsync() - after-subtopic-resume
+TFE -> ES: **ActivityLifecycleChanged: after-subtopic-resume -> Running**
+note right: **DUPLICATE EVENT POINT #3**\nCheck if this fires once or twice
+
+TFE -> ES: **ActivityLifecycleChanged: after-subtopic-resume -> Completed**
+HDT -> TFE: StepAsync() - final-processing
+HDT -> TFE: StepAsync() - complete-demo
+
+== California Topic Triggering ==
+HDT -> ES: **TopicTriggered(CaliforniaResidentDemoTopic)**
+note right: **DUPLICATE EVENT POINT #4**\nIs this TopicTriggered firing twice?
+
+ES -> IAS: OnTopicTriggered(CaliforniaResidentDemoTopic)
+IAS -> CRDT: **new CaliforniaResidentDemoTopic()**
+note right: **POTENTIAL DUPLICATE SOURCE #7**\nCheck if CaliforniaResident created multiple times
+
+IAS -> IAS: **HookTopicEvents(CRDT)**
+note right: **POTENTIAL DUPLICATE SOURCE #8**\nMultiple event hook registration on CRDT?
+
+IAS -> CRDT: RunAsync()
+
+== CaliforniaResidentDemoTopic Execution ==
+CRDT -> TFE: StepAsync() - ShowCaliforniaResidentCard
+TFE -> ES: **ActivityLifecycleChanged: ShowCaliforniaResidentCard -> Running**
+
+== DUPLICATE COLLISION POINT ==
+note over CRDT, TFE: **STATE MACHINE COLLISION**\nIf CaliforniaResident created twice,\nsecond instance tries to run same activity\nwhile first is in WaitingForUserInput state\n\n**EXCEPTION:**\nInvalid transition: WaitingForUserInput → Running
+
+== Critical Investigation Points ==
+
+note right of IAS
+**INVESTIGATION CHECKLIST:**
+
+1. **Topic Constructor Calls**
+   - Count HDT constructor calls
+   - Count BIDT constructor calls  
+   - Count CRDT constructor calls
+
+2. **HookTopicEvents Calls**
+   - Track each HookTopicEvents call
+   - Verify UnhookTopicEvents is called first
+   - Check for re-hooking same topic
+
+3. **Event Handler Registration**
+   - Monitor ActivityLifecycleChanged subscriptions
+   - Monitor TopicTriggered subscriptions
+   - Check for lambda handler accumulation
+
+4. **Topic Instance Management**
+   - Verify _activeTopic assignment
+   - Check _pausedTopics stack
+   - Validate _pendingSubTopics dictionary
+
+5. **Event Firing Patterns**
+   - Count ActivityLifecycleChanged events
+   - Count TopicTriggered events
+   - Identify duplicate sources
+end note
+
+@enduml

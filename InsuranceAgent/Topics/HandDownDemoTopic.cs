@@ -14,19 +14,21 @@ namespace InsuranceAgent.Topics
     /// </summary>
     public class HandDownDemoTopic : TopicFlow
     {
-        private readonly ILogger<HandDownDemoTopic> _logger;
-        private readonly IConversationContext _conversationContext;
+    private readonly ILogger<HandDownDemoTopic> _logger;
+    private readonly IConversationContext _conversationContext;
+    private static int _constructorCallCount = 0;
 
-        public HandDownDemoTopic(
-            TopicWorkflowContext context,
-            ILogger<HandDownDemoTopic> logger,
-            IConversationContext conversationContext)
-            : base(context, logger, "HandDownDemoTopic")
-        {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _conversationContext = conversationContext ?? throw new ArgumentNullException(nameof(conversationContext));
-
-            BuildActivityQueue();
+    public HandDownDemoTopic(
+        TopicWorkflowContext context,
+        ILogger<HandDownDemoTopic> logger,
+        IConversationContext conversationContext)
+        : base(context, logger, "HandDownDemoTopic")
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _conversationContext = conversationContext ?? throw new ArgumentNullException(nameof(conversationContext));
+        
+        _logger.LogWarning("[DEBUG] HandDownDemoTopic CONSTRUCTOR #{Count} called at {Time}", 
+            ++_constructorCallCount, DateTime.UtcNow);            BuildActivityQueue();
         }
 
         private void BuildActivityQueue()
@@ -90,17 +92,12 @@ namespace InsuranceAgent.Topics
                 return Task.FromResult<object?>("Final processing completed");
             }));
 
-            // Step 5: Complete the topic properly using CompleteTopicActivity
-            Add(new CompleteTopicActivity(
+            // Step 5: Trigger the next topic to demonstrate the complete workflow
+            Add(new TriggerTopicActivity(
                 "complete-demo",
-                completionData: new { 
-                    DemoCompleted = true, 
-                    TopicName = "HandDownDemoTopic",
-                    TestType = "NestedTopicChaining",
-                    Success = true
-                },
-                completionMessage: "Hand-down/regain control demonstration completed successfully! 🚀",
+                "CaliforniaResidentDemoTopic",
                 _logger,
+                false,  // Legacy hand-off behavior - don't wait for completion
                 _conversationContext));
         }
 

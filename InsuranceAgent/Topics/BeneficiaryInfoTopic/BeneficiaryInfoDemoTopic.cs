@@ -26,6 +26,7 @@ namespace InsuranceAgent.Topics {
         private readonly ConversaCore.Context.IConversationContext _conversationContext;
         private readonly ILogger<BeneficiaryInfoDemoTopic> _logger;
         private readonly ILoggerFactory _loggerFactory;
+        private static int _constructorCallCount = 0;
 
         public BeneficiaryInfoDemoTopic(
             TopicWorkflowContext context,
@@ -36,6 +37,9 @@ namespace InsuranceAgent.Topics {
             _logger = logger;
             _conversationContext = conversationContext;
             _loggerFactory = loggerFactory;
+            
+            _logger.LogWarning("[DEBUG] BeneficiaryInfoDemoTopic CONSTRUCTOR #{Count} called at {Time}", 
+                ++_constructorCallCount, DateTime.UtcNow);
 
             // Store topic metadata in conversation context
             _conversationContext.SetValue("BeneficiaryInfoDemoTopic_create", DateTime.UtcNow.ToString("o"));
@@ -68,9 +72,10 @@ namespace InsuranceAgent.Topics {
             globalVarActivity.ShouldPromoteToGlobal = (key, value) => 
                 key == "BeneficiaryInfoModel" || value is BeneficiaryInfoModel;
 
-            var triggerActivity = new TriggerTopicActivity(
+            // Use CompleteTopicActivity to signal completion and return to calling topic
+            var completeActivity = new CompleteTopicActivity(
                 ActivityId_Trigger,
-                "CaliforniaResidentDemoTopic"
+                _conversationContext
             );
 
             // === Event hooks for AdaptiveCard lifecycle ===
@@ -102,18 +107,11 @@ namespace InsuranceAgent.Topics {
             showCardActivity.ValidationFailed += (s, e) =>
                 _logger.LogWarning("[{Topic}] Validation failed: {Message}", Name, e.Exception.Message);
 
-            // === Trigger hook ===
-            triggerActivity.TopicTriggered += (sender, e) =>
-            {
-                _logger.LogInformation("[{Topic}] Triggering next topic: {Next}", Name, e.TopicName);
-                _conversationContext.AddTopicToChain(e.TopicName);
-            };
-
             // === Enqueue activities ===
             Add(showCardActivity);
             Add(dumpCtxActivity);
             Add(globalVarActivity);
-            Add(triggerActivity);
+            Add(completeActivity);
         }
 
 

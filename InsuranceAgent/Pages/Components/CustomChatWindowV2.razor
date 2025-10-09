@@ -33,6 +33,9 @@
             </div>
         </div>
         <div class="chat-header-actions">
+            <button class="chat-header-button" title="Reset conversation" @onclick="ConfirmReset">
+                <i class="fa-solid fa-rotate-left"></i>
+            </button>
             <button class="chat-header-button" title="Clear chat" @onclick="ClearChat">
                 <i class="fa-solid fa-trash-can"></i>
             </button>
@@ -121,6 +124,36 @@
     </div>
 </div>
 
+<!-- Reset Confirmation Dialog -->
+@if (showResetConfirmation)
+{
+    <div class="modal-overlay" @onclick="HideResetConfirmation">
+        <div class="modal-dialog" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Reset Conversation</h3>
+                <button class="modal-close" @onclick="HideResetConfirmation">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to reset the entire conversation?</p>
+                <p><strong>This will:</strong></p>
+                <ul>
+                    <li>Clear all chat history</li>
+                    <li>Reset all form data and preferences</li>
+                    <li>Start a completely fresh conversation</li>
+                </ul>
+                <p class="text-warning">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+             <button id="reset-cancel-btn" type="button" class="btn btn-secondary" @onclick="HideResetConfirmation">Cancel</button>
+             <button id="reset-test-btn" type="button" class="btn btn-warning" @onclick="TestResetButton">Test Button</button>
+             <button id="reset-confirm-btn" type="button" class="btn btn-danger" @onclick="ConfirmReset">Reset Conversation</button>
+            </div>
+        </div>
+    </div>
+}
+
 
 @code {
 
@@ -138,6 +171,7 @@
     private bool IsProcessing { get; set; } = false;
     private ChatMessage? messageBeingEdited = null;
     private bool _conversationStarted = false;
+    private bool showResetConfirmation = false;
 
     private ElementReference messagesContainerRef;
     private ElementReference messageInputRef;
@@ -197,6 +231,15 @@
             ChatService.HybridChatEventRaised += (s, e) => {
                 HandleWorkflowEvent(e.ChatEvent);
                 StateHasChanged();
+            };
+
+            ChatService.OnConversationReset += (s, e) => {
+                Console.WriteLine($"[ChatWindow] OnConversationReset event received at {e.ResetTime}");
+                Console.WriteLine($"[ChatWindow] Clearing {Messages.Count} messages");
+                Messages.Clear();
+                Console.WriteLine("[ChatWindow] Messages cleared, calling StateHasChanged");
+                StateHasChanged();
+                Console.WriteLine("[ChatWindow] StateHasChanged completed");
             };
 
             // Subscribe ChatWindow → Service
@@ -262,6 +305,43 @@
         StateHasChanged();
     }
 
+    private void ShowResetConfirmation() {
+        Console.WriteLine("[ChatWindow] ShowResetConfirmation called - showing modal dialog");
+        showResetConfirmation = true;
+        StateHasChanged();
+        Console.WriteLine("[ChatWindow] Modal dialog state updated");
+    }
+
+    private void HideResetConfirmation() {
+        Console.WriteLine("[ChatWindow] HideResetConfirmation called - hiding modal dialog");
+        showResetConfirmation = false;
+        StateHasChanged();
+        Console.WriteLine("[ChatWindow] Modal dialog hidden");
+    }
+
+    private void TestResetButton() {
+    Console.WriteLine("[ChatWindow] TestResetButton called - button binding works!");
+    Console.WriteLine("[ChatWindow] TestResetButton: showResetConfirmation=" + showResetConfirmation);
+    showResetConfirmation = false;
+    StateHasChanged();
+    Console.WriteLine("[ChatWindow] TestResetButton completed - modal closed");
+    }
+
+    private async Task ConfirmReset() {
+        Console.WriteLine("[ChatWindow] ConfirmReset called - starting reset process");
+        Console.WriteLine("[ChatWindow] ConfirmReset: showResetConfirmation=" + showResetConfirmation);
+        showResetConfirmation = false;
+        StateHasChanged();
+        try {
+            Console.WriteLine("[ChatWindow] Calling ChatService.ResetConversationAsync()");
+            await ChatService.ResetConversationAsync();
+            Console.WriteLine("[ChatWindow] ResetConversationAsync completed");
+        }
+        catch (Exception ex) {
+            Console.WriteLine($"[ChatWindow] Error resetting conversation: {ex.Message}");
+        }
+    }
+
     private async Task CopyMessageToClipboard(ChatMessage message) {
         if (message == null || string.IsNullOrEmpty(message.Content)) return;
         await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", message.Content);
@@ -310,3 +390,121 @@
         Console.WriteLine($"[ChatWindow] Workflow event: {chatEvent.Type}");
     }
 }
+
+<style>
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-dialog {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        max-width: 500px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 600;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #6c757d;
+        padding: 0;
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-close:hover {
+        color: #dc3545;
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+    }
+
+    .modal-body p {
+        margin-bottom: 1rem;
+    }
+
+    .modal-body ul {
+        margin-bottom: 1rem;
+        padding-left: 1.5rem;
+    }
+
+    .modal-body li {
+        margin-bottom: 0.5rem;
+    }
+
+    .text-warning {
+        color: #fd7e14;
+        font-weight: 500;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .btn-secondary {
+        background-color: #6c757d;
+        border-color: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background-color: #5a6268;
+        border-color: #545b62;
+    }
+
+    .btn-danger {
+        background-color: #dc3545;
+        border-color: #dc3545;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background-color: #c82333;
+        border-color: #bd2130;
+    }
+</style>

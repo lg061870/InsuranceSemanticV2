@@ -157,6 +157,11 @@ namespace ConversaCore.TopicFlow.Activities
         public event EventHandler<CardDataReceivedEventArgs>? CardDataReceived;
         public event EventHandler<ModelBoundEventArgs>? ModelBound;
         public event EventHandler<ValidationFailedEventArgs>? ValidationFailed;
+        
+        /// <summary>
+        /// Event fired when child TriggerTopicActivity triggers a topic
+        /// </summary>
+        public event EventHandler<TopicTriggeredEventArgs>? TopicTriggered;
 
         private ConditionalActivity(
             string id,
@@ -343,6 +348,12 @@ namespace ConversaCore.TopicFlow.Activities
                 cardActivity.ModelBound += OnChildModelBound;
                 cardActivity.ValidationFailed += OnChildValidationFailed;
             }
+            
+            // Forward TriggerTopicActivity-specific events
+            if (activity is TriggerTopicActivity triggerActivity)
+            {
+                triggerActivity.TopicTriggered += OnChildTopicTriggered;
+            }
         }
 
         /// <summary>
@@ -359,6 +370,12 @@ namespace ConversaCore.TopicFlow.Activities
                 cardActivity.CardDataReceived -= OnChildCardDataReceived;
                 cardActivity.ModelBound -= OnChildModelBound;
                 cardActivity.ValidationFailed -= OnChildValidationFailed;
+            }
+            
+            // Unsubscribe from TriggerTopicActivity-specific events
+            if (activity is TriggerTopicActivity triggerActivity)
+            {
+                triggerActivity.TopicTriggered -= OnChildTopicTriggered;
             }
         }
 
@@ -404,6 +421,18 @@ namespace ConversaCore.TopicFlow.Activities
         {
             _logger?.LogWarning("[ConditionalActivity] Forwarding ValidationFailed from branch '{Branch}'", _selectedBranch);
             ValidationFailed?.Invoke(this, e);
+        }
+
+        /// <summary>
+        /// Forward TopicTriggered events from TriggerTopicActivity children
+        /// </summary>
+        private void OnChildTopicTriggered(object? sender, TopicTriggeredEventArgs e)
+        {
+            _logger?.LogWarning("[ConditionalActivity] Forwarding TopicTriggered from branch '{Branch}' - Topic: {TopicName}", _selectedBranch, e.TopicName);
+            
+            // Forward the event with the original TriggerTopicActivity as sender
+            // This preserves the original sender so InsuranceAgentService can access TriggerTopicActivity.WaitForCompletion
+            TopicTriggered?.Invoke(sender, e);
         }
     }
 }

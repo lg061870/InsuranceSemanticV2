@@ -20,12 +20,16 @@ public class CaliforniaResidentDemoTopic : TopicFlow {
     };
 
     private readonly ILogger<CaliforniaResidentDemoTopic> _logger;
+    private static int _constructorCallCount = 0;
 
     public CaliforniaResidentDemoTopic(
         TopicWorkflowContext context,
         ILogger<CaliforniaResidentDemoTopic> logger
     ) : base(context, logger, name: "CaliforniaResidentDemoTopic") {
         _logger = logger;
+        
+        _logger.LogWarning("[DEBUG] CaliforniaResidentDemoTopic CONSTRUCTOR #{Count} called at {Time}", 
+            ++_constructorCallCount, DateTime.UtcNow);
 
         Context.SetValue("CaliforniaResidentDemoTopic_create", DateTime.UtcNow.ToString("o"));
         Context.SetValue("TopicName", "California Resident Demo");

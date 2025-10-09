@@ -2,6 +2,7 @@
 using ConversaCore.Events;
 using ConversaCore.Models;
 using ConversaCore.TopicFlow;
+using ConversaCore.TopicFlow.Activities;
 using ConversaCore.Topics;
 using InsuranceAgent.Models;
 
@@ -13,6 +14,18 @@ public class InsuranceAgentService {
 
     private ITopic? _activeTopic;
     private readonly Stack<TopicFlow> _pausedTopics = new Stack<TopicFlow>(); // Track paused topics
+    
+    // NEW: Event-driven sub-topic completion tracking
+    private readonly Dictionary<string, PendingSubTopic> _pendingSubTopics = new Dictionary<string, PendingSubTopic>();
+    
+    private class PendingSubTopic 
+    {
+        public TopicFlow CallingTopic { get; set; } = null!;
+        public TopicFlow SubTopic { get; set; } = null!;
+        public string CallingTopicName { get; set; } = string.Empty;
+        public string SubTopicName { get; set; } = string.Empty;
+        public DateTime StartTime { get; set; }
+    }
 
     // Outbound events → HybridChatService
     public event EventHandler<ActivityMessageEventArgs>? ActivityMessageReady;
@@ -22,6 +35,7 @@ public class InsuranceAgentService {
     public event EventHandler<MatchingTopicNotFoundEventArgs>? MatchingTopicNotFound;
     public event EventHandler<TopicInsertedEventArgs>? TopicInserted;
     public event EventHandler<ActivityLifecycleEventArgs>? ActivityLifecycleChanged;
+    public event EventHandler<ConversationResetEventArgs>? ConversationReset;
 
     public InsuranceAgentService(
         TopicRegistry topicRegistry,
@@ -44,6 +58,11 @@ public class InsuranceAgentService {
         }
 
         if (topic is TopicFlow flow) {
+            // Unhook events from previous topic before switching
+            if (_activeTopic is TopicFlow currentActiveTopic) {
+                UnhookTopicEvents(currentActiveTopic);
+            }
+            
             _activeTopic = flow;
             HookTopicEvents(flow);
 
@@ -80,6 +99,7 @@ public class InsuranceAgentService {
 
     private void HookTopicEvents(TopicFlow flow) {
         flow.TopicLifecycleChanged += (s, e) => TopicLifecycleChanged?.Invoke(this, e);
+        flow.TopicLifecycleChanged += OnTopicLifecycleChanged; // For event-driven completion tracking
         flow.ActivityCreated += OnActivityCreated;
 
         flow.ActivityCompleted += (s, e) => {
@@ -122,36 +142,36 @@ public class InsuranceAgentService {
 
             // Handle topic triggers
             if (act is TriggerTopicActivity trigger) {
-                trigger.TopicTriggered += async (s, e) => {
-                    _logger.LogInformation("[InsuranceAgentService] Topic triggered: {TopicName} (WaitForCompletion: {WaitForCompletion})", 
-                        e.TopicName, trigger.WaitForCompletion);
+                trigger.TopicTriggered += OnTopicTriggered;
+            }
+            
+            // Handle topic triggers from ConditionalActivity containers
+            // (child TriggerTopicActivity is created dynamically, so we subscribe to the container's forwarded event)
+            if (act is ConditionalActivity<TriggerTopicActivity> conditional) {
+                conditional.TopicTriggered += OnTopicTriggered;
+            }
+        }
+    }
 
-                    var nextTopic = _topicRegistry.GetTopic(e.TopicName);
-                    if (nextTopic is TopicFlow nextFlow) {
-                        
-                        if (trigger.WaitForCompletion) {
-                            // NEW: Sub-topic pattern - pause current topic
-                            if (_activeTopic is TopicFlow currentFlow) {
-                                _logger.LogInformation("[InsuranceAgentService] Pausing topic '{CurrentTopic}' for sub-topic '{SubTopic}'",
-                                    currentFlow.Name, nextFlow.Name);
-                                _pausedTopics.Push(currentFlow);
-                            }
-                        }
-                        
-                        _activeTopic = nextFlow;
-                        HookTopicEvents(nextFlow);
-
-                        var result = await nextFlow.RunAsync();
-                        
-                        // NEW: Handle sub-topic completion and resumption
-                        if (trigger.WaitForCompletion && result.IsCompleted) {
-                            await HandleSubTopicCompletion(nextFlow, result);
-                        }
-                    }
-                    else {
-                        _logger.LogWarning("[InsuranceAgentService] Triggered topic {TopicName} not found or not a TopicFlow.", e.TopicName);
-                    }
-                };
+    private void UnhookTopicEvents(TopicFlow flow) {
+        // Unhook topic-level events
+        flow.TopicLifecycleChanged -= (s, e) => TopicLifecycleChanged?.Invoke(this, e);
+        flow.TopicLifecycleChanged -= OnTopicLifecycleChanged;
+        flow.ActivityCreated -= OnActivityCreated;
+        flow.ActivityCompleted -= (s, e) => {
+            _logger.LogInformation("[InsuranceAgentService] ActivityCompleted -> {ActivityId}", e.ActivityId);
+            ActivityCompleted?.Invoke(this, e);
+        };
+        flow.TopicInserted -= (s, e) => TopicInserted?.Invoke(this, e);
+        
+        // Unhook activity-level events
+        foreach (var act in flow.GetAllActivities()) {
+            if (act is TriggerTopicActivity trigger) {
+                trigger.TopicTriggered -= OnTopicTriggered;
+            }
+            
+            if (act is ConditionalActivity<TriggerTopicActivity> conditional) {
+                conditional.TopicTriggered -= OnTopicTriggered;
             }
         }
     }
@@ -191,6 +211,11 @@ public class InsuranceAgentService {
         }
 
         if (topic is TopicFlow flow) {
+            // Unhook events from previous topic before switching
+            if (_activeTopic is TopicFlow currentActiveTopic) {
+                UnhookTopicEvents(currentActiveTopic);
+            }
+            
             _activeTopic = flow;
             HookTopicEvents(flow);
 
@@ -200,6 +225,30 @@ public class InsuranceAgentService {
         else {
             _logger.LogWarning("ConversationStartTopic is not a TopicFlow: {Type}", topic.GetType().Name);
         }
+    }
+
+    public async Task ResetConversationAsync(CancellationToken ct = default) {
+        _logger.LogInformation("[InsuranceAgentService] Resetting conversation");
+        
+        // Clear all state
+        _pausedTopics.Clear();
+        _pendingSubTopics.Clear();
+        
+        // Unhook current topic events
+        if (_activeTopic is TopicFlow currentTopic) {
+            UnhookTopicEvents(currentTopic);
+        }
+        _activeTopic = null;
+        
+        // Clear contexts (assuming these methods exist or we'll add them)
+        _context.Reset();
+        _wfContext.Clear();
+        
+        // Fire reset event for UI
+        ConversationReset?.Invoke(this, new ConversationResetEventArgs());
+        
+        // Start fresh conversation
+        await StartConversationAsync(new ChatSessionState(), ct);
     }
 
     /// <summary>
@@ -245,18 +294,118 @@ public class InsuranceAgentService {
         }
 
         // Resume the calling topic
+        // Unhook events from current active topic before switching
+        if (_activeTopic is TopicFlow currentActiveTopic) {
+            UnhookTopicEvents(currentActiveTopic);
+        }
+        
         _activeTopic = callingTopic;
         HookTopicEvents(callingTopic);
         
         try
         {
             // Continue execution from where it left off
-            await callingTopic.StepAsync(null, CancellationToken.None);
+            await callingTopic.ResumeAsync("Sub-topic completed", CancellationToken.None);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[InsuranceAgentService] Error resuming topic '{TopicName}' after sub-topic completion",
                 callingTopic.Name);
+        }
+    }
+    
+    private async void OnTopicTriggered(object? sender, TopicTriggeredEventArgs e) {
+        // Extract WaitForCompletion from the TriggerTopicActivity sender
+        if (sender is not TriggerTopicActivity trigger) {
+            _logger.LogWarning("[InsuranceAgentService] Topic triggered by unsupported sender type: {SenderType}", sender?.GetType().Name);
+            return;
+        }
+        
+        var waitForCompletion = trigger.WaitForCompletion;
+        _logger.LogInformation("[InsuranceAgentService] Topic triggered: {TopicName} (WaitForCompletion: {WaitForCompletion})", 
+            e.TopicName, waitForCompletion);
+
+        var nextTopic = _topicRegistry.GetTopic(e.TopicName);
+        if (nextTopic is TopicFlow nextFlow) {
+            
+            if (waitForCompletion) {
+                // NEW: Sub-topic pattern - pause current topic
+                if (_activeTopic is TopicFlow currentFlow) {
+                    _logger.LogInformation("[InsuranceAgentService] Pausing topic '{CurrentTopic}' for sub-topic '{SubTopic}'",
+                        currentFlow.Name, nextFlow.Name);
+                    _pausedTopics.Push(currentFlow);
+                }
+            }
+            
+            // Unhook events from previous topic before switching
+            if (_activeTopic is TopicFlow currentActiveTopic) {
+                UnhookTopicEvents(currentActiveTopic);
+            }
+            
+            _activeTopic = nextFlow;
+            HookTopicEvents(nextFlow);
+
+            if (waitForCompletion) {
+                // Get the calling topic from paused topics stack
+                var callingTopic = _pausedTopics.Count > 0 ? _pausedTopics.Peek() : null;
+                if (callingTopic != null) {
+                    // Register for event-driven completion tracking
+                    _pendingSubTopics[e.TopicName] = new PendingSubTopic {
+                        CallingTopic = callingTopic,
+                        SubTopic = nextFlow,
+                        CallingTopicName = callingTopic.Name,
+                        SubTopicName = e.TopicName,
+                        StartTime = DateTime.UtcNow
+                    };
+                    
+                    _logger.LogInformation("[InsuranceAgentService] Registered sub-topic '{SubTopic}' for completion tracking", e.TopicName);
+                }
+                else {
+                    _logger.LogWarning("[InsuranceAgentService] WaitForCompletion=true but no calling topic found in paused stack");
+                }
+            }
+
+            var result = await nextFlow.RunAsync();
+            
+            _logger.LogInformation("[InsuranceAgentService] Sub-topic completed. WaitForCompletion: {WaitForCompletion}, IsCompleted: {IsCompleted}", 
+                waitForCompletion, result.IsCompleted);
+            
+            // Only handle immediate completion for legacy topics or actually completed topics
+            if (!waitForCompletion && result.IsCompleted) {
+                _logger.LogInformation("[InsuranceAgentService] Calling HandleSubTopicCompletion for legacy topic {TopicName}", e.TopicName);
+                await HandleSubTopicCompletion(nextFlow, result);
+            }
+            else if (waitForCompletion && result.IsCompleted) {
+                _logger.LogInformation("[InsuranceAgentService] Sub-topic completed immediately, calling HandleSubTopicCompletion for {TopicName}", e.TopicName);
+                // Remove from pending since it completed immediately
+                _pendingSubTopics.Remove(e.TopicName);
+                await HandleSubTopicCompletion(nextFlow, result);
+            }
+            else if (waitForCompletion) {
+                _logger.LogInformation("[InsuranceAgentService] Sub-topic '{SubTopic}' started, waiting for completion event", e.TopicName);
+            }
+            // For WaitForCompletion=true and IsCompleted=false, the TopicLifecycleChanged event will handle completion
+        }
+        else {
+            _logger.LogWarning("[InsuranceAgentService] Triggered topic {TopicName} not found or not a TopicFlow.", e.TopicName);
+        }
+    }
+    
+    private async void OnTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) {
+        _logger.LogInformation("[InsuranceAgentService] TopicLifecycleChanged: {TopicName} -> {State}", e.TopicName, e.State);
+        
+        // Handle sub-topic completion
+        if (e.State == TopicLifecycleState.Completed && _pendingSubTopics.ContainsKey(e.TopicName)) {
+            var pendingSubTopic = _pendingSubTopics[e.TopicName];
+            _pendingSubTopics.Remove(e.TopicName);
+            
+            _logger.LogInformation("[InsuranceAgentService] Sub-topic '{SubTopic}' completed via lifecycle event, resuming '{CallingTopic}'", 
+                e.TopicName, pendingSubTopic.CallingTopicName);
+                
+            // Create a synthetic TopicResult for the completed sub-topic
+            var subTopicResult = TopicResult.CreateCompleted("Sub-topic completed", pendingSubTopic.SubTopic.Context);
+            
+            await HandleSubTopicCompletion(pendingSubTopic.SubTopic, subTopicResult);
         }
     }
 }

@@ -35,16 +35,23 @@ namespace InsuranceAgent.Topics.ComplianceTopic
                 new CardElement
                 {
                     Type = "TextBlock",
-                    Text = "By submitting this form, you agree to be contacted by a licensed insurance agent or partner at the phone number and email provided, including via automated dialer, pre-recorded messages, or text messages, even if your number is on a Do Not Call list. Your consent is not a condition of purchase. Message and data rates may apply.",
+                    Text = "I agree to be contacted by licensed insurance agents via phone, email, or text at the provided contact information, including automated messages. Consent not required for purchase. Standard rates apply.",
                     Wrap = true,
                     IsSubtle = true
                 },
                 new CardElement
                 {
-                    Type = "Input.Toggle",
+                    Type = "Input.ChoiceSet",
                     Id = "tcpac_consent",
                     Text = "I agree to be contacted as described above",
-                    Value = "no"
+                    Style = "compact",
+                    Value = "prefer_not_to_answer",
+                    Choices = new List<CardChoice>
+                    {
+                        new CardChoice { Title = "Don't want to answer", Value = "prefer_not_to_answer" },
+                        new CardChoice { Title = "Yes, I agree", Value = "yes" },
+                        new CardChoice { Title = "No, I do not agree", Value = "no" }
+                    }
                 },
 
                 // CCPA Notice Section
@@ -58,16 +65,23 @@ namespace InsuranceAgent.Topics.ComplianceTopic
                 new CardElement
                 {
                     Type = "TextBlock",
-                    Text = "If you are a California resident, you have the right to know how your personal data is used. We do not sell your personal information. You may request more details or opt out at any time.",
+                    Text = "California residents: You have privacy rights regarding your personal data. We don't sell your information. Contact us for details or to opt out.",
                     Wrap = true,
                     IsSubtle = true
                 },
                 new CardElement
                 {
-                    Type = "Input.Toggle",
+                    Type = "Input.ChoiceSet",
                     Id = "ccpa_acknowledged",
                     Text = "I acknowledge the privacy notice",
-                    Value = "no"
+                    Style = "compact",
+                    Value = "prefer_not_to_answer",
+                    Choices = new List<CardChoice>
+                    {
+                        new CardChoice { Title = "Don't want to answer", Value = "prefer_not_to_answer" },
+                        new CardChoice { Title = "Yes, I acknowledge", Value = "yes" },
+                        new CardChoice { Title = "No, I do not acknowledge", Value = "no" }
+                    }
                 }
             };
 

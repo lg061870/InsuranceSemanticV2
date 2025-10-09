@@ -1,0 +1,83 @@
+@startuml TCPA_CCPA_Insurance_Compliance_Flow
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 10
+
+title Insurance Lead Capture - TCPA/CCPA Compliance Decision Matrix
+
+start
+
+:User Submits Compliance Form;
+
+if (TCPA Consent?) then (YES - "I agree")
+  
+  if (CCPA Acknowledgment?) then (YES - "I acknowledge")
+    :✅ **FULL MARKETING PERMITTED**\n- Agent contact allowed\n- Marketing calls/emails OK\n- Show California privacy disclosures\n- Continue with full lead workflow;
+    #LightGreen
+  elseif (NO - "I do not acknowledge") then
+    :⚠️ **MARKETING OK, LIMITED CA DISCLOSURES**\n- Agent contact allowed\n- Marketing calls/emails OK\n- Skip California-specific disclosures\n- Continue with standard workflow;
+    #LightYellow
+  else (DON'T WANT TO ANSWER)
+    :⚠️ **MARKETING OK, DEFAULT CA PROTECTION**\n- Agent contact allowed\n- Marketing calls/emails OK\n- Show California privacy disclosures (safe default)\n- Continue with full lead workflow;
+    #LightYellow
+  endif
+
+elseif (NO - "I do not agree") then
+  
+  if (CCPA Acknowledgment?) then (YES - "I acknowledge")
+    :❌ **NO MARKETING, CA DISCLOSURES ONLY**\n- NO agent contact\n- NO marketing calls/emails\n- Show informational content only\n- Provide "contact us" self-service option;
+    #LightCoral
+  elseif (NO - "I do not acknowledge") then
+    :❌ **BLOCKED - MINIMAL INTERACTION**\n- NO agent contact\n- NO marketing calls/emails\n- Minimal website interaction only\n- General insurance education content;
+    #Red
+  else (DON'T WANT TO ANSWER)
+    :❌ **NO MARKETING, DEFAULT CA PROTECTION**\n- NO agent contact\n- NO marketing calls/emails\n- Show privacy disclosures (required)\n- Informational content only;
+    #LightCoral
+  endif
+
+else (DON'T WANT TO ANSWER)
+  
+  if (CCPA Acknowledgment?) then (YES - "I acknowledge")
+    :❌ **NO MARKETING - TCPA RISK TOO HIGH**\n- NO agent contact (licensing risk)\n- NO marketing calls/emails\n- Show California privacy disclosures\n- Informational content + self-service;
+    #LightCoral
+  elseif (NO - "I do not acknowledge") then
+    :❌ **MAXIMUM RESTRICTION**\n- NO agent contact\n- NO marketing calls/emails\n- Minimal interaction only\n- Basic website browsing;
+    #Red
+  else (DON'T WANT TO ANSWER)
+    :❌ **CONSERVATIVE APPROACH**\n- NO agent contact (TCPA risk)\n- NO marketing calls/emails\n- Show privacy disclosures (CCPA safe default)\n- Educational content only;
+    #LightCoral
+  endif
+
+endif
+
+stop
+
+note right
+  **Key:**
+  ✅ = Full marketing permissions
+  ⚠️ = Limited marketing permissions  
+  ❌ = No marketing permissions
+  
+  **Insurance License Protection:**
+  TCPA violations can result in:
+  - $500-$1,500 per call penalty
+  - State licensing issues
+  - Regulatory action
+end note
+
+note left
+  **Business Impact Matrix:**
+  
+  **High Value Leads:**
+  - TCPA: Yes + CCPA: Any = Full marketing
+  
+  **Medium Value Leads:**
+  - TCPA: No + CCPA: Yes = Content only
+  
+  **Low/No Value Leads:**
+  - TCPA: No/Undecided = Blocked
+  - Any "don't want to answer" on TCPA
+end note
+
+@enduml

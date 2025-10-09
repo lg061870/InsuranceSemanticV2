@@ -226,6 +226,17 @@ public class TopicFlow : ITopic {
                 return TopicResult.CreateSubTopicTrigger(ar.SubTopicName!, ar.Message, _context);
             }
 
+            // NEW: Handle activity end - complete the topic immediately
+            if (ar.IsEnd) {
+                _logger.LogInformation("Activity {ActivityId} signaled end of topic", activity.Id);
+                
+                OnActivityCompleted(activity.Id);
+                
+                await _fsm.TryTransitionAsync(FlowState.Completed, "Activity signaled end");
+                OnTopicLifecycleChanged(TopicLifecycleState.Completed, ar);
+                return TopicResult.CreateCompleted(ar.Message ?? string.Empty, _context);
+            }
+
             OnActivityCompleted(activity.Id);
 
             _activityQueue.Dequeue();

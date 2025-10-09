@@ -189,6 +189,12 @@ namespace ConversaCore.Context
         /// <param name="topicName">The name of the completed topic.</param>
         /// <param name="completionData">Optional data about the completion.</param>
         void SignalTopicCompletion(string topicName, object? completionData = null);
+
+        /// <summary>
+        /// Resets the conversation context to its initial state.
+        /// Clears all data, topic history, and execution stacks.
+        /// </summary>
+        void Reset();
     }
 
     /// <summary>

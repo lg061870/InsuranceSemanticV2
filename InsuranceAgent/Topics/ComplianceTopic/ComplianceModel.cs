@@ -11,32 +11,35 @@ namespace InsuranceAgent.Topics.ComplianceTopic
     public class ComplianceModel : BaseCardModel
     {
         [JsonPropertyName("tcpac_consent")]
-        [Required(ErrorMessage = "TCPA consent is required to proceed")]
         public string? TcpaConsent { get; set; }
 
         [JsonPropertyName("ccpa_acknowledged")]
-        [Required(ErrorMessage = "CCPA acknowledgment is required")]
         public string? CcpaAcknowledged { get; set; }
 
         // Computed properties for easier business logic
-        public bool HasTcpaConsent => TcpaConsent == "yes";
-        public bool HasCcpaAcknowledgment => CcpaAcknowledged == "yes";
+        // Yes = true, No = false, Don't want to answer/null = null
+        public bool? HasTcpaConsent => TcpaConsent switch
+        {
+            "yes" => true,
+            "no" => false,
+            _ => null  // "prefer_not_to_answer" or null
+        };
 
-        // Validation method
+        public bool? HasCcpaAcknowledgment => CcpaAcknowledged switch
+        {
+            "yes" => true,
+            "no" => false,
+            _ => null  // "prefer_not_to_answer" or null
+        };
+
+        // Validation method - now allowing "don't want to answer" responses
         public bool IsValid(out List<string> errors)
         {
             errors = new List<string>();
 
-            if (!HasTcpaConsent)
-            {
-                errors.Add("You must consent to be contacted to proceed with your insurance inquiry.");
-            }
-
-            if (!HasCcpaAcknowledgment)
-            {
-                errors.Add("You must acknowledge the privacy notice to proceed.");
-            }
-
+            // Optional: You can add business logic here if certain responses are required
+            // For now, all responses (yes/no/prefer not to answer) are considered valid
+            
             return errors.Count == 0;
         }
 

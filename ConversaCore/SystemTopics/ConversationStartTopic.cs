@@ -44,7 +44,13 @@ public sealed class ConversationStartTopic : TopicFlow {
         var greet = new GreetingActivity(GreetActivityId);
         Add(greet);
 
+        // Add TCPA/CCPA compliance collection immediately after greeting
+        // ComplianceTopic handles the California resident check internally
+        var complianceActivity = new TriggerTopicActivity("CollectCompliance", "ComplianceTopic", waitForCompletion: true);
+        Add(complianceActivity);
+
         logger.LogInformation("[ConversationStartTopic] Added GreetingActivity '{ActivityId}' to queue", GreetActivityId);
+        logger.LogInformation("[ConversationStartTopic] Added ComplianceTopic trigger for TCPA/CCPA collection");
         logger.LogInformation("[ConversationStartTopic] Initialized generic global structure");
 
         // Mark this topic as initialized

@@ -34,6 +34,7 @@ public class HybridChatService {
 
     // === Lifecycle ===
     public event Action<ChatSessionState, ITopic>? OnConversationStart;
+    public event EventHandler<ConversationResetEventArgs>? OnConversationReset;
 
     public HybridChatService(
         ILogger<HybridChatService> logger,
@@ -68,6 +69,11 @@ public class HybridChatService {
         _agentService.TopicInserted += (s, e) =>
             OnHybridChatEventRaised(new ChatEvent { Type = "TopicInserted", Payload = e });
 
+        _agentService.ConversationReset += (s, e) => {
+            _logger.LogInformation("[HybridChatService] Forwarding ConversationReset event to UI");
+            OnConversationReset?.Invoke(this, e);
+        };
+
         _agentService.MatchingTopicNotFound += async (s, e) => {
             _logger.LogInformation("No topic could process '{Message}', escalating to Semantic Kernel", e.UserMessage);
             await _semanticKernelService.ProcessMessageAsync(e.UserMessage, new ChatSessionState());
@@ -97,6 +103,12 @@ public class HybridChatService {
             // Let the agent handle initialization + wiring
             _ = _agentService.StartConversationAsync(sessionState);
         }
+    }
+
+    public async Task ResetConversationAsync(CancellationToken ct = default) {
+        _logger.LogInformation("[HybridChatService] Reset conversation requested - calling InsuranceAgentService");
+        await _agentService.ResetConversationAsync(ct);
+        _logger.LogInformation("[HybridChatService] Reset conversation completed from InsuranceAgentService");
     }
 
     /// <summary>
