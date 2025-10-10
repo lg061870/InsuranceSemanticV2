@@ -3,18 +3,20 @@ using ConversaCore.TopicFlow;
 using ConversaCore.TopicFlow.Activities;
 using InsuranceAgent.Topics.ComplianceTopic;
 using Microsoft.Extensions.Logging;
+using ConversaCore.Context;
 
 namespace InsuranceAgent.Topics.ComplianceTopic
 {
     /// <summary>
-    /// Topic for collecting TCPA consent and CCPA compliance acknowledgment.
-    /// Ported from Copilot Studio adaptive card.
-    /// Event-driven, queue-based flow of activities.
+    /// Enhanced compliance topic that chains with CaliforniaResidentDemoTopic.
+    /// Adapts TCPA/CCPA messaging based on California residency status.
+    /// Routes to 18 possible outcomes based on user responses.
     /// </summary>
     public class ComplianceTopic : TopicFlow
     {
         public const string ActivityId_ShowCard = "ShowComplianceCard";
         public const string ActivityId_DumpCtx = "DumpCTX";
+        public const string ActivityId_DecisionMatrix = "DecisionMatrix";
         public const string ActivityId_Trigger = "TriggerNextTopic";
 
         /// <summary>
@@ -38,13 +40,55 @@ namespace InsuranceAgent.Topics.ComplianceTopic
             _conversationContext = conversationContext;
 
             Context.SetValue("ComplianceTopic_create", DateTime.UtcNow.ToString("o"));
-            Context.SetValue("TopicName", "Compliance & Consent");
+            Context.SetValue("TopicName", "Enhanced Compliance & Consent");
 
-            // === Activities in queue order ===
+            // Initialize activities
+            InitializeActivities();
+        }
+
+        public override void Reset()
+        {
+            // Clear our specific context keys
+            Context.SetValue("ComplianceTopic_create", DateTime.UtcNow.ToString("o"));
+            Context.SetValue("ComplianceTopic_completed", null);
+            Context.SetValue("ComplianceTopic_state", null);
+            Context.SetValue("ShowComplianceCard_sent", null);
+            Context.SetValue("ShowComplianceCard_rendered", null);
+            
+            // Call base reset which will reset activities and FSM
+            base.Reset();
+            
+            // Fix any remaining state issues by forcing FSM to Idle
+            var stateMachine = GetType().BaseType?.GetField("_fsm", 
+                System.Reflection.BindingFlags.NonPublic | 
+                System.Reflection.BindingFlags.Instance)?.GetValue(this);
+            
+            if (stateMachine is ConversaCore.StateMachine.ITopicStateMachine<TopicFlow.FlowState> fsm) {
+                fsm.ForceState(TopicFlow.FlowState.Idle, 
+                    "Forced reset to Idle in ComplianceTopic.Reset");
+                fsm.ClearTransitionHistory();
+                _logger.LogInformation("[ComplianceTopic] State machine forced to Idle state during Reset");
+            }
+            
+            // Re-initialize activities after reset
+            InitializeActivities();
+            
+            // Clear any flags that might prevent proper execution
+            Context.SetValue("ShowComplianceCard_Completed", false);
+            
+            _logger.LogInformation("[ComplianceTopic] Topic reset completed with fresh activity queue");
+        }
+
+        private void InitializeActivities()
+        {
+            // Get California residency status from previous topic (if available)
+            var isCaliforniaResident = Context.GetValue<bool?>("is_california_resident") ?? false;
+            var zipCode = Context.GetValue<string>("california_zip_code") ?? "";
+
             var showCardActivity = new AdaptiveCardActivity<ComplianceCard, ComplianceModel>(
                 ActivityId_ShowCard,
-                context,
-                cardFactory: card => card.Create(),
+                Context,
+                cardFactory: card => card.Create(isCaliforniaResident, zipCode),
                 modelContextKey: "ComplianceModel",
                 onTransition: (from, to, data) => {
                     var stamp = DateTime.UtcNow.ToString("o");
@@ -54,140 +98,34 @@ namespace InsuranceAgent.Topics.ComplianceTopic
                 }
             );
 
-            var isDevelopment =
-                Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+            var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
             var dumpCtxActivity = new DumpCtxActivity(ActivityId_DumpCtx, isDevelopment);
 
-            // === TCPA/CCPA Decision Matrix ===
-            // Route users based on TCPA consent + CCPA acknowledgment combinations
-            // Insurance compliance: "don't want to answer" = "no" for marketing purposes
-            
-            // Create individual scenario activities
-            var highIntentActivity = new AdaptiveCardActivity<HighIntentScenarioCard, HighIntentScenarioModel>(
-                "HighIntentScenario",
-                context,
-                cardFactory: card => card.Create(),
-                modelContextKey: "HighIntentScenarioModel"
-            );
-            
-            var mediumIntentActivity = new AdaptiveCardActivity<MediumIntentScenarioCard, MediumIntentScenarioModel>(
-                "MediumIntentScenario",
-                context,
-                cardFactory: card => card.Create(),
-                modelContextKey: "MediumIntentScenarioModel"
-            );
-            
-            var lowIntentActivity = new AdaptiveCardActivity<LowIntentScenarioCard, LowIntentScenarioModel>(
-                "LowIntentScenario",
-                context,
-                cardFactory: card => card.Create(),
-                modelContextKey: "LowIntentScenarioModel"
-            );
-            
-            var blockedScenarioActivity = new AdaptiveCardActivity<BlockedScenarioCard, BlockedScenarioModel>(
-                "BlockedScenario",
-                context,
-                cardFactory: card => card.Create(),
-                modelContextKey: "BlockedScenarioModel"
-            );
+            // Decision matrix - route based on collected responses
+            var decisionMatrixActivity = new SimpleActivity(ActivityId_DecisionMatrix, (ctx, data) => {
+                var tcpaConsent = Context.GetValue<bool?>("tcpa_consent");
+                var ccpaAcknowledgment = Context.GetValue<bool?>("ccpa_acknowledgment");
+                var outcomeType = DetermineOutcomeType(isCaliforniaResident, tcpaConsent, ccpaAcknowledgment);
+                
+                Context.SetValue("compliance_outcome", outcomeType);
+                Context.SetValue("can_contact_user", tcpaConsent == true);
+                
+                _logger.LogInformation("[{Topic}] Decision Matrix: CA={CA}, TCPA={TCPA}, CCPA={CCPA} → {Outcome}",
+                    Name, isCaliforniaResident, tcpaConsent, ccpaAcknowledgment, outcomeType);
+                
+                // Set next topic based on outcome
+                SetNextTopicBasedOnOutcome(outcomeType);
+                
+                return Task.FromResult<object?>(null);
+            });
 
-            // Main TCPA decision branch
-            var complianceDecisionMatrix = ConditionalActivity<TopicFlowActivity>.If(
-                "TCPAConsentCheck",
-                condition: ctx => ctx.GetValue<bool?>("tcpa_consent") == true,
-                
-                // TCPA = YES: User consented to calls/texts - show high engagement options
-                trueFactory: (id, ctx) => highIntentActivity,
-                
-                // TCPA = NO/Don't Answer: Route based on CCPA
-                falseFactory: (id, ctx) => ConditionalActivity<TopicFlowActivity>.If(
-                    "TCPA_No_CCPA_Check",
-                    condition: ctx2 => ctx2.GetValue<bool?>("ccpa_acknowledgment") == true,
-                    
-                    // TCPA = No, CCPA = Yes: Medium intent - educational content + optional contact
-                    trueFactory: (id2, ctx2) => mediumIntentActivity,
-                    
-                    // TCPA = No, CCPA = No/Don't Answer: Route to low/blocked scenarios
-                    falseFactory: (id2, ctx2) => ConditionalActivity<TopicFlowActivity>.If(
-                        "TCPA_No_CCPA_No_FinalCheck",
-                        condition: ctx3 => ctx3.GetValue<bool?>("ccpa_acknowledgment") == false,
-                        
-                        // TCPA = No, CCPA = No: Low intent - minimal educational content
-                        trueFactory: (id3, ctx3) => lowIntentActivity,
-                        
-                        // TCPA = No, CCPA = Don't Answer: Blocked scenario - basic navigation only
-                        falseFactory: (id3, ctx3) => blockedScenarioActivity,
-                        logger: _logger
-                    ),
-                    logger: _logger
-                ),
-                logger: _logger
-            );
-
-            var triggerActivity = new TriggerTopicActivity(
-                ActivityId_Trigger,
-                "NextTopicName" // Will be set in context or default to next logical topic
-            );
-
-            // === Event hooks for scenario activities to handle "change_consent" ===
-            EventHandler<ConversaCore.Events.ModelBoundEventArgs> handleChangeConsent = (sender, e) =>
-            {
-                var modelType = e.Model?.GetType().Name;
-                _logger.LogInformation("[{Topic}] Scenario model bound: {ModelType}", Name, modelType);
-                
-                // Check if user wants to change consent preferences
-                var userChoice = "";
-                switch (e.Model)
-                {
-                    case HighIntentScenarioModel highModel:
-                        userChoice = highModel.UserChoice ?? "";
-                        break;
-                    case MediumIntentScenarioModel mediumModel:
-                        userChoice = mediumModel.UserChoice ?? "";
-                        break;
-                    case LowIntentScenarioModel lowModel:
-                        userChoice = lowModel.UserChoice ?? "";
-                        break;
-                    case BlockedScenarioModel blockedModel:
-                        userChoice = blockedModel.UserChoice ?? "";
-                        break;
-                }
-                
-                if (userChoice == "change_consent")
-                {
-                    _logger.LogInformation("[{Topic}] User wants to change consent - restarting compliance flow", Name);
-                    
-                    // Clear existing compliance data
-                    Context.SetValue("tcpa_consent", null);
-                    Context.SetValue("ccpa_acknowledgment", null);
-                    Context.SetValue("compliance_data", null);
-                    
-                    // Set flag to restart the compliance flow
-                    Context.SetValue("restart_compliance", true);
-                }
-            };
-            
-            // Subscribe all scenario activities to the change consent handler
-            highIntentActivity.ModelBound += handleChangeConsent;
-            mediumIntentActivity.ModelBound += handleChangeConsent;
-            lowIntentActivity.ModelBound += handleChangeConsent;
-            blockedScenarioActivity.ModelBound += handleChangeConsent;
+            // We'll create the trigger activity dynamically in UpdateTriggerActivity
+            // based on the current context values right before triggering
+            // This ensures we have the most up-to-date next topic name
 
             // === Event hooks for AdaptiveCard lifecycle ===
             showCardActivity.CardJsonEmitted += (s, e) =>
                 _logger.LogInformation("[{Topic}] Card JSON emitted (mode={Mode})", Name, e.RenderMode);
-
-            showCardActivity.CardJsonSending += (s, e) =>
-                _logger.LogInformation("[{Topic}] Card JSON sending (mode={Mode})", Name, e.RenderMode);
-
-            showCardActivity.CardJsonSent += (s, e) =>
-                _logger.LogInformation("[{Topic}] Card JSON sent (mode={Mode})", Name, e.RenderMode);
-
-            showCardActivity.CardJsonRendered += (s, e) =>
-                _logger.LogInformation("[{Topic}] Card JSON rendered on client at {Time}", Name, e.RenderedAt);
-
-            showCardActivity.CardDataReceived += (s, e) =>
-                _logger.LogInformation("[{Topic}] Card data received: {Keys}", Name, string.Join(",", e.Data.Keys));
 
             showCardActivity.ModelBound += (s, e) =>
             {
@@ -208,18 +146,70 @@ namespace InsuranceAgent.Topics.ComplianceTopic
             showCardActivity.ValidationFailed += (s, e) =>
                 _logger.LogWarning("[{Topic}] Validation failed: {Message}", Name, e.Exception.Message);
 
-            // === Trigger hook ===
-            triggerActivity.TopicTriggered += (sender, e) =>
-            {
-                _logger.LogInformation("[{Topic}] Triggering next topic: {Next}", Name, e.TopicName);
-                _conversationContext.AddTopicToChain(e.TopicName);
-            };
-
             // === Enqueue activities ===
             Add(showCardActivity);
             Add(dumpCtxActivity);
-            Add(complianceDecisionMatrix);
-            Add(triggerActivity);
+            Add(decisionMatrixActivity);
+            // Trigger activity will be added in UpdateTriggerActivity method
+        }
+
+        /// <summary>
+        /// Determines the outcome type based on the decision matrix.
+        /// Maps to the 18 possible outcomes in the flowchart.
+        /// </summary>
+        private string DetermineOutcomeType(bool isCaliforniaResident, bool? tcpaConsent, bool? ccpaAcknowledgment)
+        {
+            var prefix = isCaliforniaResident ? "CA" : "NonCA";
+            
+            var tcpaStatus = tcpaConsent switch {
+                true => "TcpaYes",
+                false => "TcpaNo", 
+                null => "TcpaUnknown"
+            };
+            
+            var ccpaStatus = ccpaAcknowledgment switch {
+                true => "CcpaYes",
+                false => "CcpaNo",
+                null => "CcpaUnknown"
+            };
+            
+            return $"{prefix}_{tcpaStatus}_{ccpaStatus}";
+        }
+
+        /// <summary>
+        /// Sets the next topic based on the compliance outcome.
+        /// </summary>
+        private void SetNextTopicBasedOnOutcome(string outcomeType)
+        {
+            var canContact = Context.GetValue<bool>("can_contact_user");
+            
+            var nextTopic = outcomeType switch
+            {
+                // Full marketing outcomes - continue with lead workflow
+                "CA_TcpaYes_CcpaYes" or "NonCA_TcpaYes_CcpaYes" or 
+                "NonCA_TcpaYes_CcpaNo" or "NonCA_TcpaYes_CcpaUnknown" => 
+                    canContact ? "LeadQualificationTopic" : "SelfServiceTopic",
+                
+                // Limited marketing outcomes - educational content first  
+                "CA_TcpaYes_CcpaNo" or "CA_TcpaYes_CcpaUnknown" => 
+                    "EducationalContentTopic",
+                
+                // No marketing outcomes - informational content only
+                "CA_TcpaNo_CcpaYes" or "CA_TcpaNo_CcpaUnknown" or "CA_TcpaUnknown_CcpaYes" or
+                "NonCA_TcpaNo_CcpaYes" or "NonCA_TcpaNo_CcpaUnknown" or "NonCA_TcpaUnknown_CcpaYes" => 
+                    "InformationalContentTopic",
+                
+                // Blocked/restricted outcomes - minimal interaction
+                "CA_TcpaNo_CcpaNo" or "CA_TcpaUnknown_CcpaNo" or "CA_TcpaUnknown_CcpaUnknown" or
+                "NonCA_TcpaNo_CcpaNo" or "NonCA_TcpaUnknown_CcpaNo" or "NonCA_TcpaUnknown_CcpaUnknown" => 
+                    "BasicNavigationTopic",
+                
+                _ => "FallbackTopic"
+            };
+            
+            Context.SetValue("NextTopic", nextTopic);
+            _logger.LogInformation("[{Topic}] Setting next topic: {NextTopic} based on outcome: {Outcome}", 
+                Name, nextTopic, outcomeType);
         }
 
         /// <summary>
@@ -252,40 +242,49 @@ namespace InsuranceAgent.Topics.ComplianceTopic
 
         /// <summary>
         /// Execute the topic's activities in queue order.
-        /// Also handles optional NextTopic context handoff and restart compliance flow.
+        /// Handles restart scenarios and next topic routing.
         /// </summary>
         public override Task<TopicResult> RunAsync(CancellationToken cancellationToken = default)
         {
             Context.SetValue("ComplianceTopic_runasync", DateTime.UtcNow.ToString("o"));
 
-            var task = base.RunAsync(cancellationToken);
-
-            return task.ContinueWith(t => {
-                var result = t.Result;
-
-                // Check if user wants to restart compliance flow
-                var restartCompliance = Context.GetValue<bool>("restart_compliance");
-                if (restartCompliance)
-                {
-                    _logger.LogInformation("[{Topic}] Restarting compliance flow per user request", Name);
-                    
-                    // Clear the restart flag
-                    Context.SetValue("restart_compliance", false);
-                    
-                    // Set result to restart this topic
-                    result.NextTopicName = "ComplianceTopic";
-                    return result;
-                }
-
-                var nextTopic = Context.GetValue<string>("NextTopic");
-                if (!string.IsNullOrEmpty(nextTopic))
-                {
-                    result.NextTopicName = nextTopic;
-                    Context.SetValue("NextTopic", null); // reset
-                }
-
-                return result;
-            });
+            // Redefine the trigger activity each time we run
+            // This ensures we have the most up-to-date next topic name
+            UpdateTriggerActivity();
+            
+            // Run the topic normally
+            return base.RunAsync(cancellationToken);
+        }
+        
+        /// <summary>
+        /// Updates the trigger activity with the current next topic name from context
+        /// </summary>
+        private void UpdateTriggerActivity()
+        {
+            // Get the current topic name from context
+            var nextTopic = Context.GetValue<string>("NextTopic") ?? "FallbackTopic";
+            
+            // Remove existing trigger activity if present
+            RemoveActivity(ActivityId_Trigger);
+            
+            // Create new trigger activity with current topic name
+            var triggerActivity = new TriggerTopicActivity(
+                ActivityId_Trigger, 
+                nextTopic,
+                _logger,
+                false, // waitForCompletion
+                _conversationContext
+            );
+            
+            // Hook up the trigger event to log the next topic
+            triggerActivity.TopicTriggered += (sender, e) =>
+            {
+                _logger.LogInformation("[{Topic}] Triggering next topic: {Next}", Name, e.TopicName);
+                _conversationContext.AddTopicToChain(e.TopicName);
+            };
+            
+            // Add the updated activity
+            Add(triggerActivity);
         }
     }
 }

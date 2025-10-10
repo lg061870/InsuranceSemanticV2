@@ -1,4 +1,5 @@
-﻿using ConversaCore.Context;
+﻿using ConversaCore.StateMachine;
+using ConversaCore.Context;
 using ConversaCore.Events;
 using ConversaCore.Models;
 using ConversaCore.TopicFlow;
@@ -14,12 +15,11 @@ public class InsuranceAgentService {
 
     private ITopic? _activeTopic;
     private readonly Stack<TopicFlow> _pausedTopics = new Stack<TopicFlow>(); // Track paused topics
-    
+
     // NEW: Event-driven sub-topic completion tracking
     private readonly Dictionary<string, PendingSubTopic> _pendingSubTopics = new Dictionary<string, PendingSubTopic>();
-    
-    private class PendingSubTopic 
-    {
+
+    private class PendingSubTopic {
         public TopicFlow CallingTopic { get; set; } = null!;
         public TopicFlow SubTopic { get; set; } = null!;
         public string CallingTopicName { get; set; } = string.Empty;
@@ -62,7 +62,7 @@ public class InsuranceAgentService {
             if (_activeTopic is TopicFlow currentActiveTopic) {
                 UnhookTopicEvents(currentActiveTopic);
             }
-            
+
             _activeTopic = flow;
             HookTopicEvents(flow);
 
@@ -144,7 +144,7 @@ public class InsuranceAgentService {
             if (act is TriggerTopicActivity trigger) {
                 trigger.TopicTriggered += OnTopicTriggered;
             }
-            
+
             // Handle topic triggers from ConditionalActivity containers
             // (child TriggerTopicActivity is created dynamically, so we subscribe to the container's forwarded event)
             if (act is ConditionalActivity<TriggerTopicActivity> conditional) {
@@ -163,13 +163,13 @@ public class InsuranceAgentService {
             ActivityCompleted?.Invoke(this, e);
         };
         flow.TopicInserted -= (s, e) => TopicInserted?.Invoke(this, e);
-        
+
         // Unhook activity-level events
         foreach (var act in flow.GetAllActivities()) {
             if (act is TriggerTopicActivity trigger) {
                 trigger.TopicTriggered -= OnTopicTriggered;
             }
-            
+
             if (act is ConditionalActivity<TriggerTopicActivity> conditional) {
                 conditional.TopicTriggered -= OnTopicTriggered;
             }
@@ -202,7 +202,7 @@ public class InsuranceAgentService {
     public async Task StartConversationAsync(ChatSessionState sessionState, CancellationToken ct = default) {
         // Clear any previous execution state
         _pausedTopics.Clear();
-        
+
         var topic = _topicRegistry.GetTopic("ConversationStart");
 
         if (topic == null) {
@@ -215,7 +215,7 @@ public class InsuranceAgentService {
             if (_activeTopic is TopicFlow currentActiveTopic) {
                 UnhookTopicEvents(currentActiveTopic);
             }
-            
+
             _activeTopic = flow;
             HookTopicEvents(flow);
 
@@ -229,24 +229,105 @@ public class InsuranceAgentService {
 
     public async Task ResetConversationAsync(CancellationToken ct = default) {
         _logger.LogInformation("[InsuranceAgentService] Resetting conversation");
-        
+
         // Clear all state
         _pausedTopics.Clear();
         _pendingSubTopics.Clear();
-        
+
         // Unhook current topic events
         if (_activeTopic is TopicFlow currentTopic) {
             UnhookTopicEvents(currentTopic);
         }
         _activeTopic = null;
-        
-        // Clear contexts (assuming these methods exist or we'll add them)
+
+        // Clear contexts
         _context.Reset();
         _wfContext.Clear();
+
+        // --- FULL TOPIC STATE RESET ---
+        // Reset ALL topics to ensure clean state
+        var allTopics = _topicRegistry.GetAllTopics();
+        foreach (var topic in allTopics) {
+            if (topic is TopicFlow topicFlow) {
+                _logger.LogInformation("[InsuranceAgentService] Resetting topic: {TopicName}", topic.Name);
+                topicFlow.Reset();
+            }
+        }
         
+        // --- SPECIAL HANDLING FOR CONVERSATION START TOPIC ---
+        // This is critical for properly restarting the conversation
+        var conversationStartTopic = _topicRegistry.GetTopic("ConversationStart") as TopicFlow;
+        if (conversationStartTopic != null) {
+            // Clear both context flags to be thorough
+            conversationStartTopic.Context.SetValue("ConversationStartTopic.HasRun", false);
+            _context.SetValue("ConversationStartTopic.HasRun", false);
+            
+            // Force clear any other related flags that might prevent restart
+            _context.SetValue("Global_ConversationActive", false);
+            _context.SetValue("Global_TopicHistory", new List<string>());
+            _context.SetValue("Global_UserInteractionCount", 0);
+            
+            // Ensure state machine is properly reset
+            // Force ConversationStartTopic to Idle state to fix issues with multiple resets
+            // This uses reflection to access the protected _fsm field
+            var stateMachine = conversationStartTopic.GetType().BaseType?.GetField("_fsm", 
+                System.Reflection.BindingFlags.NonPublic | 
+                System.Reflection.BindingFlags.Instance)?.GetValue(conversationStartTopic);
+            
+            if (stateMachine is ITopicStateMachine<ConversaCore.TopicFlow.TopicFlow.FlowState> fsm) {
+                // Use our new ForceState method to guarantee proper state
+                fsm.ForceState(ConversaCore.TopicFlow.TopicFlow.FlowState.Idle, 
+                    "Forced reset to Idle in ResetConversationAsync");
+                
+                // Also clear transition history for a clean slate
+                fsm.ClearTransitionHistory();
+                
+                _logger.LogInformation("[InsuranceAgentService] ConversationStartTopic state machine forced to Idle state");
+            }
+            
+            // CRITICAL FIX: Also force ComplianceTopic to Idle state and clear all its flags
+            var complianceTopic = _topicRegistry.GetTopic("ComplianceTopic") as TopicFlow;
+            if (complianceTopic != null) {
+                // Force reset state machine
+                var complianceStateMachine = complianceTopic.GetType().BaseType?.GetField("_fsm", 
+                    System.Reflection.BindingFlags.NonPublic | 
+                    System.Reflection.BindingFlags.Instance)?.GetValue(complianceTopic);
+                
+                if (complianceStateMachine is ITopicStateMachine<ConversaCore.TopicFlow.TopicFlow.FlowState> complianceFsm) {
+                    complianceFsm.ForceState(ConversaCore.TopicFlow.TopicFlow.FlowState.Idle, 
+                        "Forced reset to Idle in ResetConversationAsync");
+                    complianceFsm.ClearTransitionHistory();
+                    _logger.LogInformation("[InsuranceAgentService] ComplianceTopic state machine forced to Idle state");
+                }
+                
+                // Clear any activity flags
+                _wfContext.SetValue("ShowComplianceCard_Sent", null);
+                _wfContext.SetValue("ShowComplianceCard_Rendered", null);
+                _wfContext.SetValue("ShowComplianceCard_Completed", null);
+                _wfContext.SetValue("ComplianceTopic_Completed", null);
+                _wfContext.SetValue("ComplianceTopic_HasRun", null);
+                
+                // Clear out any compliance data to force a fresh card
+                // Set empty/default values instead of trying to remove keys
+                _context.SetValue("compliance_data", new Dictionary<string, object>());
+                _context.SetValue("tcpa_consent", false);
+                _context.SetValue("ccpa_acknowledgment", false);
+                
+                _logger.LogInformation("[InsuranceAgentService] ComplianceTopic activity flags and compliance data cleared");
+            }
+            
+            _logger.LogInformation("[InsuranceAgentService] ConversationStartTopic.HasRun flag cleared and conversation flags reset");
+        }
+        
+        // Log completion of reset to help with debugging
+        _logger.LogInformation("[InsuranceAgentService] Conversation reset completed - all topics and context cleared");
+
         // Fire reset event for UI
         ConversationReset?.Invoke(this, new ConversationResetEventArgs());
-        
+
+        // Add a small delay to ensure UI has time to process the reset
+        await Task.Delay(100, ct);
+
         // Start fresh conversation
         await StartConversationAsync(new ChatSessionState(), ct);
     }
@@ -254,10 +335,8 @@ public class InsuranceAgentService {
     /// <summary>
     /// Handles the completion of a sub-topic and resumes the calling topic.
     /// </summary>
-    private async Task HandleSubTopicCompletion(TopicFlow completedSubTopic, TopicResult subTopicResult)
-    {
-        if (_pausedTopics.Count == 0)
-        {
+    private async Task HandleSubTopicCompletion(TopicFlow completedSubTopic, TopicResult subTopicResult) {
+        if (_pausedTopics.Count == 0) {
             _logger.LogWarning("[InsuranceAgentService] Sub-topic '{SubTopic}' completed but no paused topics to resume",
                 completedSubTopic.Name);
             return;
@@ -269,25 +348,21 @@ public class InsuranceAgentService {
 
         // Set completion data in context for the calling topic to access
         var completionData = new Dictionary<string, object>();
-        if (subTopicResult.wfContext != null)
-        {
+        if (subTopicResult.wfContext != null) {
             // Copy relevant data from the sub-topic's workflow context
-            foreach (var key in subTopicResult.wfContext.GetKeys())
-            {
+            foreach (var key in subTopicResult.wfContext.GetKeys()) {
                 var value = subTopicResult.wfContext.GetValue<object>(key);
-                if (value != null)
-                {
+                if (value != null) {
                     completionData[key] = value;
                 }
             }
         }
-        
+
         _wfContext.SetValue("SubTopicCompletionData", completionData);
-        
+
         // Pop the topic call from conversation context
         var callInfo = _context.PopTopicCall(completionData);
-        if (callInfo != null)
-        {
+        if (callInfo != null) {
             _wfContext.SetValue("ResumeData", callInfo.ResumeData);
             _logger.LogInformation("[InsuranceAgentService] Call info retrieved: {CallingTopic} -> {SubTopic}",
                 callInfo.CallingTopicName, callInfo.SubTopicName);
@@ -298,36 +373,33 @@ public class InsuranceAgentService {
         if (_activeTopic is TopicFlow currentActiveTopic) {
             UnhookTopicEvents(currentActiveTopic);
         }
-        
+
         _activeTopic = callingTopic;
         HookTopicEvents(callingTopic);
-        
-        try
-        {
+
+        try {
             // Continue execution from where it left off
             await callingTopic.ResumeAsync("Sub-topic completed", CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             _logger.LogError(ex, "[InsuranceAgentService] Error resuming topic '{TopicName}' after sub-topic completion",
                 callingTopic.Name);
         }
     }
-    
+
     private async void OnTopicTriggered(object? sender, TopicTriggeredEventArgs e) {
         // Extract WaitForCompletion from the TriggerTopicActivity sender
         if (sender is not TriggerTopicActivity trigger) {
             _logger.LogWarning("[InsuranceAgentService] Topic triggered by unsupported sender type: {SenderType}", sender?.GetType().Name);
             return;
         }
-        
+
         var waitForCompletion = trigger.WaitForCompletion;
-        _logger.LogInformation("[InsuranceAgentService] Topic triggered: {TopicName} (WaitForCompletion: {WaitForCompletion})", 
+        _logger.LogInformation("[InsuranceAgentService] Topic triggered: {TopicName} (WaitForCompletion: {WaitForCompletion})",
             e.TopicName, waitForCompletion);
 
         var nextTopic = _topicRegistry.GetTopic(e.TopicName);
         if (nextTopic is TopicFlow nextFlow) {
-            
+
             if (waitForCompletion) {
                 // NEW: Sub-topic pattern - pause current topic
                 if (_activeTopic is TopicFlow currentFlow) {
@@ -336,12 +408,12 @@ public class InsuranceAgentService {
                     _pausedTopics.Push(currentFlow);
                 }
             }
-            
+
             // Unhook events from previous topic before switching
             if (_activeTopic is TopicFlow currentActiveTopic) {
                 UnhookTopicEvents(currentActiveTopic);
             }
-            
+
             _activeTopic = nextFlow;
             HookTopicEvents(nextFlow);
 
@@ -357,7 +429,7 @@ public class InsuranceAgentService {
                         SubTopicName = e.TopicName,
                         StartTime = DateTime.UtcNow
                     };
-                    
+
                     _logger.LogInformation("[InsuranceAgentService] Registered sub-topic '{SubTopic}' for completion tracking", e.TopicName);
                 }
                 else {
@@ -366,10 +438,10 @@ public class InsuranceAgentService {
             }
 
             var result = await nextFlow.RunAsync();
-            
-            _logger.LogInformation("[InsuranceAgentService] Sub-topic completed. WaitForCompletion: {WaitForCompletion}, IsCompleted: {IsCompleted}", 
+
+            _logger.LogInformation("[InsuranceAgentService] Sub-topic completed. WaitForCompletion: {WaitForCompletion}, IsCompleted: {IsCompleted}",
                 waitForCompletion, result.IsCompleted);
-            
+
             // Only handle immediate completion for legacy topics or actually completed topics
             if (!waitForCompletion && result.IsCompleted) {
                 _logger.LogInformation("[InsuranceAgentService] Calling HandleSubTopicCompletion for legacy topic {TopicName}", e.TopicName);
@@ -390,21 +462,21 @@ public class InsuranceAgentService {
             _logger.LogWarning("[InsuranceAgentService] Triggered topic {TopicName} not found or not a TopicFlow.", e.TopicName);
         }
     }
-    
+
     private async void OnTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) {
         _logger.LogInformation("[InsuranceAgentService] TopicLifecycleChanged: {TopicName} -> {State}", e.TopicName, e.State);
-        
+
         // Handle sub-topic completion
         if (e.State == TopicLifecycleState.Completed && _pendingSubTopics.ContainsKey(e.TopicName)) {
             var pendingSubTopic = _pendingSubTopics[e.TopicName];
             _pendingSubTopics.Remove(e.TopicName);
-            
-            _logger.LogInformation("[InsuranceAgentService] Sub-topic '{SubTopic}' completed via lifecycle event, resuming '{CallingTopic}'", 
+
+            _logger.LogInformation("[InsuranceAgentService] Sub-topic '{SubTopic}' completed via lifecycle event, resuming '{CallingTopic}'",
                 e.TopicName, pendingSubTopic.CallingTopicName);
-                
+
             // Create a synthetic TopicResult for the completed sub-topic
             var subTopicResult = TopicResult.CreateCompleted("Sub-topic completed", pendingSubTopic.SubTopic.Context);
-            
+
             await HandleSubTopicCompletion(pendingSubTopic.SubTopic, subTopicResult);
         }
     }
