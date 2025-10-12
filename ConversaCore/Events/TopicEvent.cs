@@ -27,7 +27,16 @@ namespace ConversaCore.Events {
         AdaptiveCardDisplayed,
 
         /// <summary>An adaptive card action has been submitted.</summary>
-        AdaptiveCardSubmitted
+        AdaptiveCardSubmitted,
+        
+        /// <summary>The conversation has been reset.</summary>
+        ConversationReset,
+        
+        /// <summary>The conversation has been completed.</summary>
+        ConversationCompleted,
+        
+        /// <summary>An error occurred in the conversation.</summary>
+        ConversationError
     }
 
     /// <summary>

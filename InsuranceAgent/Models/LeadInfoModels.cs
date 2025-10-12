@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json.Serialization;
+using ConversaCore.Validation;
 
 namespace InsuranceAgent.Models {
     /// <summary>
@@ -11,6 +12,7 @@ namespace InsuranceAgent.Models {
         /// Gets or sets a value indicating whether the lead is a California resident
         /// </summary>
         [JsonPropertyName("is_california_resident")]
+        [RequiredChoice(ErrorMessage = "You must confirm whether you are a California resident.")]
         public bool? IsCaliforniaResident { get; set; }
         
         /// <summary>

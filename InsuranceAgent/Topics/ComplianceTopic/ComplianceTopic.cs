@@ -148,7 +148,6 @@ namespace InsuranceAgent.Topics.ComplianceTopic
 
             // === Enqueue activities ===
             Add(showCardActivity);
-            Add(dumpCtxActivity);
             Add(decisionMatrixActivity);
             // Trigger activity will be added in UpdateTriggerActivity method
         }
@@ -188,7 +187,7 @@ namespace InsuranceAgent.Topics.ComplianceTopic
                 // Full marketing outcomes - continue with lead workflow
                 "CA_TcpaYes_CcpaYes" or "NonCA_TcpaYes_CcpaYes" or 
                 "NonCA_TcpaYes_CcpaNo" or "NonCA_TcpaYes_CcpaUnknown" => 
-                    canContact ? "LeadQualificationTopic" : "SelfServiceTopic",
+                    canContact ? "MarketingTypeOneTopic" : "SelfServiceTopic",
                 
                 // Limited marketing outcomes - educational content first  
                 "CA_TcpaYes_CcpaNo" or "CA_TcpaYes_CcpaUnknown" => 

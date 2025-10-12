@@ -26,4 +26,9 @@ public sealed class OnErrorTopic : TopicFlow
 
     public override Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default)
         => Task.FromResult(0.0f); // typically invoked explicitly by your orchestration
+        public override void Reset()
+        {
+            ClearActivities();
+            Add(new OnErrorActivity(ErrorActivityId, "⚠️ Sorry, something went wrong. Let’s try that again."));
+        }
 }

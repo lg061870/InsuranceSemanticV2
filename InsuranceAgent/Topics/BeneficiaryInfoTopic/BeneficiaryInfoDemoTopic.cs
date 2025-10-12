@@ -61,7 +61,6 @@ namespace InsuranceAgent.Topics {
 
             var isDevelopment =
                 Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
-            var dumpCtxActivity = new DumpCtxActivity(ActivityId_DumpCtx, isDevelopment);
 
             // GlobalVariableActivity to promote beneficiary data to conversation-global scope
             var globalVarActivity = new GlobalVariableActivity(
@@ -109,7 +108,6 @@ namespace InsuranceAgent.Topics {
 
             // === Enqueue activities ===
             Add(showCardActivity);
-            Add(dumpCtxActivity);
             Add(globalVarActivity);
             Add(completeActivity);
         }

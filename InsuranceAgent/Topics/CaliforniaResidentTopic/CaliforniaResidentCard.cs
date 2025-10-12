@@ -1,4 +1,6 @@
-﻿namespace InsuranceAgent.Cards {
+﻿using System;
+
+namespace InsuranceAgent.Cards {
     /// <summary>
     /// Defines the California Resident adaptive card schema.
     /// Serialized to JSON before being sent to the chat window.
@@ -36,6 +38,7 @@
                         ["id"]          = "isCaliforniaResident",
                         ["style"]       = "expanded",
                         ["isMultiSelect"]= false,
+                        ["isRequired"]  = true, // Mark as required for client-side styling
                         ["value"]       = isResidentStr, // pre-fill if known
                         ["choices"]     = new[] {
                             new { title = "Yes, I am a California resident", value = "true" },

@@ -2,6 +2,7 @@
 using ConversaCore.TopicFlow;
 using ConversaCore.TopicFlow.Activities;
 using InsuranceAgent.Cards;
+using InsuranceAgent.Topics.CaliforniaResidentTopic;
 
 namespace InsuranceAgent.Topics; 
 /// <summary>
@@ -10,7 +11,6 @@ namespace InsuranceAgent.Topics;
 /// </summary>
 public class CaliforniaResidentDemoTopic : TopicFlow {
     public const string ActivityId_ShowCard = "ShowCaliforniaResidentCard";
-    public const string ActivityId_DumpCtx = "DumpCTX";
 
     /// <summary>
     /// Keywords for topic routing.
@@ -50,7 +50,6 @@ public class CaliforniaResidentDemoTopic : TopicFlow {
 
         var isDevelopment =
             Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
-        var dumpCtxActivity = new DumpCtxActivity(ActivityId_DumpCtx, isDevelopment);
 
         // === Event hooks for AdaptiveCard lifecycle ===
         showCardActivity.CardJsonEmitted += (s, e) =>
@@ -76,7 +75,6 @@ public class CaliforniaResidentDemoTopic : TopicFlow {
 
         // === Enqueue activities ===
         Add(showCardActivity);
-        Add(dumpCtxActivity);
     }
 
 

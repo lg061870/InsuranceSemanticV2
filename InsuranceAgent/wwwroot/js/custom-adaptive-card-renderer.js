@@ -64,7 +64,8 @@
 
                 if (type === "radio") {
                     const checked = Array.from(groupInputs).find((i) => i.checked);
-                    formData[groupId] = checked ? (checked.value ?? "") : "";
+                    // Use null explicitly when nothing is selected, ensuring it's properly serialized as JSON null
+                    formData[groupId] = checked ? (checked.value ?? "") : null;
                 } else if (type === "checkbox") {
                     const vals = Array.from(groupInputs)
                         .filter((i) => i.checked)
@@ -82,12 +83,32 @@
         render(cardJson, container, onSubmit) {
             if (!cardJson || !container) return;
             container.innerHTML = "";
+            
+            // Store validation errors for processing
+            const validationErrors = cardJson.validationErrors || {};
 
             // BODY
             if (Array.isArray(cardJson.body)) {
                 cardJson.body.forEach((element) => {
                     const node = this.renderElement(element);
-                    container.appendChild(node);
+                    
+                    // Apply validation errors if present
+                    if (element.id && validationErrors[element.id]) {
+                        const errorMsg = validationErrors[element.id];
+                        // Add error styling
+                        if (node.classList) {
+                            node.classList.add("has-error");
+                        }
+                        
+                        // Add error message
+                        const errorDiv = el("div", "ac-error-message", { text: errorMsg });
+                        const wrapper = el("div", "ac-field-with-error");
+                        wrapper.appendChild(node);
+                        wrapper.appendChild(errorDiv);
+                        container.appendChild(wrapper);
+                    } else {
+                        container.appendChild(node);
+                    }
                 });
             }
 
@@ -105,6 +126,12 @@
         // Dispatch to element renderers; supports basic fallback
         renderElement(element) {
             if (!element || typeof element !== "object") return el("div");
+            
+            // Process any common attributes for all input fields
+            if (element.id && element.type && element.type.startsWith("Input.")) {
+                // Mark required fields for processing in specific renderers
+                element._isRequired = element.isRequired === true;
+            }
 
             switch (element.type) {
                 case "TextBlock": return this.renderTextBlock(element);
@@ -189,9 +216,25 @@
         },
 
         // ChoiceSet: compact → <select>, expanded → radios (single) or checkboxes (multi)
-        renderChoiceSet({ id, choices, value, style, isMultiSelect, isEnabled = true }) {
+        renderChoiceSet({ id, choices, value, style, errorStyle, isMultiSelect, isEnabled = true, isRequired = false, _isRequired = false }) {
             const wrap = el("div", "ac-input-container ac-choiceSetInput");
-            const vals = (value ?? "").split(",").filter(Boolean);
+            // Handle both string values and null/undefined
+            const vals = (value != null) ? String(value).split(",").filter(Boolean) : [];
+            
+            // Add a data attribute for better CSS targeting of required fields
+            if (id) {
+                wrap.setAttribute("data-field-id", id);
+            }
+            
+            // Mark required fields for styling
+            if (isRequired || _isRequired) {
+                wrap.setAttribute("data-field-required", "true");
+            }
+            
+            // Apply error styling if present, but preserve the expanded style
+            if (errorStyle === "error") {
+                wrap.setAttribute("data-field-error", "true");
+            }
 
             if (style === "expanded") {
                 const isMulti = !!isMultiSelect;
@@ -305,6 +348,32 @@
             }
             return document.createElement('div');
         }
+    };
+
+    // Apply required styling to form fields
+    function applyRequiredStyling() {
+        document.querySelectorAll('[data-field-required="true"]').forEach(field => {
+            field.classList.add('ac-required-field');
+            
+            // Find any labels in this field and add a required indicator
+            const labels = field.querySelectorAll('label');
+            labels.forEach(label => {
+                if (!label.querySelector('.ac-required-indicator')) {
+                    const indicator = document.createElement('span');
+                    indicator.className = 'ac-required-indicator';
+                    indicator.textContent = ' *';
+                    label.appendChild(indicator);
+                }
+            });
+        });
+    }
+    
+    // Hook into the render method to apply required styling after rendering
+    const originalRender = Renderer.render;
+    Renderer.render = function(cardJson, container, onSubmit) {
+        originalRender.call(this, cardJson, container, onSubmit);
+        // Apply styling after rendering
+        setTimeout(applyRequiredStyling, 0);
     };
 
     window.AdaptiveCardRenderer = Renderer;

@@ -32,7 +32,8 @@ public static class ServiceCollectionExtensions {
         services.AddScoped<IConversationContext>(sp =>
             new ConversationContext(
                 conversationId: Guid.NewGuid().ToString(),
-                userId: "anonymous"));
+                userId: "anonymous",
+                logger: sp.GetRequiredService<ILogger<ConversationContext>>()));
 
         // Workflow context: also scoped per conversation
         services.AddScoped<TopicWorkflowContext>();
@@ -134,5 +135,49 @@ public static class ServiceCollectionExtensions {
         using var sp = services.BuildServiceProvider();
         sp.GetRequiredService<TopicRegistry>().ConfigureTopics(sp);
         return services;
+    }
+    
+    /// <summary>
+    /// Resets the core conversation components in the service provider.
+    /// This includes the topic registry and conversation context.
+    /// </summary>
+    /// <param name="serviceProvider">The service provider containing the components to reset.</param>
+    public static void ResetConversaCore(this IServiceProvider serviceProvider) {
+        // Get the singleton TopicRegistry and reset it
+        var topicRegistry = serviceProvider.GetRequiredService<TopicRegistry>();
+        topicRegistry.Reset();
+        
+        // Re-register scoped topics with the registry
+        var scopedTopics = serviceProvider.GetServices<ITopic>();
+        foreach (var topic in scopedTopics) {
+            // Only register topics that aren't terminated
+            if (!(topic is Core.ITerminable terminable) || !terminable.IsTerminated) {
+                topicRegistry.RegisterTopic(topic);
+            }
+        }
+        
+        // Reset the topic event bus (singleton)
+        var topicEventBus = serviceProvider.GetRequiredService<ITopicEventBus>();
+        if (topicEventBus is Core.ITerminable terminableEventBus) {
+            terminableEventBus.Terminate();
+        }
+        
+        // Get the current conversation context and reset it
+        try {
+            var conversationContext = serviceProvider.GetRequiredService<IConversationContext>();
+            
+            // Since IConversationContext now implements ITerminable, we can call Reset() directly
+            // If for some reason it doesn't implement ITerminable, the explicit check is a safeguard
+            if (conversationContext is Core.ITerminable terminableContext && !terminableContext.IsTerminated) {
+                terminableContext.Terminate();
+            } else {
+                // Fallback for backward compatibility
+                conversationContext.Reset();
+            }
+        }
+        catch (Exception) {
+            // Conversation context might not be available in the current scope
+            // This is expected in some scenarios, so we can safely ignore this exception
+        }
     }
 }

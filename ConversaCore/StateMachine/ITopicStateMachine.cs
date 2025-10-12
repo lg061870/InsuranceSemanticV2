@@ -76,6 +76,19 @@ namespace ConversaCore.StateMachine
         /// </summary>
         /// <returns>The previous state, or null if there is no history</returns>
         TState? GetPreviousState();
+        
+        /// <summary>
+        /// Sets the state directly, bypassing transition rules and guards.
+        /// Use with caution as this may create an invalid state machine configuration.
+        /// </summary>
+        /// <param name="state">The state to force the machine into</param>
+        /// <param name="reason">Reason for forcing the state change</param>
+        void ForceState(TState state, string reason = null);
+        
+        /// <summary>
+        /// Clears the transition history while preserving the current state
+        /// </summary>
+        void ClearTransitionHistory();
     }
     
     /// <summary>

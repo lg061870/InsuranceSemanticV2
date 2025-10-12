@@ -213,7 +213,7 @@ public class InsuranceAgentService {
 
         // Add compliance trigger
         flow.Add(new TriggerTopicActivity("CollectCompliance", "ComplianceTopic", _logger, waitForCompletion: true));
-        
+
         // Add a simple activity to process the compliance data before continuing
         flow.Add(new SimpleActivity("ProcessComplianceData", (ctx, input) => {
             _logger.LogInformation("[InsuranceAgentService] Processing compliance data before decision tree");
@@ -222,393 +222,9 @@ public class InsuranceAgentService {
         }));
 
         // Add the complex compliance flowchart
-        flow.Add(
-            ConditionalActivity<TopicFlowActivity>.Switch(
-                "TCPAConsentSwitch",
-                ctx => {
-                    // Convert bool? to string for matching in the switch
-                    var tcpaConsent = ctx.GetValue<bool?>("tcpa_consent");
-                    return tcpaConsent == true ? "YES" : (tcpaConsent == false ? "NO" : "UNKNOWN");
-                },
-                new Dictionary<string, Func<string, TopicWorkflowContext, TopicFlowActivity>> {
-                    // TCPA YES branch
-                    ["YES"] = (id, ctx) => ConditionalActivity<TopicFlowActivity>.Switch(
-                        "CCPAInitialSwitch",
-                        ctx => {
-                            // Convert bool? to string for matching in the switch
-                            var ccpaAcknowledgment = ctx.GetValue<bool?>("ccpa_acknowledgment");
-                            return ccpaAcknowledgment == true ? "YES" : (ccpaAcknowledgment == false ? "NO" : "UNKNOWN");
-                        },
-                        new Dictionary<string, Func<string, TopicWorkflowContext, TopicFlowActivity>> {
-                            // TCPA YES + CCPA YES
-                            ["YES"] = (id2, ctx2) => ConditionalActivity<TopicFlowActivity>.If(
-                                "RESIDENCY_CHECK_TCPA_YES_CCPA_YES",
-                                ctx2 => ctx2.GetValue<bool?>("is_california_resident").HasValue,
-                                // Has CA residency information already - process it
-                                (id3, ctx3) => ConditionalActivity<TopicFlowActivity>.If(
-                                    "CA_VERIFY_YES",
-                                    ctx3 => ctx3.GetValue<bool?>("is_california_resident") == true,
-                                    // F_CA: Full marketing + CA protections - Trigger MarketingTypeOneTopic
-                                    (id4, ctx4) => new TriggerTopicActivity(
-                                        id4,
-                                        "MarketingTypeOneTopic",
-                                        _logger,
-                                        waitForCompletion: false,
-                                        conversationContext: _context
-                                    ),
-                                    // F_NON_CA_CORRECTED: Full marketing (CCPA corrected) - Trigger MarketingTypeOneTopic
-                                    (id4, ctx4) => new TriggerTopicActivity(
-                                        id4,
-                                        "MarketingTypeOneTopic",
-                                        _logger,
-                                        waitForCompletion: false,
-                                        conversationContext: _context
-                                    )
-                                ),
-                                // Need to collect California residency info first
-                                (id3, ctx3) => {
-                                    var activity = new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
-                                        "CA_VERIFY_TCPA_YES_CCPA_YES", 
-                                        _wfContext,
-                                        cardFactory: card => {
-                                            // Setup card with appropriate messaging for this path
-                                            var cardObj = card.Create();
-                                            return cardObj;
-                                        },
-                                        onTransition: (from, to, data) => {
-                                            // Only process after successful validation when activity is completed
-                                            if (to == ActivityState.Completed && data is CaliforniaResidentModel model) {
-                                                // Store the residency status and zip validation result
-                                                bool isCaliforniaResident = model.IsCaliforniaResident ?? false;
-                                                bool hasValidZip = model.HasValidCaliforniaZip();
-                                                _wfContext.SetValue("is_california_resident", isCaliforniaResident);
-                                                _wfContext.SetValue("has_valid_ca_zip", hasValidZip);
-                                                
-                                                if (isCaliforniaResident && hasValidZip) {
-                                                    // F_CA: Full marketing with CA protections
-                                                    _wfContext.SetValue("marketing_path", "full_with_ca_protection");
-                                                    _wfContext.SetValue("next_topic", "MarketingTypeOneTopic");
-                                                } else {
-                                                    // F_NON_CA: Full marketing standard path
-                                                    _wfContext.SetValue("marketing_path", "full_marketing_standard");
-                                                    _wfContext.SetValue("next_topic", "MarketingTypeOneTopic");
-                                                }
-                                            }
-                                        }
-                                    );
-                                    
-                                    return activity;
-                                }
-                            ),
-                            // TCPA YES + CCPA NO
-                            ["NO"] = (id2, ctx2) => new TriggerTopicActivity(
-                                id2,
-                                "MarketingTypeOneTopic",
-                                _logger,
-                                waitForCompletion: false,
-                                conversationContext: _context
-                            ),
-                            // TCPA YES + CCPA UNKNOWN
-                            ["UNKNOWN"] = (id2, ctx2) => ConditionalActivity<TopicFlowActivity>.If(
-                                "RESIDENCY_CHECK_TCPA_YES_CCPA_UNKNOWN",
-                                ctx2 => ctx2.GetValue<bool?>("is_california_resident").HasValue,
-                                // Has CA residency information already - process it
-                                (id3, ctx3) => ConditionalActivity<TopicFlowActivity>.If(
-                                    "CA_VERIFY_UNKNOWN",
-                                    ctx3 => ctx3.GetValue<bool?>("is_california_resident") == true,
-                                    // H_CA: Marketing OK, mandatory CA protection
-                                    (id4, ctx4) => new SimpleActivity(id4, (c, d) => {
-                                        // H_CA
-                                        c.SetValue("marketing_path", "marketing_with_ca_protection");
-                                        c.SetValue("next_topic", "LeadQualificationTopic");
-                                        return Task.FromResult<object?>(null);
-                                    }),
-                                    // H_NON_CA: Marketing OK, optional disclosures
-                                    (id4, ctx4) => new SimpleActivity(id4, (c, d) => {
-                                        // H_NON_CA
-                                        c.SetValue("marketing_path", "marketing_optional_disclosure");
-                                        c.SetValue("next_topic", "LeadQualificationTopic");
-                                        return Task.FromResult<object?>(null);
-                                    })
-                                ),
-                                // Need to collect California residency info first
-                                (id3, ctx3) => {
-                                    var activity = new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
-                                        "CA_VERIFY_TCPA_YES_CCPA_UNKNOWN", 
-                                        _wfContext,
-                                        cardFactory: card => {
-                                            // Setup card with appropriate messaging for this path
-                                            var cardObj = card.Create();
-                                            return cardObj;
-                                        },
-                                        onTransition: (from, to, data) => {
-                                            // Only process after successful validation when activity is completed
-                                            if (to == ActivityState.Completed && data is CaliforniaResidentModel model) {
-                                                // Store the residency status and zip validation result
-                                                bool isCaliforniaResident = model.IsCaliforniaResident ?? false;
-                                                bool hasValidZip = model.HasValidCaliforniaZip();
-                                                _wfContext.SetValue("is_california_resident", isCaliforniaResident);
-                                                _wfContext.SetValue("has_valid_ca_zip", hasValidZip);
-                                                
-                                                if (isCaliforniaResident && hasValidZip) {
-                                                    // H_CA: Marketing OK, mandatory CA protection
-                                                    _wfContext.SetValue("marketing_path", "marketing_with_ca_protection");
-                                                    _wfContext.SetValue("next_topic", "MarketingTypeOneTopic");
-                                                } else {
-                                                    // H_NON_CA: Marketing OK, optional disclosures
-                                                    _wfContext.SetValue("marketing_path", "marketing_optional_disclosure");
-                                                    _wfContext.SetValue("next_topic", "MarketingTypeOneTopic");
-                                                }
-                                            }
-                                        }
-                                    );
-                                    
-                                    return activity;
-                                }
-                            )
-                        },
-                        defaultBranch: "UNKNOWN"
-                    ),
-                    // TCPA NO branch
-                    ["NO"] = (id, ctx) => ConditionalActivity<TopicFlowActivity>.Switch(
-                        "CCPA_NO_TCPA_Switch",
-                        ctx => {
-                            // Convert bool? to string for matching in the switch
-                            var ccpaAcknowledgment = ctx.GetValue<bool?>("ccpa_acknowledgment");
-                            return ccpaAcknowledgment == true ? "YES" : (ccpaAcknowledgment == false ? "NO" : "UNKNOWN");
-                        },
-                        new Dictionary<string, Func<string, TopicWorkflowContext, TopicFlowActivity>> {
-                            // TCPA NO + CCPA YES
-                            ["YES"] = (id2, ctx2) => ConditionalActivity<TopicFlowActivity>.If(
-                                "RESIDENCY_CHECK_TCPA_NO_CCPA_YES",
-                                ctx2 => ctx2.GetValue<bool?>("is_california_resident").HasValue,
-                                // Has CA residency information already - process it
-                                (id3, ctx3) => ConditionalActivity<TopicFlowActivity>.If(
-                                    "CA_VERIFY_TCPA_NO_CCPA_YES",
-                                    ctx3 => ctx3.GetValue<bool?>("is_california_resident") == true,
-                                    // I_CA: No marketing, CA disclosures required
-                                    (id4, ctx4) => new SimpleActivity(id4, (c, d) => {
-                                        // I_CA
-                                        c.SetValue("marketing_path", "no_marketing_ca_disclosure");
-                                        c.SetValue("next_topic", "InformationalContentTopic");
-                                        return Task.FromResult<object?>(null);
-                                    }),
-                                    // I_NON_CA: No marketing, optional disclosures
-                                    (id4, ctx4) => new SimpleActivity(id4, (c, d) => {
-                                        // I_NON_CA
-                                        c.SetValue("marketing_path", "no_marketing_optional");
-                                        c.SetValue("next_topic", "InformationalContentTopic");
-                                        return Task.FromResult<object?>(null);
-                                    })
-                                ),
-                                // Need to collect California residency info first
-                                (id3, ctx3) => {
-                                    var activity = new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
-                                        "CA_VERIFY_TCPA_NO_CCPA_YES", 
-                                        _wfContext,
-                                        cardFactory: card => {
-                                            // Setup card with appropriate messaging for this path
-                                            var cardObj = card.Create();
-                                            return cardObj;
-                                        },
-                                        onTransition: (from, to, data) => {
-                                            // Only process after successful validation when activity is completed
-                                            if (to == ActivityState.Completed && data is CaliforniaResidentModel model) {
-                                                // Store the residency status and zip validation result
-                                                bool isCaliforniaResident = model.IsCaliforniaResident ?? false;
-                                                bool hasValidZip = model.HasValidCaliforniaZip();
-                                                _wfContext.SetValue("is_california_resident", isCaliforniaResident);
-                                                _wfContext.SetValue("has_valid_ca_zip", hasValidZip);
-                                                
-                                                if (isCaliforniaResident && hasValidZip) {
-                                                    // I_CA: No marketing, CA disclosures required
-                                                    _wfContext.SetValue("marketing_path", "no_marketing_ca_disclosure");
-                                                    _wfContext.SetValue("next_topic", "InformationalContentTopic");
-                                                } else {
-                                                    // I_NON_CA: No marketing, optional disclosures
-                                                    _wfContext.SetValue("marketing_path", "no_marketing_optional");
-                                                    _wfContext.SetValue("next_topic", "InformationalContentTopic");
-                                                }
-                                            }
-                                        }
-                                    );
-                                    
-                                    return activity;
-                                }
-                            ),
-                            // TCPA NO + CCPA NO
-                            ["NO"] = (id2, ctx2) => new SimpleActivity(id2, (c, d) => {
-                                // J_NON_CA
-                                c.SetValue("marketing_path", "blocked_minimal");
-                                c.SetValue("next_topic", "BasicNavigationTopic");
-                                return Task.FromResult<object?>(null);
-                            }),
-                            // TCPA NO + CCPA UNKNOWN
-                            ["UNKNOWN"] = (id2, ctx2) => ConditionalActivity<TopicFlowActivity>.If(
-                                "RESIDENCY_CHECK_TCPA_NO_CCPA_UNKNOWN",
-                                ctx2 => ctx2.GetValue<bool?>("is_california_resident").HasValue,
-                                // Has CA residency information already - process it
-                                (id3, ctx3) => ConditionalActivity<TopicFlowActivity>.If(
-                                    "CA_VERIFY_TCPA_NO_CCPA_UNKNOWN",
-                                    ctx3 => ctx3.GetValue<bool?>("is_california_resident") == true,
-                                    // K_CA: No marketing, mandatory CA protection
-                                    (id4, ctx4) => new SimpleActivity(id4, (c, d) => {
-                                        // K_CA
-                                        c.SetValue("marketing_path", "no_marketing_mandatory_ca");
-                                        c.SetValue("next_topic", "InformationalContentTopic");
-                                        return Task.FromResult<object?>(null);
-                                    }),
-                                    // K_NON_CA: No marketing, minimal protection
-                                    (id4, ctx4) => new SimpleActivity(id4, (c, d) => {
-                                        // K_NON_CA
-                                        c.SetValue("marketing_path", "no_marketing_minimal");
-                                        c.SetValue("next_topic", "InformationalContentTopic");
-                                        return Task.FromResult<object?>(null);
-                                    })
-                                ),
-                                // Need to collect California residency info first
-                                (id3, ctx3) => {
-                                    var activity = new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
-                                        "CA_VERIFY_TCPA_NO_CCPA_UNKNOWN", 
-                                        _wfContext,
-                                        cardFactory: card => {
-                                            // Setup card with appropriate messaging for this path
-                                            var cardObj = card.Create();
-                                            return cardObj;
-                                        },
-                                        onTransition: (from, to, data) => {
-                                            // Only process after successful validation when activity is completed
-                                            if (to == ActivityState.Completed && data is CaliforniaResidentModel model) {
-                                                // Store the residency status and zip validation result
-                                                bool isCaliforniaResident = model.IsCaliforniaResident ?? false;
-                                                bool hasValidZip = model.HasValidCaliforniaZip();
-                                                _wfContext.SetValue("is_california_resident", isCaliforniaResident);
-                                                _wfContext.SetValue("has_valid_ca_zip", hasValidZip);
-                                                
-                                                if (isCaliforniaResident && hasValidZip) {
-                                                    // K_CA: No marketing, mandatory CA protection
-                                                    _wfContext.SetValue("marketing_path", "no_marketing_mandatory_ca");
-                                                    _wfContext.SetValue("next_topic", "InformationalContentTopic");
-                                                } else {
-                                                    // K_NON_CA: No marketing, minimal protection
-                                                    _wfContext.SetValue("marketing_path", "no_marketing_minimal");
-                                                    _wfContext.SetValue("next_topic", "InformationalContentTopic");
-                                                }
-                                            }
-                                        }
-                                    );
-                                    
-                                    return activity;
-                                }
-                            )
-                        },
-                        defaultBranch: "UNKNOWN"
-                    ),
-                    // TCPA UNKNOWN branch
-                    ["UNKNOWN"] = (id, ctx) => ConditionalActivity<TopicFlowActivity>.Switch(
-                        "CCPA_UNKNOWN_TCPA_Switch",
-                        ctx => {
-                            // Convert bool? to string for matching in the switch
-                            var ccpaAcknowledgment = ctx.GetValue<bool?>("ccpa_acknowledgment");
-                            return ccpaAcknowledgment == true ? "YES" : (ccpaAcknowledgment == false ? "NO" : "UNKNOWN");
-                        },
-                        new Dictionary<string, Func<string, TopicWorkflowContext, TopicFlowActivity>> {
-                            // TCPA UNKNOWN + CCPA YES - Show California residency verification card
-                            ["YES"] = (id2, ctx2) => {
-                                var activity = new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
-                                    "CA_VERIFY_TCPA_UNKNOWN_CCPA_YES", 
-                                    _wfContext,
-                                    cardFactory: card => {
-                                        // Setup card with appropriate messaging for this path
-                                        var cardObj = card.Create();
-                                        // Note: Cannot modify card title/description directly as it's in the JSON structure
-                                        return cardObj;
-                                    },
-                                    onTransition: (from, to, data) => {
-                                        // Only process after successful validation when activity is completed
-                                        if (to == ActivityState.Completed && data is CaliforniaResidentModel model) {
-                                            // Store the residency status and zip validation result
-                                            // This happens AFTER validation has succeeded
-                                            bool isCaliforniaResident = model.IsCaliforniaResident ?? false;
-                                            bool hasValidZip = model.HasValidCaliforniaZip();
-                                            _wfContext.SetValue("is_california_resident", isCaliforniaResident);
-                                            _wfContext.SetValue("has_valid_ca_zip", hasValidZip);
-                                            
-                                            if (isCaliforniaResident && hasValidZip) {
-                                                // L_CA: No marketing - TCPA risk + CA requirements
-                                                _wfContext.SetValue("marketing_path", "no_marketing_tcpa_risk_ca");
-                                                _wfContext.SetValue("next_topic", "InformationalContentTopic");
-                                            } else {
-                                                // L_NON_CA: No marketing - TCPA risk only
-                                                _wfContext.SetValue("marketing_path", "no_marketing_tcpa_risk");
-                                                _wfContext.SetValue("next_topic", "InformationalContentTopic");
-                                            }
-                                        }
-                                    }
-                                );
-                                
-                                // Add validation failure handler
-                                activity.ValidationFailed += (s, e) => {
-                                    _logger.LogWarning("[CA Resident] TCPA_UNKNOWN_CCPA_YES Validation failed: {Error}", 
-                                        e.Exception?.Message ?? "No specific error");
-                                    
-                                    // Just log the validation error for debugging
-                                    _logger.LogWarning("[CA Resident] Exception type: {Type}", 
-                                        e.Exception?.GetType().Name ?? "Unknown");
-                                };
-                                
-                                return activity;
-                            },
-                            // TCPA UNKNOWN + CCPA NO
-                            ["NO"] = (id2, ctx2) => new SimpleActivity(id2, (c, d) => {
-                                // M_NON_CA
-                                c.SetValue("marketing_path", "maximum_restriction");
-                                c.SetValue("next_topic", "BasicNavigationTopic");
-                                return Task.FromResult<object?>(null);
-                            }),
-                            // TCPA UNKNOWN + CCPA UNKNOWN - Show California residency verification card
-                            ["UNKNOWN"] = (id2, ctx2) => {
-                                var activity = new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
-                                    "CA_VERIFY_TCPA_UNKNOWN_CCPA_UNKNOWN", 
-                                    _wfContext,
-                                    cardFactory: card => {
-                                        // Setup card with appropriate messaging for this path
-                                        var cardObj = card.Create();
-                                        // Note: Cannot modify card title/description directly as it's in the JSON structure
-                                        return cardObj;
-                                    },
-                                    onTransition: (from, to, data) => {
-                                        // Only process after successful validation when activity is completed
-                                        if (to == ActivityState.Completed && data is CaliforniaResidentModel model) {
-                                            // Store the residency status and zip validation result
-                                            // This happens AFTER validation has succeeded
-                                            bool isCaliforniaResident = model.IsCaliforniaResident ?? false;
-                                            bool hasValidZip = model.HasValidCaliforniaZip();
-                                            _wfContext.SetValue("is_california_resident", isCaliforniaResident);
-                                            _wfContext.SetValue("has_valid_ca_zip", hasValidZip);
-                                            
-                                            if (isCaliforniaResident && hasValidZip) {
-                                                // N_CA: Conservative + mandatory CA protection
-                                                _wfContext.SetValue("marketing_path", "conservative_ca_protection");
-                                                _wfContext.SetValue("next_topic", "BasicNavigationTopic");
-                                            } else {
-                                                // N_NON_CA: Conservative approach
-                                                _wfContext.SetValue("marketing_path", "conservative_approach");
-                                                _wfContext.SetValue("next_topic", "BasicNavigationTopic");
-                                            }
-                                        }
-                                    }
-                                );
-                                
-                                return activity;
-                            }
-                        },
-                        defaultBranch: "UNKNOWN"
-                    )
-                },
-                defaultBranch: "UNKNOWN"
-            )
-        );
+        flow.AddRange(
+            ComplianceFlowActivities()
+            );
 
         _logger.LogInformation("[InsuranceAgentService] Domain-specific activities added to ConversationStartTopic");
     }
@@ -632,7 +248,7 @@ public class InsuranceAgentService {
             flow.RemoveActivity("CollectCompliance");
             flow.RemoveActivity("ProcessComplianceData");
             flow.RemoveActivity("TCPAConsentSwitch");
-            
+
             // Now use the extracted method to add domain-specific activities
             AddDomainActivitiesToStartTopic(flow);
 
@@ -678,7 +294,7 @@ public class InsuranceAgentService {
                 topicFlow.Reset();
             }
         }
-        
+
         // --- SPECIAL HANDLING FOR CONVERSATION START TOPIC ---
         // This is critical for properly restarting the conversation
         var conversationStartTopic = _topicRegistry.GetTopic("ConversationStart") as TopicFlow;
@@ -686,67 +302,67 @@ public class InsuranceAgentService {
             // Clear both context flags to be thorough
             conversationStartTopic.Context.SetValue("ConversationStartTopic.HasRun", false);
             _context.SetValue("ConversationStartTopic.HasRun", false);
-            
+
             // Force clear any other related flags that might prevent restart
             _context.SetValue("Global_ConversationActive", false);
             _context.SetValue("Global_TopicHistory", new List<string>());
             _context.SetValue("Global_UserInteractionCount", 0);
-            
+
             // Ensure state machine is properly reset
             // Force ConversationStartTopic to Idle state to fix issues with multiple resets
             // This uses reflection to access the protected _fsm field
-            var stateMachine = conversationStartTopic.GetType().BaseType?.GetField("_fsm", 
-                System.Reflection.BindingFlags.NonPublic | 
+            var stateMachine = conversationStartTopic.GetType().BaseType?.GetField("_fsm",
+                System.Reflection.BindingFlags.NonPublic |
                 System.Reflection.BindingFlags.Instance)?.GetValue(conversationStartTopic);
-            
+
             if (stateMachine is ITopicStateMachine<ConversaCore.TopicFlow.TopicFlow.FlowState> fsm) {
                 // Use our new ForceState method to guarantee proper state
-                fsm.ForceState(ConversaCore.TopicFlow.TopicFlow.FlowState.Idle, 
+                fsm.ForceState(ConversaCore.TopicFlow.TopicFlow.FlowState.Idle,
                     "Forced reset to Idle in ResetConversationAsync");
-                
+
                 // Also clear transition history for a clean slate
                 fsm.ClearTransitionHistory();
-                
+
                 _logger.LogInformation("[InsuranceAgentService] ConversationStartTopic state machine forced to Idle state");
             }
-            
+
             // CRITICAL: Don't add domain activities here, they will be added in StartConversationAsync
             // Removed: AddDomainActivitiesToStartTopic(conversationStartTopic);
-            
+
             // CRITICAL FIX: Also force ComplianceTopic to Idle state and clear all its flags
             var complianceTopic = _topicRegistry.GetTopic("ComplianceTopic") as TopicFlow;
             if (complianceTopic != null) {
                 // Force reset state machine
-                var complianceStateMachine = complianceTopic.GetType().BaseType?.GetField("_fsm", 
-                    System.Reflection.BindingFlags.NonPublic | 
+                var complianceStateMachine = complianceTopic.GetType().BaseType?.GetField("_fsm",
+                    System.Reflection.BindingFlags.NonPublic |
                     System.Reflection.BindingFlags.Instance)?.GetValue(complianceTopic);
-                
+
                 if (complianceStateMachine is ITopicStateMachine<ConversaCore.TopicFlow.TopicFlow.FlowState> complianceFsm) {
-                    complianceFsm.ForceState(ConversaCore.TopicFlow.TopicFlow.FlowState.Idle, 
+                    complianceFsm.ForceState(ConversaCore.TopicFlow.TopicFlow.FlowState.Idle,
                         "Forced reset to Idle in ResetConversationAsync");
                     complianceFsm.ClearTransitionHistory();
                     _logger.LogInformation("[InsuranceAgentService] ComplianceTopic state machine forced to Idle state");
                 }
-                
+
                 // Clear any activity flags
                 _wfContext.SetValue("ShowComplianceCard_Sent", null);
                 _wfContext.SetValue("ShowComplianceCard_Rendered", null);
                 _wfContext.SetValue("ShowComplianceCard_Completed", null);
                 _wfContext.SetValue("ComplianceTopic_Completed", null);
                 _wfContext.SetValue("ComplianceTopic_HasRun", null);
-                
+
                 // Clear out any compliance data to force a fresh card
                 // Set empty/default values instead of trying to remove keys
                 _context.SetValue("compliance_data", new Dictionary<string, object>());
                 _context.SetValue("tcpa_consent", false);
                 _context.SetValue("ccpa_acknowledgment", false);
-                
+
                 _logger.LogInformation("[InsuranceAgentService] ComplianceTopic activity flags and compliance data cleared");
             }
-            
+
             _logger.LogInformation("[InsuranceAgentService] ConversationStartTopic.HasRun flag cleared and conversation flags reset");
         }
-        
+
         // Log completion of reset to help with debugging
         _logger.LogInformation("[InsuranceAgentService] Conversation reset completed - all topics and context cleared");
 
@@ -907,5 +523,184 @@ public class InsuranceAgentService {
 
             await HandleSubTopicCompletion(pendingSubTopic.SubTopic, subTopicResult);
         }
+    }
+
+    // ---- BOOL→STRING helpers for readability
+    private static bool IsYes(TopicWorkflowContext ctx, string key)
+        => ctx.GetValue<bool?>(key) == true;
+    private static bool IsNo(TopicWorkflowContext ctx, string key)
+        => ctx.GetValue<bool?>(key) == false;
+    private static bool IsUnknown(TopicWorkflowContext ctx, string key)
+        => ctx.GetValue<bool?>(key) is null;
+
+    // ---- Simple factory for "no-op" skip branch
+
+    private TopicFlowActivity IfCase(string id, Func<TopicWorkflowContext, bool> condition, TopicFlowActivity activity) {
+        return ConditionalActivity<TopicFlowActivity>.If(
+            id,
+            condition,
+            (yesId, ctx) => activity,
+            (noId, ctx) => Skip(id));
+    }
+
+    private static TopicFlowActivity Skip(string id)
+        => new SimpleActivity($"{id}_SKIP", (c, d) => Task.FromResult<object?>(null));
+
+    private TopicFlowActivity ToMarketingT1Topic(string id = "ToMarketingT1") =>
+        new TriggerTopicActivity(id,
+            "MarketingTypeOneTopic",
+            _logger,
+            waitForCompletion: false,
+            conversationContext: _context);
+
+    private TopicFlowActivity ToInfoTopic(string id = "ToInfo") =>
+        new TriggerTopicActivity(id,
+            "InformationalContentTopic",
+            _logger,
+            waitForCompletion: false,
+            conversationContext: _context);
+
+    private TopicFlowActivity ToBasicNavTopic(string id = "ToBasicNav") =>
+        new TriggerTopicActivity(id,
+            "BasicNavigationTopic",
+            _logger,
+            waitForCompletion: false,
+            conversationContext: _context);
+
+    private TopicFlowActivity AskCaliforniaResidency(string id, string nextTopic, string marketingPath) {
+        return new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
+            id,
+            _wfContext,
+            cardFactory: c => c.Create(),
+            onTransition: (from, to, data) => {
+                if (to == ActivityState.Completed && data is CaliforniaResidentModel m) {
+                    bool isCA = m.IsCaliforniaResident ?? false;
+                    bool zipOK = m.HasValidCaliforniaZip();
+                    _wfContext.SetValue("is_california_resident", isCA);
+                    _wfContext.SetValue("has_valid_ca_zip", zipOK);
+
+                    if (isCA && zipOK)
+                        _wfContext.SetValue("marketing_path", marketingPath + "_ca");
+                    else
+                        _wfContext.SetValue("marketing_path", marketingPath + "_nonca");
+                    _wfContext.SetValue("next_topic", nextTopic);
+                }
+            });
+    }
+
+    private List<TopicFlowActivity>? ComplianceFlowActivities() {
+        return new List<TopicFlowActivity> {
+            // ───────────── TCPA YES ─────────────
+            IfCase("TCPA_YES_CCPA_YES", ctx =>
+                IsYes(ctx,"tcpa_consent") && IsYes(ctx,"ccpa_acknowledgment"),
+                ConditionalActivity<TopicFlowActivity>.If(
+                    "HAS_CA_INFO_YES_YES",
+                    c => c.GetValue<bool?>("is_california_resident").HasValue,
+                    (id,c) => ToMarketingT1Topic("CA_KNOWN_YES_YES"),
+                    (id,c) => new CompositeActivity("ASK_CA_YES_YES", new List<TopicFlowActivity>{
+                        AskCaliforniaResidency("CA_CARD_YES_YES","MarketingTypeOneTopic","full_with_ca_protection"),
+                        ToMarketingT1Topic("AFTER_CA_YES_YES")
+                    }))
+            ),
+
+            IfCase("TCPA_YES_CCPA_NO", ctx =>
+                IsYes(ctx,"tcpa_consent") && IsNo(ctx,"ccpa_acknowledgment"),
+                ToMarketingT1Topic("YES_NO_DIRECT")),
+
+            IfCase("TCPA_YES_CCPA_UNKNOWN", ctx =>
+                IsYes(ctx,"tcpa_consent") && IsUnknown(ctx,"ccpa_acknowledgment"),
+                ConditionalActivity<TopicFlowActivity>.If(
+                    "HAS_CA_INFO_YES_UNKNOWN",
+                    c => c.GetValue<bool?>("is_california_resident").HasValue,
+                    // Already know residency
+                    (id,c) => new SimpleActivity(id,(cc,dd)=>{
+                        bool isCA = cc.GetValue<bool?>("is_california_resident")==true;
+                        cc.SetValue("marketing_path", isCA ? "marketing_with_ca_protection" : "marketing_optional_disclosure");
+                        cc.SetValue("next_topic","LeadQualificationTopic");
+                        return Task.FromResult<object?>(null);
+                    }),
+                    // Ask for residency
+                    (id,c) => new CompositeActivity("ASK_CA_YES_UNKNOWN", new List<TopicFlowActivity>{
+                        AskCaliforniaResidency("CA_CARD_YES_UNKNOWN","MarketingTypeOneTopic","marketing_with_ca_protection"),
+                        ToMarketingT1Topic("AFTER_CA_YES_UNKNOWN")
+                    }))
+            ),
+
+            // ───────────── TCPA NO ─────────────
+            IfCase("TCPA_NO_CCPA_YES", ctx =>
+                IsNo(ctx,"tcpa_consent") && IsYes(ctx,"ccpa_acknowledgment"),
+                ConditionalActivity<TopicFlowActivity>.If(
+                    "HAS_CA_INFO_NO_YES",
+                    c => c.GetValue<bool?>("is_california_resident").HasValue,
+                    (id,c)=> new SimpleActivity(id,(cc,dd)=>{
+                        bool isCA = cc.GetValue<bool?>("is_california_resident")==true;
+                        cc.SetValue("marketing_path", isCA?"no_marketing_ca_disclosure":"no_marketing_optional");
+                        cc.SetValue("next_topic","InformationalContentTopic");
+                        return Task.FromResult<object?>(null);
+                    }),
+                    (id,c)=> new CompositeActivity("ASK_CA_NO_YES", new List<TopicFlowActivity>{
+                        AskCaliforniaResidency("CA_CARD_NO_YES","InformationalContentTopic","no_marketing"),
+                        ToInfoTopic("AFTER_CA_NO_YES")
+                    }))
+            ),
+
+            IfCase("TCPA_NO_CCPA_NO", ctx =>
+                IsNo(ctx, "tcpa_consent") && IsNo(ctx, "ccpa_acknowledgment"),
+                new CompositeActivity("NO_NO_BLOCKED_SEQUENCE", new List<TopicFlowActivity> {
+                    new SimpleActivity("NO_NO_BLOCKED", (c, d) => {
+                        c.SetValue("marketing_path", "blocked_minimal");
+                        c.SetValue("next_topic", "BasicNavigationTopic");
+                        return Task.FromResult<object?>(null);
+                    }),
+                    ToBasicNavTopic("AFTER_NO_NO")
+                })
+            ),
+
+            IfCase("TCPA_NO_CCPA_UNKNOWN", ctx =>
+                IsNo(ctx,"tcpa_consent") && IsUnknown(ctx,"ccpa_acknowledgment"),
+                ConditionalActivity<TopicFlowActivity>.If(
+                    "HAS_CA_INFO_NO_UNKNOWN",
+                    c => c.GetValue<bool?>("is_california_resident").HasValue,
+                    (id,c)=> new SimpleActivity(id,(cc,dd)=>{
+                        bool isCA = cc.GetValue<bool?>("is_california_resident")==true;
+                        cc.SetValue("marketing_path", isCA?"no_marketing_mandatory_ca":"no_marketing_minimal");
+                        cc.SetValue("next_topic","InformationalContentTopic");
+                        return Task.FromResult<object?>(null);
+                    }),
+                    (id,c)=> new CompositeActivity("ASK_CA_NO_UNKNOWN", new List<TopicFlowActivity>{
+                        AskCaliforniaResidency("CA_CARD_NO_UNKNOWN","InformationalContentTopic","no_marketing"),
+                        ToInfoTopic("AFTER_CA_NO_UNKNOWN")
+                    }))
+            ),
+
+            // ───────────── TCPA UNKNOWN ─────────────
+            IfCase("TCPA_UNKNOWN_CCPA_YES", ctx =>
+                IsUnknown(ctx,"tcpa_consent") && IsYes(ctx,"ccpa_acknowledgment"),
+                new CompositeActivity("CA_UNKNOWN_YES", new List<TopicFlowActivity>{
+                    AskCaliforniaResidency("CA_CARD_UNKNOWN_YES","InformationalContentTopic","no_marketing_tcpa_risk"),
+                    ToInfoTopic("AFTER_CA_UNKNOWN_YES")
+                })
+            ),
+
+            IfCase("TCPA_UNKNOWN_CCPA_NO", ctx =>
+                IsUnknown(ctx, "tcpa_consent") && IsNo(ctx, "ccpa_acknowledgment"),
+                new CompositeActivity("UNKNOWN_NO_SEQUENCE", new List<TopicFlowActivity> {
+                    new SimpleActivity("UNKNOWN_NO", (c, d) => {
+                        c.SetValue("marketing_path", "maximum_restriction");
+                        c.SetValue("next_topic", "BasicNavigationTopic");
+                        return Task.FromResult<object?>(null);
+                    }),
+                    ToBasicNavTopic("AFTER_UNKNOWN_NO")
+                })
+            ),
+
+            IfCase("TCPA_UNKNOWN_CCPA_UNKNOWN", ctx =>
+                IsUnknown(ctx,"tcpa_consent") && IsUnknown(ctx,"ccpa_acknowledgment"),
+                new CompositeActivity("CA_UNKNOWN_UNKNOWN", new List<TopicFlowActivity>{
+                    AskCaliforniaResidency("CA_CARD_UNKNOWN_UNKNOWN","BasicNavigationTopic","conservative"),
+                    ToBasicNavTopic("AFTER_CA_UNKNOWN_UNKNOWN")
+                })
+            )
+        };
     }
 }

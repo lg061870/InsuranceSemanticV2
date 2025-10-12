@@ -1,4 +1,5 @@
-﻿using System;
+﻿using ConversaCore.Events;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -8,8 +9,16 @@ namespace ConversaCore.TopicFlow {
     /// <summary>
     /// An activity that contains and orchestrates a sequence of child activities.
     /// </summary>
-    public class CompositeActivity : TopicFlowActivity {
+    public class CompositeActivity : TopicFlowActivity, IAdaptiveCardActivity {
         private readonly IList<TopicFlowActivity> _activities;
+
+        public event EventHandler<CardJsonEventArgs> CardJsonEmitted;
+        public event EventHandler<CardJsonEventArgs> CardJsonSending;
+        public event EventHandler<CardJsonEventArgs> CardJsonSent;
+        public event EventHandler<CardJsonRenderedEventArgs> CardJsonRendered;
+        public event EventHandler<CardDataReceivedEventArgs> CardDataReceived;
+        public event EventHandler<ModelBoundEventArgs> ModelBound;
+        public event EventHandler<ValidationFailedEventArgs> ValidationFailed;
 
         /// <summary>
         /// Gets a value indicating whether the context of this composite activity is isolated.
@@ -103,6 +112,10 @@ namespace ConversaCore.TopicFlow {
             // Otherwise, just advance to the next activity in the queue
             return ActivityResult.Continue();
 
+        }
+
+        public void OnInputCollected(AdaptiveCardInputCollectedEventArgs e) {
+            throw new NotImplementedException();
         }
     }
 }

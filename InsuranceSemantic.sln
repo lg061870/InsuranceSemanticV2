@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConversaCore", "ConversaCor
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WorkflowEditor", "WorkflowEditor\WorkflowEditor.csproj", "{DA9E428C-CC65-4FF1-9A0A-DBE19D26A79F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConversaCore.Tests", "ConversaCore.Tests\ConversaCore.Tests.csproj", "{294822AD-48BE-4D72-82F0-285D1C0E14A0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{DA9E428C-CC65-4FF1-9A0A-DBE19D26A79F}.Release|x64.Build.0 = Release|Any CPU
 		{DA9E428C-CC65-4FF1-9A0A-DBE19D26A79F}.Release|x86.ActiveCfg = Release|Any CPU
 		{DA9E428C-CC65-4FF1-9A0A-DBE19D26A79F}.Release|x86.Build.0 = Release|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Debug|x64.Build.0 = Debug|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Debug|x86.Build.0 = Debug|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Release|x64.ActiveCfg = Release|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Release|x64.Build.0 = Release|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Release|x86.ActiveCfg = Release|Any CPU
+		{294822AD-48BE-4D72-82F0-285D1C0E14A0}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

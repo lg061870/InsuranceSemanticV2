@@ -34,4 +34,9 @@ public sealed class EndOfConversationTopic : TopicFlow
         var m = message?.ToLowerInvariant() ?? string.Empty;
         return Task.FromResult(_cues.Any(m.Contains) ? 0.85f : 0.0f);
     }
+        public override void Reset()
+        {
+            ClearActivities();
+            Add(new EndActivity(EndActivityId, "👋 Thanks for chatting. Have a great day!"));
+        }
 }

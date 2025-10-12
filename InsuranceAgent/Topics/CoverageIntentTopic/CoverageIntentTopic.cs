@@ -58,7 +58,6 @@ namespace InsuranceAgent.Topics.CoverageIntentTopic
 
             var isDevelopment =
                 Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
-            var dumpCtxActivity = new DumpCtxActivity(ActivityId_DumpCtx, isDevelopment);
 
             var triggerActivity = new TriggerTopicActivity(
                 ActivityId_Trigger,
@@ -121,7 +120,6 @@ namespace InsuranceAgent.Topics.CoverageIntentTopic
 
             // === Enqueue activities ===
             Add(showCardActivity);
-            Add(dumpCtxActivity);
             Add(triggerActivity);
         }
 

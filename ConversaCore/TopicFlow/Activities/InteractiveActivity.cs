@@ -8,6 +8,7 @@ namespace ConversaCore.TopicFlow {
     public class InteractiveActivity : TopicFlowActivity {
         private readonly Func<TopicWorkflowContext, object?, Task<object?>>? _interaction;
         private readonly string? _message;
+        private Task<object?>? _activeInteractionTask;
 
         /// <summary>
         /// Gets or sets the name of the context key where user input will be stored.
@@ -20,6 +21,27 @@ namespace ConversaCore.TopicFlow {
         /// before the activity can continue.
         /// </summary>
         public bool IsInputRequired { get; set; } = true;
+        
+        /// <summary>
+        /// Terminates the activity, releasing resources and unsubscribing from events.
+        /// Special handling for interactive activities with ongoing interaction tasks.
+        /// </summary>
+        public override void Terminate()
+        {
+            // Cancel any ongoing interaction task first
+            if (_activeInteractionTask != null && !_activeInteractionTask.IsCompleted)
+            {
+                // We cannot cancel the task directly, but we'll set the token to canceled
+                // so if the task checks for cancellation, it will notice
+                _cancellationTokenSource?.Cancel();
+            }
+            
+            // Clear the reference to potentially prevent memory leaks
+            _activeInteractionTask = null;
+            
+            // Call base implementation to handle common termination logic
+            base.Terminate();
+        }
 
         public InteractiveActivity(string id, string message)
             : base(id) {
@@ -90,7 +112,8 @@ namespace ConversaCore.TopicFlow {
             if (_interaction != null) {
                 if (input == null) {
                     // First render
-                    var firstPayload = await _interaction(context, null);
+                    _activeInteractionTask = _interaction(context, null);
+                    var firstPayload = await _activeInteractionTask;
                     TransitionTo(ActivityState.Rendered, firstPayload);
                     return IsInputRequired
                         ? ActivityResult.WaitForInput(firstPayload?.ToString())
@@ -98,7 +121,8 @@ namespace ConversaCore.TopicFlow {
                 }
 
                 // Input came in
-                var payload = await _interaction(context, input);
+                _activeInteractionTask = _interaction(context, input);
+                var payload = await _activeInteractionTask;
                 TransitionTo(ActivityState.InputCollected, input);
                 TransitionTo(ActivityState.Completed, payload);
                 return ActivityResult.Continue(payload ?? model ?? input);

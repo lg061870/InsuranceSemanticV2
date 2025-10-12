@@ -1,0 +1,65 @@
+/* Enhanced styling for required fields */
+.ac-input-container[data-field-id="isCaliforniaResident"] .ac-choiceSet-expanded,
+.ac-input-container[data-field-required="true"] .ac-choiceSet-expanded,
+.ac-required-field .ac-choiceSet-expanded {
+    position: relative;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 8px;
+    background-color: rgba(0, 120, 212, 0.03);
+}
+
+/* Special styling for radio groups that haven't been selected yet */
+.ac-input-container[data-field-id="isCaliforniaResident"] .ac-choiceSet-expanded:not(:has(input:checked)),
+.ac-input-container[data-field-required="true"] .ac-choiceSet-expanded:not(:has(input:checked)),
+.ac-required-field .ac-choiceSet-expanded:not(:has(input:checked)) {
+    border-color: #f0b400;
+    background-color: rgba(240, 180, 0, 0.05);
+    box-shadow: 0 0 0 1px rgba(240, 180, 0, 0.2);
+}
+
+/* Add a subtle "Required" label */
+.ac-input-container[data-field-id="isCaliforniaResident"] .ac-choiceSet-expanded:not(:has(input:checked))::before,
+.ac-input-container[data-field-required="true"] .ac-choiceSet-expanded:not(:has(input:checked))::before {
+    content: "Required";
+    display: block;
+    position: absolute;
+    right: 8px;
+    top: -8px;
+    font-size: 11px;
+    background: #f0b400;
+    color: white;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+/* Add a subtle asterisk to choice set labels that are required */
+.ac-input-container[data-field-id="isCaliforniaResident"] .ac-choice-row label::after,
+.ac-input-container[data-field-required="true"] .ac-choice-row label::after {
+    content: "";
+}
+
+/* Error state styling */
+.ac-input-container.has-error .ac-choiceSet-expanded,
+.ac-field-with-error .ac-input-container .ac-choiceSet-expanded,
+.ac-input-container[data-field-error="true"] .ac-choiceSet-expanded,
+div[data-error-style="error"] .ac-choiceSet-expanded {
+    border-color: #d13438;
+    background-color: rgba(209, 52, 56, 0.05);
+    box-shadow: 0 0 0 1px rgba(209, 52, 56, 0.2);
+}
+
+.ac-error-message {
+    color: #d13438;
+    font-size: 13px;
+    margin-top: 4px;
+    margin-left: 8px;
+    font-weight: 500;
+}
+
+/* Improved focus state for accessibility */
+.ac-choice-row:has(input:focus) {
+    outline: 2px solid #0078d4;
+    outline-offset: 2px;
+}

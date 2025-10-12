@@ -35,4 +35,9 @@ public sealed class ResetConversationTopic : TopicFlow
         var m = message?.ToLowerInvariant() ?? string.Empty;
         return Task.FromResult(_cues.Any(m.Contains) ? 0.9f : 0.0f);
     }
+        public override void Reset()
+        {
+            ClearActivities();
+            Add(new ResetActivity(ResetActivityId, "🔄 Conversation has been reset. How would you like to begin?"));
+        }
 }

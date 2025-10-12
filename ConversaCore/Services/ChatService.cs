@@ -4,12 +4,24 @@ using ConversaCore.Models;
 using ConversaCore.Topics;
 using Microsoft.SemanticKernel;
 
+using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
 namespace ConversaCore.Services; 
 /// <summary>
 /// Interface for a service that processes chat messages using topics
 /// </summary>
 public interface IChatService {
+    /// <summary>
+    /// Processes a chat message and returns a response.
+    /// </summary>
     Task<ChatResponse> ProcessMessageAsync(string message, string conversationId, string userId);
+    
+    /// <summary>
+    /// Resets the chat service, clearing any conversation state and terminating active topics.
+    /// </summary>
+    Task<bool> ResetAsync();
 }
 
 /// <summary>
@@ -19,6 +31,8 @@ public class ChatService : IChatService {
     private readonly Kernel _kernel;
     private readonly TopicRegistry _topicRegistry;
     private readonly IConversationContext _context;
+    private readonly ILogger<ChatService>? _logger;
+    private readonly IServiceProvider? _serviceProvider;
 
     public ChatService(Kernel kernel, TopicRegistry topicRegistry) {
         // _context should be injected from HybridChatService
@@ -29,6 +43,69 @@ public class ChatService : IChatService {
         _kernel = kernel;
         _topicRegistry = topicRegistry;
         _context = context ?? throw new ArgumentNullException(nameof(context));
+    }
+    
+    public ChatService(
+        Kernel kernel, 
+        TopicRegistry topicRegistry, 
+        IConversationContext context,
+        ILogger<ChatService>? logger = null,
+        IServiceProvider? serviceProvider = null) {
+        _kernel = kernel;
+        _topicRegistry = topicRegistry;
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _logger = logger;
+        _serviceProvider = serviceProvider;
+    }
+    
+    /// <summary>
+    /// Resets the chat service, clearing any conversation state and terminating active topics.
+    /// </summary>
+    /// <returns>True if reset was successful, false otherwise.</returns>
+    public async Task<bool> ResetAsync()
+    {
+        var stopwatch = Stopwatch.StartNew();
+        _logger?.LogInformation("[ChatService] Beginning reset of chat service");
+        
+        try
+        {
+            // First, terminate and reset the context which is scoped to this conversation
+            await _context.TerminateAsync();
+            _logger?.LogInformation("[ChatService] Conversation context terminated and reset");
+            
+            // Reset the topic registry (which is a singleton) if we're allowed to
+            // This will terminate all topics and clear the registry
+            if (_topicRegistry != null)
+            {
+                _topicRegistry.Reset();
+                _logger?.LogInformation("[ChatService] Topic registry reset");
+            }
+            
+            // If we have access to the service provider, use it to reset all components
+            if (_serviceProvider != null)
+            {
+                _serviceProvider.ResetConversaCore();
+                _logger?.LogInformation("[ChatService] Full ConversaCore reset completed via service provider");
+            }
+            
+            // Notify event bus about the reset
+            await TopicEventBus.Instance.PublishAsync(
+                TopicEventType.ConversationReset,
+                "System",
+                _context.ConversationId ?? "unknown",
+                "Conversation reset completed");
+                
+            stopwatch.Stop();
+            _logger?.LogInformation("[ChatService] Reset completed successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _logger?.LogError(ex, "[ChatService] Error during reset operation (elapsed time: {ElapsedMs}ms)", stopwatch.ElapsedMilliseconds);
+            return false;
+        }
     }
 
     public async Task<ChatResponse> ProcessMessageAsync(string message, string conversationId, string userId) {

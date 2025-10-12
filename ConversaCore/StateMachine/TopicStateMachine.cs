@@ -72,6 +72,40 @@ namespace ConversaCore.StateMachine
                 Reason = "Initial state"
             });
         }
+
+        /// <summary>
+        /// Resets the state machine to its initial state and clears transition history
+        /// </summary>
+        public void Reset()
+        {
+            _currentState = default; // Assuming default is the initial state
+            _transitionHistory.Clear();
+            _transitionHistory.Add(new StateTransition<TState>
+            {
+                From = default,
+                To = _currentState,
+                Timestamp = DateTime.UtcNow,
+                Reason = "Reset to initial state"
+            });
+        }
+        
+        /// <summary>
+        /// Resets the state machine to the specified initial state and clears transition history
+        /// </summary>
+        /// <param name="initialState">The state to reset to</param>
+        public void Reset(TState initialState)
+        {
+            _currentState = initialState;
+            _transitionHistory.Clear();
+            _transitionHistory.Add(new StateTransition<TState>
+            {
+                From = default,
+                To = initialState,
+                Timestamp = DateTime.UtcNow,
+                Reason = "Reset to specified initial state"
+            });
+        }
+        
         
         /// <summary>
         /// Configures an allowed transition between states
@@ -220,6 +254,45 @@ namespace ConversaCore.StateMachine
             }
             
             return null;
+        }
+        
+        /// <summary>
+        /// Clears the transition history while preserving the current state
+        /// </summary>
+        public void ClearTransitionHistory()
+        {
+            var currentState = _currentState;
+            _transitionHistory.Clear();
+            
+            // Add only the current state as an entry
+            _transitionHistory.Add(new StateTransition<TState>
+            {
+                From = default,
+                To = currentState,
+                Timestamp = DateTime.UtcNow,
+                Reason = "History cleared"
+            });
+        }
+        
+        /// <summary>
+        /// Sets the state directly, bypassing transition rules and guards.
+        /// Use with caution as this may create an invalid state machine configuration.
+        /// </summary>
+        /// <param name="state">The state to force the machine into</param>
+        /// <param name="reason">Reason for forcing the state change</param>
+        public void ForceState(TState state, string reason = "Force state change")
+        {
+            var previousState = _currentState;
+            _currentState = state;
+            
+            // Record the forced state change in history
+            _transitionHistory.Add(new StateTransition<TState>
+            {
+                From = previousState,
+                To = state,
+                Timestamp = DateTime.UtcNow,
+                Reason = $"FORCED: {reason}"
+            });
         }
         
         private bool CheckTransitionGuard(TState from, TState to)

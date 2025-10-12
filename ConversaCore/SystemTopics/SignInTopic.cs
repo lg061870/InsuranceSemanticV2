@@ -38,4 +38,9 @@ public sealed class SignInTopic : TopicFlow
         var m = message?.ToLowerInvariant() ?? string.Empty;
         return Task.FromResult(_cues.Any(m.Contains) ? 0.8f : 0.0f);
     }
+        public override void Reset()
+        {
+            ClearActivities();
+            Add(new SignInActivity(SignInActivityId, "🔐 Please sign in to continue."));
+        }
 }

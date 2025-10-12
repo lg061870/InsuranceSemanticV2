@@ -101,8 +101,17 @@ public static class AdaptiveCardValidationHelper {
                     hasErrors = true;
                     fieldErrors = errors[errorId].Where(e => e != null).ToList()!;
                     
-                    // mark input with style hook for CSS error styling
-                    element["style"] = "error";
+                    // For ChoiceSet elements, we need to preserve the "expanded" style
+                    if (element.TryGetValue("type", out var typeObj) && 
+                        typeObj?.ToString() == "Input.ChoiceSet" &&
+                        element.TryGetValue("style", out var styleObj) && 
+                        styleObj?.ToString() == "expanded") {
+                        // Keep the "expanded" style and set an error CSS class instead
+                        element["errorStyle"] = "error"; // Custom property for CSS targeting
+                    } else {
+                        // For other elements, use the standard error style
+                        element["style"] = "error";
+                    }
                 }
             }
             

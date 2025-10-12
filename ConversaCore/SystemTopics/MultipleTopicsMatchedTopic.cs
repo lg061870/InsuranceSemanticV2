@@ -26,4 +26,9 @@ public sealed class MultipleTopicsMatchedTopic : TopicFlow
 
     public override Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default)
         => Task.FromResult(0.0f); // normally invoked explicitly by router
+        public override void Reset()
+        {
+            ClearActivities();
+            Add(new MultipleTopicsMatchedActivity(ClarifyActivityId, "🤔 I found multiple possible intents. Could you clarify what you need?"));
+        }
 }

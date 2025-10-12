@@ -1,0 +1,78 @@
+flowchart TD
+    A[User Submits Form] --> CA_CHECK{Are you a California resident?}
+    
+    %% California Resident Path
+    CA_CHECK -->|YES| CA_ZIP[Enter CA ZIP Code]
+    CA_ZIP --> TCPA_CA{TCPA Consent?<br/>(CA Resident)}
+    
+    %% Non-California Resident Path  
+    CA_CHECK -->|NO| TCPA_NON_CA{TCPA Consent?<br/>(Non-CA Resident)}
+    
+    %% CALIFORNIA RESIDENT - TCPA Branches
+    TCPA_CA -->|YES - I agree| CCPA_CA_YES{CCPA Acknowledgment?<br/>(CA Resident, TCPA Yes)}
+    TCPA_CA -->|NO - I do not agree| CCPA_CA_NO{CCPA Acknowledgment?<br/>(CA Resident, TCPA No)}
+    TCPA_CA -->|DON'T WANT TO ANSWER| CCPA_CA_MAYBE{CCPA Acknowledgment?<br/>(CA Resident, TCPA Unknown)}
+    
+    %% NON-CALIFORNIA RESIDENT - TCPA Branches
+    TCPA_NON_CA -->|YES - I agree| CCPA_NON_CA_YES{CCPA Acknowledgment?<br/>(Non-CA, TCPA Yes)}
+    TCPA_NON_CA -->|NO - I do not agree| CCPA_NON_CA_NO{CCPA Acknowledgment?<br/>(Non-CA, TCPA No)}
+    TCPA_NON_CA -->|DON'T WANT TO ANSWER| CCPA_NON_CA_MAYBE{CCPA Acknowledgment?<br/>(Non-CA, TCPA Unknown)}
+    
+    %% CALIFORNIA RESIDENT OUTCOMES (CCPA always applies)
+    CCPA_CA_YES -->|YES| F_CA["✅ FULL MARKETING + CA PROTECTIONS<br/>- Agent contact allowed<br/>- Marketing calls/emails OK<br/>- REQUIRED: Show CA privacy disclosures<br/>- CA ZIP validation completed<br/>- Continue with enhanced lead workflow"]
+    CCPA_CA_YES -->|NO| G_CA["⚠️ MARKETING OK, CCPA VIOLATION RISK<br/>- Agent contact allowed<br/>- Marketing calls/emails OK<br/>- LEGAL RISK: Not acknowledging CCPA<br/>- Continue with standard workflow"]
+    CCPA_CA_YES -->|DON'T WANT TO ANSWER| H_CA["⚠️ MARKETING OK, MANDATORY CA PROTECTION<br/>- Agent contact allowed<br/>- Marketing calls/emails OK<br/>- REQUIRED: Show CA privacy disclosures<br/>- Continue with CA-compliant workflow"]
+    
+    CCPA_CA_NO -->|YES| I_CA["❌ NO MARKETING, CA DISCLOSURES REQUIRED<br/>- NO agent contact<br/>- NO marketing calls/emails<br/>- REQUIRED: Show CA privacy rights<br/>- CA informational content only"]
+    CCPA_CA_NO -->|NO| J_CA["❌ HIGH LEGAL RISK - MINIMAL INTERACTION<br/>- NO agent contact<br/>- NO marketing calls/emails<br/>- LEGAL EXPOSURE: CA resident, no CCPA ack<br/>- Minimal website interaction only"]
+    CCPA_CA_NO -->|DON'T WANT TO ANSWER| K_CA["❌ NO MARKETING, MANDATORY CA PROTECTION<br/>- NO agent contact<br/>- NO marketing calls/emails<br/>- REQUIRED: Show CA privacy disclosures<br/>- CA informational content only"]
+    
+    CCPA_CA_MAYBE -->|YES| L_CA["❌ NO MARKETING - TCPA RISK + CA REQUIREMENTS<br/>- NO agent contact (TCPA risk)<br/>- NO marketing calls/emails<br/>- REQUIRED: Show CA privacy disclosures<br/>- CA informational content + self-service"]
+    CCPA_CA_MAYBE -->|NO| M_CA["❌ MAXIMUM RESTRICTION + CA VIOLATIONS<br/>- NO agent contact<br/>- NO marketing calls/emails<br/>- HIGH LEGAL RISK: CA resident, no protections<br/>- Basic website browsing only"]
+    CCPA_CA_MAYBE -->|DON'T WANT TO ANSWER| N_CA["❌ CONSERVATIVE + MANDATORY CA PROTECTION<br/>- NO agent contact (TCPA risk)<br/>- NO marketing calls/emails<br/>- REQUIRED: Show CA privacy disclosures<br/>- CA educational content only"]
+    
+    %% NON-CALIFORNIA RESIDENT OUTCOMES (CCPA optional)
+    CCPA_NON_CA_YES -->|YES| F_NON_CA["✅ FULL MARKETING<br/>- Agent contact allowed<br/>- Marketing calls/emails OK<br/>- Optional: Show privacy disclosures<br/>- Continue with standard lead workflow"]
+    CCPA_NON_CA_YES -->|NO| G_NON_CA["✅ MARKETING OK, NO CA REQUIREMENTS<br/>- Agent contact allowed<br/>- Marketing calls/emails OK<br/>- No CA-specific disclosures needed<br/>- Continue with standard workflow"]
+    CCPA_NON_CA_YES -->|DON'T WANT TO ANSWER| H_NON_CA["✅ MARKETING OK, OPTIONAL DISCLOSURES<br/>- Agent contact allowed<br/>- Marketing calls/emails OK<br/>- Optional privacy disclosures<br/>- Continue with standard workflow"]
+    
+    CCPA_NON_CA_NO -->|YES| I_NON_CA["❌ NO MARKETING, OPTIONAL DISCLOSURES<br/>- NO agent contact<br/>- NO marketing calls/emails<br/>- Optional privacy information<br/>- Informational content only"]
+    CCPA_NON_CA_NO -->|NO| J_NON_CA["❌ BLOCKED - MINIMAL INTERACTION<br/>- NO agent contact<br/>- NO marketing calls/emails<br/>- No privacy requirements<br/>- General insurance education content"]
+    CCPA_NON_CA_NO -->|DON'T WANT TO ANSWER| K_NON_CA["❌ NO MARKETING, MINIMAL PROTECTION<br/>- NO agent contact<br/>- NO marketing calls/emails<br/>- Basic informational content only"]
+    
+    CCPA_NON_CA_MAYBE -->|YES| L_NON_CA["❌ NO MARKETING - TCPA RISK ONLY<br/>- NO agent contact (TCPA risk)<br/>- NO marketing calls/emails<br/>- Optional privacy disclosures<br/>- Informational content + self-service"]
+    CCPA_NON_CA_MAYBE -->|NO| M_NON_CA["❌ MAXIMUM RESTRICTION<br/>- NO agent contact<br/>- NO marketing calls/emails<br/>- No privacy requirements<br/>- Basic website browsing"]
+    CCPA_NON_CA_MAYBE -->|DON'T WANT TO ANSWER| N_NON_CA["❌ CONSERVATIVE APPROACH<br/>- NO agent contact (TCPA risk)<br/>- NO marketing calls/emails<br/>- Basic educational content only"]
+    
+    %% End states
+    F_CA --> END[End]
+    G_CA --> END
+    H_CA --> END
+    I_CA --> END
+    J_CA --> END
+    K_CA --> END
+    L_CA --> END
+    M_CA --> END
+    N_CA --> END
+    F_NON_CA --> END
+    G_NON_CA --> END
+    H_NON_CA --> END
+    I_NON_CA --> END
+    J_NON_CA --> END
+    K_NON_CA --> END
+    L_NON_CA --> END
+    M_NON_CA --> END
+    N_NON_CA --> END
+    
+    %% Color coding
+    classDef fullMarketing fill:#90EE90,stroke:#333,stroke-width:2px
+    classDef limitedMarketing fill:#FFFFE0,stroke:#333,stroke-width:2px
+    classDef noMarketing fill:#FFB6C1,stroke:#333,stroke-width:2px
+    classDef blocked fill:#FF6B6B,stroke:#333,stroke-width:2px
+    classDef caRequired fill:#E6E6FA,stroke:#333,stroke-width:3px
+    
+    class F_CA,F_NON_CA fullMarketing
+    class G_CA,H_CA,G_NON_CA,H_NON_CA limitedMarketing
+    class I_CA,K_CA,L_CA,I_NON_CA,K_NON_CA,L_NON_CA noMarketing
+    class J_CA,M_CA,N_CA,J_NON_CA,M_NON_CA,N_NON_CA blocked
+    class CA_CHECK,CA_ZIP,TCPA_CA,CCPA_CA_YES,CCPA_CA_NO,CCPA_CA_MAYBE caRequired

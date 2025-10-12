@@ -34,4 +34,9 @@ public sealed class EscalateTopic : TopicFlow
         var m = message?.ToLowerInvariant() ?? string.Empty;
         return Task.FromResult(_cues.Any(m.Contains) ? 0.9f : 0.0f);
     }
+        public override void Reset()
+        {
+            ClearActivities();
+            Add(new EscalateActivity(EscalateActivityId, "☎️ I’ll connect you with a human agent now."));
+        }
 }

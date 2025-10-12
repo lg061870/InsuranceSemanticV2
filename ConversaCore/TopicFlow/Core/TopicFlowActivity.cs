@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using ConversaCore.Core;
 using ConversaCore.Events;
 using ConversaCore.Models;
 using Microsoft.Extensions.Logging;
@@ -9,12 +10,119 @@ namespace ConversaCore.TopicFlow;
 /// Base class for all workflow activities with lifecycle state machine support.
 /// Provides only the core/common transitions. Subtypes must override to expand.
 /// </summary>
-public abstract class TopicFlowActivity {
+public abstract class TopicFlowActivity : ITerminable {
     // ================================
     // EVENTS
     // ================================
     public event EventHandler<ActivityLifecycleEventArgs>? ActivityLifecycleChanged;
     public event EventHandler<ActivityCompletedEventArgs>? ActivityCompleted;
+
+        /// <summary>
+        /// Resets the activity state to Idle. Override in subclasses if needed.
+        /// </summary>
+        public virtual void Reset()
+        {
+            CurrentState = ActivityState.Idle;
+        }
+        
+        // ================================
+        // TERMINATION SUPPORT
+        // ================================
+        
+        /// <summary>
+        /// Flag indicating whether this activity has been terminated.
+        /// </summary>
+        private bool _isTerminated = false;
+        
+        /// <summary>
+        /// Gets whether this activity has been terminated.
+        /// </summary>
+        public bool IsTerminated => _isTerminated;
+        
+        /// <summary>
+        /// Optional cancellation token source for activity cancellation.
+        /// </summary>
+        protected CancellationTokenSource? _cancellationTokenSource;
+        
+        /// <summary>
+        /// Terminates the activity, releasing resources and unsubscribing from events.
+        /// This method implements proper cleanup to prevent memory leaks from event handlers
+        /// and ongoing tasks.
+        /// </summary>
+        public virtual void Terminate()
+        {
+            if (_isTerminated) return; // Prevent multiple terminations
+            
+            _logger?.LogDebug("[{ActivityId}] Terminating activity of type {ActivityType}", Id, GetType().Name);
+            
+            // Cancel any ongoing operations
+            try {
+                _cancellationTokenSource?.Cancel();
+                _cancellationTokenSource?.Dispose();
+                _cancellationTokenSource = null;
+            }
+            catch (Exception ex) {
+                _logger?.LogWarning(ex, "[{ActivityId}] Exception during cancellation token cleanup", Id);
+            }
+            
+            // Special handling for activities in waiting states
+            if (CurrentState == ActivityState.WaitingForUserInput || CurrentState == ActivityState.Rendered) {
+                _logger?.LogDebug("[{ActivityId}] Activity was waiting for input, force transitioning to Failed state", Id);
+                try {
+                    // Force transition to a terminal state to ensure proper cleanup
+                    TransitionTo(ActivityState.Failed, "Terminated while waiting for input");
+                }
+                catch (Exception ex) {
+                    _logger?.LogWarning(ex, "[{ActivityId}] Exception during forced state transition", Id);
+                }
+            }
+            
+            // Unregister event handlers - do this explicitly to avoid memory leaks
+            ActivityLifecycleChanged = null;
+            ActivityCompleted = null;
+            
+            // Clean up any model type references that could hold strong references
+            ModelType = null;
+            CustomDeserializer = null;
+            
+            // Reset state variables
+            CurrentState = ActivityState.Idle;
+            
+            // Mark as terminated
+            _isTerminated = true;
+            
+            _logger?.LogDebug("[{ActivityId}] Activity terminated successfully", Id);
+        }
+        
+        /// <summary>
+        /// Asynchronously terminates the activity, releasing resources and unsubscribing from events.
+        /// This implementation handles activities that may have async cleanup requirements.
+        /// </summary>
+        /// <param name="cancellationToken">Optional cancellation token to cancel the termination process.</param>
+        public virtual async Task TerminateAsync(CancellationToken cancellationToken = default)
+        {
+            try {
+                // First perform synchronous termination
+                Terminate();
+                
+                // Special handling for derived classes that might have async cleanup requirements
+                // This is a hook for subclasses to override with their own async cleanup logic
+                await PerformAsyncCleanupAsync(cancellationToken);
+            }
+            catch (Exception ex) {
+                _logger?.LogError(ex, "[{ActivityId}] Exception during async termination", Id);
+            }
+        }
+        
+        /// <summary>
+        /// Protected method for derived classes to override with their own async cleanup logic.
+        /// Base implementation does nothing.
+        /// </summary>
+        protected virtual Task PerformAsyncCleanupAsync(CancellationToken cancellationToken = default)
+        {
+            // Default implementation does nothing
+            return Task.CompletedTask;
+        }
 
     // ================================
     // FSM (STATE + TRANSITIONS)
@@ -53,7 +161,8 @@ public abstract class TopicFlowActivity {
 
         if (newState == ActivityState.Completed) {
             OnCompleted(data);
-            ActivityCompleted?.Invoke(this, new ActivityCompletedEventArgs(Id, data));
+            // Ensure we don't pass null to ActivityCompletedEventArgs constructor
+            ActivityCompleted?.Invoke(this, new ActivityCompletedEventArgs(Id, data ?? new object()));
         }
     }
 

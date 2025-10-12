@@ -1,14 +1,17 @@
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using ConversaCore.Cards;
+using ConversaCore.Core;
 #nullable enable
 
 namespace ConversaCore.Context
 {
     /// <summary>
     /// Represents the context for a conversation.
+    /// Inherits ITerminable to support proper resource cleanup.
     /// </summary>
-    public interface IConversationContext
+    public interface IConversationContext : ITerminable
     {
         /// <summary>
         /// Gets the conversation ID.
@@ -49,7 +52,7 @@ namespace ConversaCore.Context
         /// <param name="key">The key for the value.</param>
         /// <param name="defaultValue">The default value to return if the key is not found.</param>
         /// <returns>The value if found; otherwise, the default value.</returns>
-        T GetValue<T>(string key, T defaultValue = default);
+        T GetValue<T>(string key, T defaultValue = default!);
         
         /// <summary>
         /// Tries to get a value from the conversation context.

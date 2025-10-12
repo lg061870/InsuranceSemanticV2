@@ -13,6 +13,7 @@
 @inject IChatInteropService ChatInteropService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
+@inject ILogger<CustomChatWindowV2> Logger
 
 <!-- ========== CHAT WINDOW LAYOUT ========== -->
 <div class="chat-window-container">
@@ -187,21 +188,23 @@
     protected override async Task OnAfterRenderAsync(bool firstRender) {
         if (firstRender && !_conversationStarted) {
             // Subscribe Service → ChatWindow FIRST
-            ChatService.HybridBotMessageReady += (s, e) => {
-                Console.WriteLine($"[ChatWindow] Received HybridBotMessageReady: {e.Message.Content}");
-                Messages.Add(e.Message);
-                StateHasChanged();
+                ChatService.HybridBotMessageReady += (s, e) => {
+                    Logger?.LogInformation($"[ChatWindow] Received HybridBotMessageReady: {e.Message.Content}");
+                    Messages.Add(e.Message);
+                    StateHasChanged();
 
-                BotMessageRendered?.Invoke(this, new ChatWindowBotMessageEventArgs(e.Message.Content));
-            };
+                    BotMessageRendered?.Invoke(this, new ChatWindowBotMessageEventArgs(e.Message.Content));
+                };
 
             ChatService.HybridAdaptiveCardReady += (s, e) => {
+                Logger?.LogInformation($"[ChatWindow] HybridAdaptiveCardReady: CardId={e.CardId}, RenderMode={e.RenderMode}");
                 if (e.RenderMode == ConversaCore.Events.RenderMode.Replace && !string.IsNullOrEmpty(e.CardId)) {
                     var existing = Messages.FirstOrDefault(m => m.IsAdaptiveCard && m.CardId == e.CardId);
                     if (existing != null) {
                         existing.AdaptiveCardJson = e.CardJson;
                         existing.Timestamp = DateTime.Now;
                         StateHasChanged();
+                        Logger?.LogInformation($"[ChatWindow] AdaptiveCard replaced: CardId={e.CardId}");
                         return;
                     }
                 }
@@ -215,31 +218,35 @@
                     Timestamp = DateTime.Now
                 });
                 StateHasChanged();
+                Logger?.LogInformation($"[ChatWindow] AdaptiveCard appended: CardId={e.CardId}");
             };
 
 
             ChatService.HybridTypingIndicatorChanged += (s, e) => {
+                Logger?.LogInformation($"[ChatWindow] TypingIndicatorChanged: IsTyping={e.IsTyping}");
                 IsTyping = e.IsTyping;
                 StateHasChanged();
             };
 
             ChatService.HybridSuggestionsUpdated += (s, e) => {
+                Logger?.LogInformation($"[ChatWindow] SuggestionsUpdated: {string.Join(", ", e.Suggestions)}");
                 CurrentSuggestions = e.Suggestions.ToList();
                 StateHasChanged();
             };
 
             ChatService.HybridChatEventRaised += (s, e) => {
+                Logger?.LogInformation($"[ChatWindow] ChatEventRaised: {e.ChatEvent?.Type}");
                 HandleWorkflowEvent(e.ChatEvent);
                 StateHasChanged();
             };
 
             ChatService.OnConversationReset += (s, e) => {
-                Console.WriteLine($"[ChatWindow] OnConversationReset event received at {e.ResetTime}");
-                Console.WriteLine($"[ChatWindow] Clearing {Messages.Count} messages");
+                Logger?.LogInformation($"[ChatWindow] OnConversationReset event received at {e.ResetTime}");
+                Logger?.LogInformation($"[ChatWindow] Clearing {Messages.Count} messages");
                 Messages.Clear();
-                Console.WriteLine("[ChatWindow] Messages cleared, calling StateHasChanged");
+                Logger?.LogInformation("[ChatWindow] Messages cleared, calling StateHasChanged");
                 StateHasChanged();
-                Console.WriteLine("[ChatWindow] StateHasChanged completed");
+                Logger?.LogInformation("[ChatWindow] StateHasChanged completed");
             };
 
             // Subscribe ChatWindow → Service
@@ -264,6 +271,7 @@
 
     // ========== CONVERSATION ==========
     private async void HandleConversationStart(ChatSessionState sessionState, ConversaCore.Topics.ITopic topic) {
+        Logger?.LogInformation("[ChatWindow] HandleConversationStart called");
         var result = await topic.ProcessMessageAsync("__init__", CancellationToken.None);
         Messages.Add(new ChatMessage {
             Content = result.Response,
@@ -272,12 +280,14 @@
         });
         StateHasChanged();
         await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+        Logger?.LogInformation("[ChatWindow] HandleConversationStart completed");
     }
 
     private async Task SendMessage() {
         if (string.IsNullOrWhiteSpace(CurrentMessage) || IsProcessing)
             return;
 
+        Logger?.LogInformation($"[ChatWindow] SendMessage called: {CurrentMessage}");
         IsProcessing = true;
 
         var userMessage = new ChatMessage {
@@ -297,73 +307,106 @@
         await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
 
         IsProcessing = false;
+        Logger?.LogInformation("[ChatWindow] SendMessage completed");
     }
 
     // ========== UTILITY ==========
     private void ClearChat() {
+        Logger?.LogInformation($"[ChatWindow] ClearChat called, clearing {Messages.Count} messages");
         Messages.Clear();
         StateHasChanged();
+        Logger?.LogInformation("[ChatWindow] ClearChat completed");
     }
 
     private void ShowResetConfirmation() {
-        Console.WriteLine("[ChatWindow] ShowResetConfirmation called - showing modal dialog");
+        Logger?.LogInformation("[ChatWindow] ShowResetConfirmation called - showing modal dialog");
         showResetConfirmation = true;
         StateHasChanged();
-        Console.WriteLine("[ChatWindow] Modal dialog state updated");
+        Logger?.LogInformation("[ChatWindow] Modal dialog state updated");
     }
 
     private void HideResetConfirmation() {
-        Console.WriteLine("[ChatWindow] HideResetConfirmation called - hiding modal dialog");
+        Logger?.LogInformation("[ChatWindow] HideResetConfirmation called - hiding modal dialog");
         showResetConfirmation = false;
         StateHasChanged();
-        Console.WriteLine("[ChatWindow] Modal dialog hidden");
+        Logger?.LogInformation("[ChatWindow] Modal dialog hidden");
     }
 
     private void TestResetButton() {
-    Console.WriteLine("[ChatWindow] TestResetButton called - button binding works!");
-    Console.WriteLine("[ChatWindow] TestResetButton: showResetConfirmation=" + showResetConfirmation);
-    showResetConfirmation = false;
-    StateHasChanged();
-    Console.WriteLine("[ChatWindow] TestResetButton completed - modal closed");
+        Logger?.LogInformation("[ChatWindow] TestResetButton called - button binding works!");
+        Logger?.LogInformation($"[ChatWindow] TestResetButton: showResetConfirmation={showResetConfirmation}");
+        showResetConfirmation = false;
+        StateHasChanged();
+        Logger?.LogInformation("[ChatWindow] TestResetButton completed - modal closed");
     }
 
     private async Task ConfirmReset() {
-        Console.WriteLine("[ChatWindow] ConfirmReset called - starting reset process");
-        Console.WriteLine("[ChatWindow] ConfirmReset: showResetConfirmation=" + showResetConfirmation);
+        Logger?.LogInformation("[ChatWindow] ConfirmReset called - starting reset process");
+        Logger?.LogInformation($"[ChatWindow] ConfirmReset: showResetConfirmation={showResetConfirmation}");
         showResetConfirmation = false;
         StateHasChanged();
+        
         try {
-            Console.WriteLine("[ChatWindow] Calling ChatService.ResetConversationAsync()");
+            Logger?.LogInformation("[ChatWindow] Calling ChatService.ResetConversationAsync()");
+            
+            // Ensure all existing messages are cleared first before the reset
+            // This prevents UI glitches where old messages appear momentarily
+            Messages.Clear();
+            StateHasChanged();
+            
+            // Small delay to ensure UI updates before backend reset
+            await Task.Delay(100);
+            
+            // Now call the reset
             await ChatService.ResetConversationAsync();
-            Console.WriteLine("[ChatWindow] ResetConversationAsync completed");
+            
+            Logger?.LogInformation("[ChatWindow] ResetConversationAsync completed");
+            
+            // Force another state update to ensure everything is refreshed
+            StateHasChanged();
         }
         catch (Exception ex) {
-            Console.WriteLine($"[ChatWindow] Error resetting conversation: {ex.Message}");
+            Logger?.LogError(ex, "[ChatWindow] Error resetting conversation");
+            
+            // Add an error message for the user
+            Messages.Add(new ChatMessage {
+                Content = "⚠️ There was an error resetting the conversation. Please try again.",
+                IsFromUser = false,
+                Timestamp = DateTime.Now
+            });
+            StateHasChanged();
         }
     }
 
     private async Task CopyMessageToClipboard(ChatMessage message) {
         if (message == null || string.IsNullOrEmpty(message.Content)) return;
+        Logger?.LogInformation($"[ChatWindow] CopyMessageToClipboard called: {message.Content}");
         await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", message.Content);
         await JSRuntime.InvokeVoidAsync("recordChatEvent", "message_copied", new { content = message.Content });
+        Logger?.LogInformation("[ChatWindow] CopyMessageToClipboard completed");
     }
 
     private void EditMessage(ChatMessage message) {
         if (message == null) return;
+        Logger?.LogInformation($"[ChatWindow] EditMessage called: {message.Content}");
         messageBeingEdited = message;
         CurrentMessage = message.Content;
         StateHasChanged();
+        Logger?.LogInformation("[ChatWindow] EditMessage completed");
     }
 
     private string FormatMessageContent(string content) =>
         string.IsNullOrEmpty(content) ? string.Empty : content;
 
     private Task HandleCardAction(string actionId) {
+        Logger?.LogInformation($"[ChatWindow] HandleCardAction called: {actionId}");
         CardActionInvoked?.Invoke(this, new ChatWinowCardActionEventArgs(actionId));
+        Logger?.LogInformation("[ChatWindow] HandleCardAction completed");
         return Task.CompletedTask;
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e) {
+        Logger?.LogInformation($"[ChatWindow] HandleKeyDown: Key={e.Key}, Shift={e.ShiftKey}");
         if (e.Key == "Enter" && !e.ShiftKey) {
             await SendMessage();
         }
@@ -375,19 +418,23 @@
     }
 
     private async Task UseSuggestion(string suggestion) {
+        Logger?.LogInformation($"[ChatWindow] UseSuggestion called: {suggestion}");
         CurrentMessage = suggestion;
         await SendMessage();
+        Logger?.LogInformation("[ChatWindow] UseSuggestion completed");
     }
 
     // Called by AdaptiveCardRenderer when a card is submitted
     private Task OnAdaptiveCardSubmit(Dictionary<string, object> data) {
+        Logger?.LogInformation("[ChatWindow] OnAdaptiveCardSubmit called");
         AdaptiveCardSubmitted?.Invoke(this, new ChatCardSubmitEventArgs(data));
+        Logger?.LogInformation("[ChatWindow] OnAdaptiveCardSubmit completed");
         return Task.CompletedTask;
     }
 
     // === Workflow event stub (expand later if needed) ===
     private void HandleWorkflowEvent(ChatEvent chatEvent) {
-        Console.WriteLine($"[ChatWindow] Workflow event: {chatEvent.Type}");
+        Logger?.LogInformation($"[ChatWindow] Workflow event: {chatEvent?.Type}");
     }
 }
 

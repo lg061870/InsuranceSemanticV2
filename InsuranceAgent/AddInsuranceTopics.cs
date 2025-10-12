@@ -9,6 +9,9 @@ using InsuranceAgent.Topics.HealthInfoTopic;
 using InsuranceAgent.Topics.InsuranceContextTopic;
 using InsuranceAgent.Topics.LeadDetailsTopic;
 using InsuranceAgent.Topics.LifeGoalsTopic;
+using InsuranceAgent.Topics.BasicNavigationTopic;
+using InsuranceAgent.Topics.RadioButtonDemoTopic;
+using InsuranceAgent.Topics.MarketingTypeTopics;
 using Microsoft.Extensions.DependencyInjection;
 using ConversaCore;
 
@@ -46,6 +49,12 @@ namespace InsuranceAgent.Topics {
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.LifeGoalsTopic.LifeGoalsTopic>());
             services.AddScoped<ILogger<HandDownDemoTopic>>(sp =>
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<HandDownDemoTopic>());
+            services.AddScoped<ILogger<InsuranceAgent.Topics.BasicNavigationTopic.BasicNavigationTopic>>(sp =>
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.BasicNavigationTopic.BasicNavigationTopic>());
+            services.AddScoped<ILogger<InsuranceAgent.Topics.RadioButtonDemoTopic.RadioButtonDemoTopic>>(sp =>
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.RadioButtonDemoTopic.RadioButtonDemoTopic>());
+            services.AddScoped<ILogger<InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic>>(sp =>
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic>());
 
             // Register BeneficiaryInfoDemoTopic with all required dependencies
             services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
@@ -164,6 +173,30 @@ namespace InsuranceAgent.Topics {
                 new HandDownDemoTopic(
                     sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
                     sp.GetRequiredService<ILogger<HandDownDemoTopic>>(),
+                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
+                ));
+                
+            // Register BasicNavigationTopic for menu and navigation options
+            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
+                new InsuranceAgent.Topics.BasicNavigationTopic.BasicNavigationTopic(
+                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
+                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.BasicNavigationTopic.BasicNavigationTopic>>(),
+                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
+                ));
+                
+            // Register RadioButtonDemoTopic for demonstrating radio button validation
+            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
+                new InsuranceAgent.Topics.RadioButtonDemoTopic.RadioButtonDemoTopic(
+                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
+                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.RadioButtonDemoTopic.RadioButtonDemoTopic>>(),
+                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
+                ));
+                
+            // Register MarketingTypeOneTopic for full marketing path (T1)
+            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
+                new InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic(
+                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
+                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic>>(),
                     sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
                 ));
 

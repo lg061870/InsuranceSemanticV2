@@ -2,19 +2,31 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using ConversaCore.Cards;
+using ConversaCore.Core;
+using Microsoft.Extensions.Logging;
 #nullable enable
 
 namespace ConversaCore.Context
 {
     /// <summary>
     /// Default implementation of IConversationContext.
+    /// Implements ITerminable for proper resource cleanup during conversation reset.
     /// </summary>
-    public class ConversationContext : IConversationContext
+    public class ConversationContext : IConversationContext, ITerminable
     {
         private readonly Dictionary<string, object> _data = new Dictionary<string, object>();
         private readonly List<string> _topicHistory = new List<string>();
         private readonly Stack<TopicCallInfo> _topicCallStack = new Stack<TopicCallInfo>();
+        private bool _isTerminated = false;
+        private readonly ILogger<ConversationContext>? _logger;
+
+        /// <summary>
+        /// Gets whether this context has been terminated.
+        /// </summary>
+        public bool IsTerminated => _isTerminated;
 
         /// <summary>
         /// Gets the conversation ID.
@@ -46,10 +58,12 @@ namespace ConversaCore.Context
         /// </summary>
         /// <param name="conversationId">The conversation ID.</param>
         /// <param name="userId">The user ID.</param>
-        public ConversationContext(string conversationId, string userId)
+        /// <param name="logger">Optional logger for tracking operations.</param>
+        public ConversationContext(string conversationId, string userId, ILogger<ConversationContext>? logger = null)
         {
             ConversationId = conversationId;
             UserId = userId;
+            _logger = logger;
         }
 
         /// <summary>
@@ -385,11 +399,62 @@ namespace ConversaCore.Context
         /// </summary>
         public void Reset()
         {
+            _logger?.LogInformation("[ConversationContext] Resetting context for conversation {ConversationId}", ConversationId);
+            
+            // Reset all state and data containers
             _data.Clear();
             _topicHistory.Clear();
             _topicCallStack.Clear();
             TopicChain.Clear();
             CurrentTopicName = null;
+            
+            // Mark as not terminated since we're reusing this context
+            _isTerminated = false;
+            
+            _logger?.LogInformation("[ConversationContext] Context reset completed for conversation {ConversationId}", ConversationId);
+            
+            // Set a marker to indicate the time of the reset
+            SetValue("ConversationLastReset", DateTime.UtcNow.ToString("o"));
+        }
+        
+        /// <summary>
+        /// Terminates the conversation context, releasing all resources.
+        /// </summary>
+        public void Terminate()
+        {
+            if (_isTerminated)
+            {
+                _logger?.LogDebug("[ConversationContext] Context for conversation {ConversationId} already terminated, skipping", ConversationId);
+                return;
+            }
+            
+            _logger?.LogInformation("[ConversationContext] Terminating context for conversation {ConversationId}", ConversationId);
+            
+            // Clear all state and data containers
+            Reset();
+            
+            // Mark as terminated
+            _isTerminated = true;
+            
+            _logger?.LogInformation("[ConversationContext] Context termination completed for conversation {ConversationId}", ConversationId);
+        }
+        
+        /// <summary>
+        /// Asynchronously terminates the conversation context.
+        /// </summary>
+        /// <param name="cancellationToken">Optional cancellation token.</param>
+        public Task TerminateAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                Terminate();
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[ConversationContext] Error during async termination for conversation {ConversationId}", ConversationId);
+                return Task.CompletedTask;
+            }
         }
     }
 }

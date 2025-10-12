@@ -2,7 +2,7 @@
 using ConversaCore.Topics;         // for ITopic, TopicResult
 using ConversaCore.Models;         // for TopicWorkflowContext, ActivityResult
 using ConversaCore.StateMachine;
-using ConversaCore.Events;   // for TopicStateMachine<TState>
+using ConversaCore.Events;         // for TopicStateMachine<TState>
 
 namespace ConversaCore.TopicFlow;
 
@@ -39,7 +39,6 @@ public class TopicFlow : ITopic {
     public TopicFlow(TopicWorkflowContext context, ILogger logger, string name = "TopicFlow") {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-
         Name = name;
 
         _fsm = new TopicStateMachine<FlowState>(FlowState.Idle);
@@ -58,19 +57,33 @@ public class TopicFlow : ITopic {
     public virtual int Priority { get; protected set; } = 0;
     public FlowState State => _fsm.CurrentState;
 
-    // ================================
-    // Add / Remove
-    // ================================
+    // ======================================================
+    // Reset / Clear
+    // ======================================================
+    public virtual void Reset() {
+        ClearActivities();
+    }
+
+    protected void ClearActivities() {
+        _activities.Clear();
+        _activityQueue.Clear();
+    }
+
+    // ======================================================
+    // Add / Remove Activities
+    // ======================================================
     public TopicFlow Add(TopicFlowActivity activity) {
-        if (activity == null) throw new ArgumentNullException(nameof(activity));
+        if (activity == null)
+            throw new ArgumentNullException(nameof(activity));
+
         if (_activities.ContainsKey(activity.Id))
-            throw new InvalidOperationException($"Activity '{activity.Id}' already exists in this flow. Each activity Id must be unique.");
+            throw new InvalidOperationException($"Activity '{activity.Id}' already exists in this flow.");
 
         _activities[activity.Id] = activity;
         _activityQueue.Enqueue(activity.Id);
 
-        activity.ActivityLifecycleChanged += (s, e) =>
-            ActivityLifecycleChanged?.Invoke(this, e);
+        // Event forwarding
+        activity.ActivityLifecycleChanged += (s, e) => ActivityLifecycleChanged?.Invoke(this, e);
 
         activity.ActivityCompleted += async (s, e) => {
             _logger.LogInformation("[TopicFlow] Activity {ActivityId} completed", e.ActivityId);
@@ -78,24 +91,51 @@ public class TopicFlow : ITopic {
                 await _fsm.TryTransitionAsync(FlowState.Running, "Input collected");
         };
 
-        _logger.LogInformation("Added activity {ActivityId} to flow queue", activity.Id);
+        _logger.LogInformation("[TopicFlow] Added activity {ActivityId} to flow queue", activity.Id);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds multiple activities to the flow in sequence.
+    /// </summary>
+    public TopicFlow AddRange(IEnumerable<TopicFlowActivity>? activities) {
+        if (activities == null) {
+            _logger.LogWarning("[TopicFlow] AddRange called with null activities");
+            return this;
+        }
+
+        foreach (var activity in activities) {
+            if (activity == null) {
+                _logger.LogWarning("[TopicFlow] Skipping null activity in AddRange");
+                continue;
+            }
+
+            try {
+                Add(activity);
+            } catch (Exception ex) {
+                _logger.LogError(ex, "[TopicFlow] Failed to add activity {ActivityId}", activity.Id);
+            }
+        }
+
         return this;
     }
 
     public bool RemoveActivity(string activityId) {
         if (string.IsNullOrWhiteSpace(activityId))
             throw new ArgumentNullException(nameof(activityId));
+
         var removed = _activities.Remove(activityId);
         if (removed)
-            _logger.LogInformation("Removed activity {ActivityId}", activityId);
+            _logger.LogInformation("[TopicFlow] Removed activity {ActivityId}", activityId);
+
         return removed;
     }
 
     public IEnumerable<TopicFlowActivity> GetAllActivities() => _activities.Values;
 
-    // ================================
+    // ======================================================
     // Event helpers
-    // ================================
+    // ======================================================
     protected void OnTopicLifecycleChanged(TopicLifecycleState state, object? data = null) =>
         TopicLifecycleChanged?.Invoke(this, new TopicLifecycleEventArgs(Name, state, data));
 
@@ -108,9 +148,9 @@ public class TopicFlow : ITopic {
     protected void OnTopicInserted(string topicName) =>
         TopicInserted?.Invoke(this, new TopicInsertedEventArgs(topicName, _context));
 
-    // ================================
-    // ITopic
-    // ================================
+    // ======================================================
+    // ITopic Implementation
+    // ======================================================
     public virtual Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default) =>
         Task.FromResult(1.0f);
 
@@ -121,9 +161,9 @@ public class TopicFlow : ITopic {
             return await RunAsync(cancellationToken);
     }
 
-    // ================================
+    // ======================================================
     // Execution
-    // ================================
+    // ======================================================
     public virtual async Task<TopicResult> RunAsync(CancellationToken cancellationToken = default) {
         if (_activityQueue.Count == 0)
             throw new InvalidOperationException("No activities in flow. Add activities before starting.");
@@ -176,7 +216,6 @@ public class TopicFlow : ITopic {
                 return TopicResult.CreateResponse("Error: activity not found.", _context, requiresInput: true);
             }
 
-            // 🛑 Skip completed/failed activities before running
             if (activity.CurrentState == ActivityState.Completed ||
                 activity.CurrentState == ActivityState.Failed) {
                 _logger.LogDebug("Skipping finished activity {Id} ({State})", activity.Id, activity.CurrentState);
@@ -205,33 +244,22 @@ public class TopicFlow : ITopic {
             if (!string.IsNullOrEmpty(ar.Message))
                 OnActivityCreated(activity.Id, ar.Message);
 
-
             if (ar.IsWaiting) {
                 await _fsm.TryTransitionAsync(FlowState.WaitingForInput, "Activity requested input");
                 OnTopicLifecycleChanged(TopicLifecycleState.WaitingForUserInput, ar);
                 return TopicResult.CreateResponse(ar.Message ?? "Waiting for user input…", _context, requiresInput: true);
             }
 
-            // NEW: Handle sub-topic waiting - pause this topic and signal orchestrator
             if (ar.IsWaitingForSubTopic) {
-                _logger.LogInformation("Activity {ActivityId} is waiting for sub-topic '{SubTopic}' to complete", activity.Id, ar.SubTopicName);
-                
-                // DON'T dequeue the activity - we need to resume from here
-                // DON'T mark activity as completed - it's still waiting
-                
+                _logger.LogInformation("Activity {ActivityId} is waiting for sub-topic '{SubTopic}'", activity.Id, ar.SubTopicName);
                 await _fsm.TryTransitionAsync(FlowState.WaitingForInput, "Activity waiting for sub-topic");
                 OnTopicLifecycleChanged(TopicLifecycleState.WaitingForSubTopic, ar);
-                
-                // Return special result that signals orchestrator to start sub-topic
                 return TopicResult.CreateSubTopicTrigger(ar.SubTopicName!, ar.Message, _context);
             }
 
-            // NEW: Handle activity end - complete the topic immediately
             if (ar.IsEnd) {
                 _logger.LogInformation("Activity {ActivityId} signaled end of topic", activity.Id);
-                
                 OnActivityCompleted(activity.Id);
-                
                 await _fsm.TryTransitionAsync(FlowState.Completed, "Activity signaled end");
                 OnTopicLifecycleChanged(TopicLifecycleState.Completed, ar);
                 return TopicResult.CreateCompleted(ar.Message ?? string.Empty, _context);

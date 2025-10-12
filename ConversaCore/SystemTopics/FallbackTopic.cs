@@ -26,4 +26,9 @@ public sealed class FallbackTopic : TopicFlow
 
     public override Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default)
         => Task.FromResult(0.01f); // keep it available but always last
+        public override void Reset()
+        {
+            ClearActivities();
+            Add(new FallbackActivity(FallbackActivityId, "❓ I’m not sure I understood. Could you rephrase?"));
+        }
 }

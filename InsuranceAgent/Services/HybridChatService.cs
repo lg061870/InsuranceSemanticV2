@@ -99,6 +99,7 @@ public class HybridChatService {
         InitializeInsuranceGlobals();
         
         var topic = _topicRegistry.GetTopic("ConversationStart");
+        // >>> we retrieve the corresponding topic but we don't seem to do anything with it, in fact the topic is re-retrieved in the InsuranceAgent (_agentService.StartConversationAsync)
         if (topic != null) {
             // Let the agent handle initialization + wiring
             _ = _agentService.StartConversationAsync(sessionState);

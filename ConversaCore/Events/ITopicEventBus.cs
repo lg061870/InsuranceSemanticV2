@@ -1,13 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
+using ConversaCore.Core;
 
 namespace ConversaCore.Events
 {
     /// <summary>
     /// Interface for the topic event bus
     /// </summary>
-    public interface ITopicEventBus
+    public interface ITopicEventBus : ITerminable
     {
         /// <summary>
         /// Subscribes to a specific type of topic event.
@@ -41,8 +43,8 @@ namespace ConversaCore.Events
             TopicEventType eventType, 
             string topicName, 
             string conversationId, 
-            object data = null,
-            string correlationId = null);
+            object? data = null,
+            string? correlationId = null);
         
         /// <summary>
         /// Gets the event history for a specific conversation.

@@ -1,12 +1,18 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Threading;
+using Microsoft.Extensions.Logging;
+using ConversaCore.Core;
 
 namespace ConversaCore.Events {
     /// <summary>
     /// Provides an event bus for topic-related events.
     /// Thread-safe, immutable history, singleton pattern.
+    /// Implements ITerminable for proper resource cleanup.
     /// </summary>
     public sealed class TopicEventBus : ITopicEventBus {
+        private bool _isTerminated = false;
+        private readonly ILogger<TopicEventBus>? _logger;
         private static readonly Lazy<TopicEventBus> _instance =
             new(() => new TopicEventBus());
 
@@ -23,11 +29,45 @@ namespace ConversaCore.Events {
 
         private const int MaxHistorySize = 1000;
 
+        public bool IsTerminated => _isTerminated;
+        
         private TopicEventBus() {
             // Initialize empty subscriber lists for each event type
             foreach (TopicEventType eventType in Enum.GetValues(typeof(TopicEventType))) {
                 _subscribers.TryAdd(eventType, new List<Func<TopicEvent, Task>>());
             }
+        }
+        
+        /// <summary>
+        /// Terminates the topic event bus, clearing all subscribers and event history.
+        /// </summary>
+        public void Terminate() {
+            if (_isTerminated) return;
+            
+            _logger?.LogInformation("[TopicEventBus] Terminating event bus");
+            
+            // Clear all subscribers
+            foreach (var eventType in _subscribers.Keys.ToList()) {
+                if (_subscribers.TryGetValue(eventType, out var handlers)) {
+                    lock (handlers) {
+                        handlers.Clear();
+                    }
+                }
+            }
+            
+            // Clear event history
+            while (_eventHistory.TryDequeue(out _)) { }
+            
+            _isTerminated = true;
+            _logger?.LogInformation("[TopicEventBus] Event bus terminated");
+        }
+        
+        /// <summary>
+        /// Asynchronously terminates the topic event bus.
+        /// </summary>
+        public Task TerminateAsync(CancellationToken cancellationToken = default) {
+            Terminate();
+            return Task.CompletedTask;
         }
 
         public void Subscribe(TopicEventType eventType, Func<TopicEvent, Task> handler) {

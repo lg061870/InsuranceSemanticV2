@@ -40,6 +40,31 @@ namespace ConversaCore.TopicFlow {
             WaitForCompletion = waitForCompletion;
             _conversationContext = conversationContext;
         }
+        
+        /// <summary>
+        /// Terminates this activity, properly cleaning up event subscriptions and context data.
+        /// </summary>
+        public override void Terminate()
+        {
+            _logger?.LogDebug("[TriggerTopicActivity] Terminating {ActivityId} targeting topic '{TopicToTrigger}'", 
+                Id, TopicToTrigger);
+            
+            // Clean up event subscriptions
+            TopicTriggered = null;
+            
+            // If we're waiting for completion and have a conversation context, we may need to clean up
+            if (WaitForCompletion && _conversationContext != null && 
+                _conversationContext.IsTopicInCallStack(TopicToTrigger)) {
+                _logger?.LogInformation("[TriggerTopicActivity] Cleaning up call stack reference to {TopicToTrigger}", 
+                    TopicToTrigger);
+                
+                // Clean up the topic call stack to avoid lingering references
+                _conversationContext.PopTopicCall(TopicToTrigger);
+            }
+            
+            // Call base to handle standard termination
+            base.Terminate();
+        }
 
         protected override Task<ActivityResult> RunActivity(
             TopicWorkflowContext context,
