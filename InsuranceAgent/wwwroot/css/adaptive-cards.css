@@ -283,6 +283,44 @@
     cursor: not-allowed;
 }
 
+/* =========================
+   Required Field & Error Styling
+   ========================= */
+
+/* Required field indicators */
+.ac-required-indicator {
+    color: #d93025;
+    font-weight: 600;
+}
+
+/* Error styling for choice sets */
+.ac-input-container[data-field-error="true"] .ac-choiceSet-expanded,
+.ac-input-container[data-field-error="true"] .ac-choiceSet-expanded-multi {
+    border: 1.5px solid #d93025;
+    border-radius: 8px;
+    background-color: #fff5f5;
+}
+
+.ac-input-container[data-field-error="true"] .ac-choice-row {
+    border-color: #d93025 !important;
+    background-color: #fff5f5 !important;
+}
+
+/* Remove error styling when user makes valid selections */
+.ac-input-container[data-field-error="false"] .ac-choiceSet-expanded,
+.ac-input-container[data-field-error="false"] .ac-choiceSet-expanded-multi,
+.ac-input-container:not([data-field-error="true"]) .ac-choiceSet-expanded,
+.ac-input-container:not([data-field-error="true"]) .ac-choiceSet-expanded-multi {
+    border-color: #ccdcec;
+    background-color: transparent;
+}
+
+.ac-input-container[data-field-error="false"] .ac-choice-row,
+.ac-input-container:not([data-field-error="true"]) .ac-choice-row {
+    border-color: #ccdcec !important;
+    background-color: #fafafa !important;
+}
+
 /* Error message styling */
 .ac-error-message, .ac-textBlock[color="Attention"] {
     color: #d93025 !important;

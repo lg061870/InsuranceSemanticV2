@@ -161,7 +161,7 @@
     // ========== EVENTS ==========
     public event EventHandler<MessageEventArgs>? UserMessageEntered;
     public event EventHandler<ChatCardSubmitEventArgs>? AdaptiveCardSubmitted;
-    public event EventHandler<ChatWinowCardActionEventArgs>? CardActionInvoked;
+    public event EventHandler<ChatWindowCardActionEventArgs>? CardActionInvoked;
     public event EventHandler<ChatWindowBotMessageEventArgs>? BotMessageRendered;
 
     // ========== STATE ==========
@@ -190,63 +190,77 @@
             // Subscribe Service → ChatWindow FIRST
                 ChatService.HybridBotMessageReady += (s, e) => {
                     Logger?.LogInformation($"[ChatWindow] Received HybridBotMessageReady: {e.Message.Content}");
-                    Messages.Add(e.Message);
-                    StateHasChanged();
+                    InvokeAsync(() => {
+                        Messages.Add(e.Message);
+                        StateHasChanged();
+                    });
 
                     BotMessageRendered?.Invoke(this, new ChatWindowBotMessageEventArgs(e.Message.Content));
                 };
 
             ChatService.HybridAdaptiveCardReady += (s, e) => {
                 Logger?.LogInformation($"[ChatWindow] HybridAdaptiveCardReady: CardId={e.CardId}, RenderMode={e.RenderMode}");
-                if (e.RenderMode == ConversaCore.Events.RenderMode.Replace && !string.IsNullOrEmpty(e.CardId)) {
-                    var existing = Messages.FirstOrDefault(m => m.IsAdaptiveCard && m.CardId == e.CardId);
-                    if (existing != null) {
-                        existing.AdaptiveCardJson = e.CardJson;
-                        existing.Timestamp = DateTime.Now;
-                        StateHasChanged();
-                        Logger?.LogInformation($"[ChatWindow] AdaptiveCard replaced: CardId={e.CardId}");
-                        return;
+                InvokeAsync(() => {
+                    if (e.RenderMode == ConversaCore.Events.RenderMode.Replace && !string.IsNullOrEmpty(e.CardId)) {
+                        var existing = Messages.FirstOrDefault(m => m.IsAdaptiveCard && m.CardId == e.CardId);
+                        if (existing != null) {
+                            existing.AdaptiveCardJson = e.CardJson;
+                            existing.Timestamp = DateTime.Now;
+                            StateHasChanged();
+                            Logger?.LogInformation($"[ChatWindow] AdaptiveCard replaced: CardId={e.CardId}");
+                            return;
+                        }
                     }
-                }
 
-                // fallback: append new card
-                Messages.Add(new ChatMessage {
-                    IsFromUser = false,
-                    IsAdaptiveCard = true,
-                    AdaptiveCardJson = e.CardJson,
-                    CardId = e.CardId,
-                    Timestamp = DateTime.Now
+                    // fallback: append new card
+                    Messages.Add(new ChatMessage {
+                        IsFromUser = false,
+                        IsAdaptiveCard = true,
+                        AdaptiveCardJson = e.CardJson,
+                        CardId = e.CardId,
+                        Timestamp = DateTime.Now
+                    });
+
+                    StateHasChanged();
+                    Logger?.LogInformation($"[ChatWindow] AdaptiveCard appended: CardId={e.CardId}");
                 });
-                StateHasChanged();
-                Logger?.LogInformation($"[ChatWindow] AdaptiveCard appended: CardId={e.CardId}");
             };
+
 
 
             ChatService.HybridTypingIndicatorChanged += (s, e) => {
                 Logger?.LogInformation($"[ChatWindow] TypingIndicatorChanged: IsTyping={e.IsTyping}");
-                IsTyping = e.IsTyping;
-                StateHasChanged();
+                InvokeAsync(() => {
+                    IsTyping = e.IsTyping;
+                    StateHasChanged();
+                });
             };
 
             ChatService.HybridSuggestionsUpdated += (s, e) => {
                 Logger?.LogInformation($"[ChatWindow] SuggestionsUpdated: {string.Join(", ", e.Suggestions)}");
-                CurrentSuggestions = e.Suggestions.ToList();
-                StateHasChanged();
+                InvokeAsync(() => {
+                    CurrentSuggestions = e.Suggestions.ToList();
+                    StateHasChanged();
+                });
             };
 
             ChatService.HybridChatEventRaised += (s, e) => {
                 Logger?.LogInformation($"[ChatWindow] ChatEventRaised: {e.ChatEvent?.Type}");
-                HandleWorkflowEvent(e.ChatEvent);
-                StateHasChanged();
+                InvokeAsync(() => {
+                    HandleWorkflowEvent(e.ChatEvent);
+                    StateHasChanged();
+                });
             };
 
             ChatService.OnConversationReset += (s, e) => {
                 Logger?.LogInformation($"[ChatWindow] OnConversationReset event received at {e.ResetTime}");
                 Logger?.LogInformation($"[ChatWindow] Clearing {Messages.Count} messages");
-                Messages.Clear();
-                Logger?.LogInformation("[ChatWindow] Messages cleared, calling StateHasChanged");
-                StateHasChanged();
-                Logger?.LogInformation("[ChatWindow] StateHasChanged completed");
+                InvokeAsync(() => {
+                    Messages.Clear();
+                    Logger?.LogInformation("[ChatWindow] Messages cleared, calling StateHasChanged");
+                    StateHasChanged();
+                    Logger?.LogInformation("[ChatWindow] StateHasChanged completed");
+                });
             };
 
             // Subscribe ChatWindow → Service
@@ -262,8 +276,6 @@
             _conversationStarted = true;
         }
     }
-
-
 
     public void Dispose() {
         ChatService.OnConversationStart -= HandleConversationStart;
@@ -400,7 +412,7 @@
 
     private Task HandleCardAction(string actionId) {
         Logger?.LogInformation($"[ChatWindow] HandleCardAction called: {actionId}");
-        CardActionInvoked?.Invoke(this, new ChatWinowCardActionEventArgs(actionId));
+        CardActionInvoked?.Invoke(this, new ChatWindowCardActionEventArgs(actionId));
         Logger?.LogInformation("[ChatWindow] HandleCardAction completed");
         return Task.CompletedTask;
     }

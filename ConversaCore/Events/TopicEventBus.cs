@@ -12,7 +12,7 @@ namespace ConversaCore.Events {
     /// </summary>
     public sealed class TopicEventBus : ITopicEventBus {
         private bool _isTerminated = false;
-        private readonly ILogger<TopicEventBus>? _logger;
+        private readonly ILogger<TopicEventBus>? _logger = null;
         private static readonly Lazy<TopicEventBus> _instance =
             new(() => new TopicEventBus());
 

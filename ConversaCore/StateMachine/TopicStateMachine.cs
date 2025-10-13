@@ -29,7 +29,7 @@ namespace ConversaCore.StateMachine
         /// <summary>
         /// Gets or sets the reason for the transition
         /// </summary>
-        public string Reason { get; set; }
+        public required string Reason { get; set; }
     }
     
     /// <summary>
@@ -113,7 +113,7 @@ namespace ConversaCore.StateMachine
         /// <param name="from">The source state</param>
         /// <param name="to">The target state</param>
         /// <param name="guard">Optional guard condition that must be true for the transition to be allowed</param>
-        public void ConfigureTransition(TState from, TState to, Func<bool> guard = null)
+        public void ConfigureTransition(TState from, TState to, Func<bool>? guard = null)
         {
             if (!_allowedTransitions.ContainsKey(from))
             {
@@ -154,7 +154,7 @@ namespace ConversaCore.StateMachine
         /// <param name="targetState">The state to transition to</param>
         /// <param name="reason">Optional reason for the transition (for logging)</param>
         /// <returns>True if the transition was successful, false otherwise</returns>
-        public async Task<bool> TryTransitionAsync(TState targetState, string reason = null)
+        public async Task<bool> TryTransitionAsync(TState targetState, string? reason = null)
         {
             // Check if transition is allowed
             if (!IsTransitionAllowed(_currentState, targetState))
@@ -280,7 +280,7 @@ namespace ConversaCore.StateMachine
         /// </summary>
         /// <param name="state">The state to force the machine into</param>
         /// <param name="reason">Reason for forcing the state change</param>
-        public void ForceState(TState state, string reason = "Force state change")
+        public void ForceState(TState state, string? reason = "Force state change")
         {
             var previousState = _currentState;
             _currentState = state;

@@ -61,19 +61,8 @@ public sealed class ConversationStartTopic : ConversaCore.TopicFlow.TopicFlow
     public const string GreetActivityId = "greet";
     private const string InitIntent = "__init__";
     private const string ContextFlag = "ConversationStartTopic.HasRun";
-    
-    // Activity IDs for the compliance flowchart
-    private const string ActivityId_CollectCompliance = "CollectCompliance";
-    private const string ActivityId_TcpaCheck = "TcpaConsentCheck";
-    private const string ActivityId_CcpaCheck = "CcpaAckCheck";
-    private const string ActivityId_CaliforniaCheck = "CaliforniaCheck";
-    private const string ActivityId_CollectCaliforniaInfo = "CollectCaliforniaInfo";
-    private const string ActivityId_ShowHighIntentCard = "ShowHighIntentCard";
-    private const string ActivityId_ShowMediumIntentCard = "ShowMediumIntentCard";
-    private const string ActivityId_ShowLowIntentCard = "ShowLowIntentCard";
-    private const string ActivityId_ShowBlockedCard = "ShowBlockedCard";
-    private const string ActivityId_RouteToNextTopic = "RouteToNextTopic";
 
+    // >>$ this system topic should remain minimal and only handle generic conversation initialization
     private readonly IConversationContext _conversationContext;
     private readonly ILogger<ConversationStartTopic> _logger;
 
@@ -83,7 +72,6 @@ public sealed class ConversationStartTopic : ConversaCore.TopicFlow.TopicFlow
         IConversationContext conversationContext)
         : base(context, logger) 
     {
-    // >>> other than the GreetActivity all the other activities added here are domain-specific and belong in the insuranceagent
     _conversationContext = conversationContext;
     _logger = logger;
 
@@ -106,59 +94,6 @@ public sealed class ConversationStartTopic : ConversaCore.TopicFlow.TopicFlow
     }
 
     // ...existing code...
-
-    /// <summary>
-    /// Creates the appropriate outcome card activity based on the decision matrix result
-    /// </summary>
-    private AdaptiveCardActivity<GenericCard, BaseCardModel> CreateOutcomeCardActivity(
-        string id, 
-        ConversaCore.TopicFlow.TopicWorkflowContext context, 
-        string cardType)
-    {
-        // Create a generic activity for the scenario outcome card
-        var activity = new AdaptiveCardActivity<GenericCard, BaseCardModel>(
-            id,
-            context,
-            card => {
-                // Using reflection to create the appropriate card type dynamically
-                Type? cardTypeClass = Type.GetType($"InsuranceAgent.Topics.ComplianceTopic.{cardType}, InsuranceAgent");
-                if (cardTypeClass == null) {
-                    _logger.LogError("[ConversationStartTopic] Failed to find card type: {CardType}", cardType);
-                    throw new InvalidOperationException($"Could not find card type {cardType}");
-                }
-                
-                var cardInstance = Activator.CreateInstance(cardTypeClass);
-                if (cardInstance == null) {
-                    _logger.LogError("[ConversationStartTopic] Failed to create card instance: {CardType}", cardType);
-                    throw new InvalidOperationException($"Could not create card instance for {cardType}");
-                }
-                
-                var createMethod = cardTypeClass.GetMethod("Create");
-                if (createMethod == null) {
-                    _logger.LogError("[ConversationStartTopic] Failed to find Create method on card: {CardType}", cardType);
-                    throw new InvalidOperationException($"Could not find Create method on card {cardType}");
-                }
-                
-                var result = createMethod.Invoke(cardInstance, null);
-                if (result == null)
-                {
-                    _logger.LogError("[ConversationStartTopic] Create method returned null for card: {CardType}", cardType);
-                    throw new InvalidOperationException($"Create method returned null for card {cardType}");
-                }
-                return (AdaptiveCardModel)result;
-            },
-            "OutcomeModel"
-        );
-        
-        // Hook up events for logging
-        activity.CardJsonEmitted += (s, e) => 
-            _logger.LogInformation("[{Topic}] {CardType} emitted (mode={Mode})", Name, cardType, e.RenderMode);
-            
-        activity.ModelBound += (s, e) => 
-            _logger.LogInformation("[{Topic}] {CardType} model bound", Name, cardType);
-            
-        return activity;
-    }
 
     /// <summary>
     /// Initializes the generic global variable structure.

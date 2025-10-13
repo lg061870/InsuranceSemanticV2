@@ -10,7 +10,7 @@ namespace ConversaCore.Topics {
     public class FlowBuilder {
         private readonly string _flowName;
         private readonly TopicWorkflowContext _context;
-        private readonly TopicFlow.TopicFlow _flow;
+        private readonly TopicFlow.TopicFlow? _flow;
         private readonly Dictionary<string, TopicFlowActivity> _activities = new();
         private readonly ILogger _logger;
 
@@ -20,7 +20,9 @@ namespace ConversaCore.Topics {
             _flowName = flowName ?? throw new ArgumentNullException(nameof(flowName));
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _flow = new TopicFlow.TopicFlow(context, logger, flowName);
+            // TODO: FlowBuilder needs refactoring - TopicFlow is abstract and cannot be instantiated
+            // _flow = new TopicFlow.TopicFlow(context, logger, flowName);
+            throw new NotImplementedException("FlowBuilder needs refactoring - TopicFlow is abstract");
         }
 
         // -------------------
@@ -83,7 +85,7 @@ namespace ConversaCore.Topics {
                 throw new InvalidOperationException($"Activity with ID '{activity.Id}' already exists.");
 
             _activities[activity.Id] = activity;
-            _flow.Add(activity);
+            _flow?.Add(activity);
 
             _logger.LogInformation("Added activity {ActivityId} to flow", activity.Id);
 
@@ -104,7 +106,7 @@ namespace ConversaCore.Topics {
         internal TopicFlowActivity? GetActivity(string activityId) =>
             _activities.TryGetValue(activityId, out var activity) ? activity : null;
 
-        public TopicFlow.TopicFlow Build() {
+        public TopicFlow.TopicFlow? Build() {
             if (string.IsNullOrEmpty(_startActivityId))
                 throw new InvalidOperationException("No starting activity has been set. Call StartWith() first.");
 

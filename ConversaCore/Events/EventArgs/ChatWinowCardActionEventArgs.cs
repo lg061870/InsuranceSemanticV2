@@ -1,7 +1,7 @@
 ﻿// === EventArgs classes ===
 namespace ConversaCore.Events;
 
-public class ChatWinowCardActionEventArgs : EventArgs {
+public class ChatWindowCardActionEventArgs : EventArgs {
     public string ActionId { get; }
-    public ChatWinowCardActionEventArgs(string actionId) => ActionId = actionId;
+    public ChatWindowCardActionEventArgs(string actionId) => ActionId = actionId;
 }

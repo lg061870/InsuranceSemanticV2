@@ -255,6 +255,14 @@
                     if (isEnabled === false) {
                         input.disabled = true;
                     }
+                    
+                    // Remove error state when user makes a selection
+                    input.addEventListener('change', function() {
+                        const container = wrap.closest('.ac-input-container');
+                        if (container && container.hasAttribute('data-field-error')) {
+                            container.removeAttribute('data-field-error');
+                        }
+                    });
 
                     const label = el("label", null, { for: inputId, text: c.title });
                     const row = el("div", "ac-choice-row");

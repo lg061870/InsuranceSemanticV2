@@ -1,7 +1,7 @@
 namespace ConversaCore.Cards;
 
 public class CardElement {
-    public string Type { get; set; }
+    public required string Type { get; set; }
     public string? Text { get; set; }
     public string? Id { get; set; }
     public string? Url { get; set; }

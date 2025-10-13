@@ -134,7 +134,7 @@ namespace ConversaCore.TopicFlow.Activities
     /// Leverages lessons learned from RepeatActivity for clean event forwarding and state management.
     /// </summary>
     /// <typeparam name="TActivity">The type of activity to execute conditionally</typeparam>
-    public class ConditionalActivity<TActivity> : TopicFlowActivity, IAdaptiveCardActivity
+    public class ConditionalActivity<TActivity> : TopicFlowActivity, IAdaptiveCardActivity, ITopicTriggeredActivity
         where TActivity : TopicFlowActivity
     {
         private readonly Dictionary<string, Func<string, TopicWorkflowContext, TActivity>> _branchFactories;
@@ -162,6 +162,11 @@ namespace ConversaCore.TopicFlow.Activities
         /// Event fired when child TriggerTopicActivity triggers a topic
         /// </summary>
         public event EventHandler<TopicTriggeredEventArgs>? TopicTriggered;
+
+        /// <summary>
+        /// ConditionalActivity itself doesn't wait, but forwards the child activity's WaitForCompletion behavior
+        /// </summary>
+        public bool WaitForCompletion => _currentActivity is ITopicTriggeredActivity triggeredActivity ? triggeredActivity.WaitForCompletion : false;
 
         private ConditionalActivity(
             string id,
@@ -335,11 +340,25 @@ namespace ConversaCore.TopicFlow.Activities
 
         /// <summary>
         /// Subscribe to child activity events for forwarding (RepeatActivity pattern)
+        /// 
+        /// EVENT BUBBLING CHAIN:
+        /// Child Activity (TriggerTopicActivity/CompositeActivity/AdaptiveCardActivity) 
+        ///     ↓ fires event
+        /// ConditionalActivity.SubscribeToActivityEvents() 
+        ///     ↓ forwards via OnChildXxx handlers  
+        /// ConditionalActivity events (TopicTriggered/CardJsonSent/etc)
+        ///     ↓ bubbled up to parent
+        /// InsuranceAgentService.HookTopicEvents() 
+        ///     ↓ receives final events
+        /// InsuranceAgentService event handlers (OnTopicTriggered/OnCardJsonSent/etc)
         /// </summary>
         private void SubscribeToActivityEvents(TActivity activity)
         {
+            Console.WriteLine($"[ConditionalActivity.SubscribeToActivityEvents] Subscribing to events from child activity '{activity.Id}' (type: {activity.GetType().Name}) within ConditionalActivity '{this.Id}'");
+            
             if (activity is IAdaptiveCardActivity cardActivity)
             {
+                Console.WriteLine($"[ConditionalActivity.SubscribeToActivityEvents] Child '{activity.Id}' implements IAdaptiveCardActivity - subscribing to card events");
                 cardActivity.CardJsonEmitted += OnChildCardJsonEmitted;
                 cardActivity.CardJsonSending += OnChildCardJsonSending;
                 cardActivity.CardJsonSent += OnChildCardJsonSent;
@@ -349,10 +368,12 @@ namespace ConversaCore.TopicFlow.Activities
                 cardActivity.ValidationFailed += OnChildValidationFailed;
             }
             
-            // Forward TriggerTopicActivity-specific events
-            if (activity is TriggerTopicActivity triggerActivity)
+            // Forward TriggerTopicActivity-specific events and ITopicTriggeredActivity events
+            // EVENT BUBBLING: Child.TopicTriggered → ConditionalActivity.TopicTriggered → InsuranceAgentService
+            if (activity is ITopicTriggeredActivity topicTriggeredActivity)
             {
-                triggerActivity.TopicTriggered += OnChildTopicTriggered;
+                Console.WriteLine($"[ConditionalActivity.SubscribeToActivityEvents] Child '{activity.Id}' implements ITopicTriggeredActivity - subscribing to TopicTriggered events");
+                topicTriggeredActivity.TopicTriggered += OnChildTopicTriggered;
             }
         }
 
@@ -424,15 +445,23 @@ namespace ConversaCore.TopicFlow.Activities
         }
 
         /// <summary>
-        /// Forward TopicTriggered events from TriggerTopicActivity children
+        /// Forward TopicTriggered events from child activities (TriggerTopicActivity, CompositeActivity, etc.)
+        /// 
+        /// EVENT BUBBLING: Child Activity → ConditionalActivity.OnChildTopicTriggered → ConditionalActivity.TopicTriggered → InsuranceAgentService
         /// </summary>
         private void OnChildTopicTriggered(object? sender, TopicTriggeredEventArgs e)
         {
-            _logger?.LogWarning("[ConditionalActivity] Forwarding TopicTriggered from branch '{Branch}' - Topic: {TopicName}", _selectedBranch, e.TopicName);
+            var senderType = sender?.GetType().Name ?? "Unknown";
+            var senderId = sender is TopicFlowActivity activity ? activity.Id : "Unknown";
             
-            // Forward the event with the original TriggerTopicActivity as sender
-            // This preserves the original sender so InsuranceAgentService can access TriggerTopicActivity.WaitForCompletion
-            TopicTriggered?.Invoke(sender, e);
+            _logger?.LogWarning("[ConditionalActivity.OnChildTopicTriggered] *** EVENT BUBBLE *** Forwarding TopicTriggered from child '{ChildId}' ({ChildType}) in branch '{Branch}' - Topic: {TopicName}, ConditionalActivity: {ConditionalId}", 
+                senderId, senderType, _selectedBranch, e.TopicName, this.Id);
+            Console.WriteLine($"[ConditionalActivity.OnChildTopicTriggered] *** EVENT BUBBLE *** Forwarding TopicTriggered from child '{senderId}' ({senderType}) to parent: Topic='{e.TopicName}', ConditionalActivity='{this.Id}', Branch='{_selectedBranch}'");
+            
+            // CRITICAL: Forward event to parent - this should reach InsuranceAgentService if properly subscribed
+            Console.WriteLine($"[ConditionalActivity.OnChildTopicTriggered] About to forward TopicTriggered event to parent. Subscribers: {TopicTriggered?.GetInvocationList().Length ?? 0}");
+            TopicTriggered?.Invoke(this, e);
+            Console.WriteLine($"[ConditionalActivity.OnChildTopicTriggered] TopicTriggered event forwarded to parent");
         }
     }
 }

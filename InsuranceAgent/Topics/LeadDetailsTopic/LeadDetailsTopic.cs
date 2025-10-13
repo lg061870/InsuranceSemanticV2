@@ -204,24 +204,20 @@ namespace InsuranceAgent.Topics.LeadDetailsTopic
         /// Execute the topic's activities in queue order.
         /// Also handles optional NextTopic context handoff.
         /// </summary>
-        public override Task<TopicResult> RunAsync(CancellationToken cancellationToken = default)
+        public override async Task<TopicResult> RunAsync(CancellationToken cancellationToken = default)
         {
             Context.SetValue("LeadDetailsTopic_runasync", DateTime.UtcNow.ToString("o"));
 
-            var task = base.RunAsync(cancellationToken);
+            var result = await base.RunAsync(cancellationToken);
 
-            return task.ContinueWith(t => {
-                var result = t.Result;
+            var nextTopic = Context.GetValue<string>("NextTopic");
+            if (!string.IsNullOrEmpty(nextTopic))
+            {
+                result.NextTopicName = nextTopic;
+                Context.SetValue("NextTopic", null); // reset
+            }
 
-                var nextTopic = Context.GetValue<string>("NextTopic");
-                if (!string.IsNullOrEmpty(nextTopic))
-                {
-                    result.NextTopicName = nextTopic;
-                    Context.SetValue("NextTopic", null); // reset
-                }
-
-                return result;
-            });
+            return result;
         }
     }
 }

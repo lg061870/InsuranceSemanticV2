@@ -17,6 +17,19 @@ public class InsuranceAgentService {
     private readonly TopicWorkflowContext _wfContext;
     private readonly ILogger<InsuranceAgentService> _logger;
 
+    // Activity IDs for the compliance flowchart
+    private const string ActivityId_CollectCompliance = "CollectCompliance";
+    private const string ActivityId_TcpaCheck = "TcpaConsentCheck";
+    private const string ActivityId_CcpaCheck = "CcpaAckCheck";
+    private const string ActivityId_CaliforniaCheck = "CaliforniaCheck";
+    private const string ActivityId_CollectCaliforniaInfo = "CollectCaliforniaInfo";
+    private const string ActivityId_ShowHighIntentCard = "ShowHighIntentCard";
+    private const string ActivityId_ShowMediumIntentCard = "ShowMediumIntentCard";
+    private const string ActivityId_ShowLowIntentCard = "ShowLowIntentCard";
+    private const string ActivityId_ShowBlockedCard = "ShowBlockedCard";
+    private const string ActivityId_RouteToNextTopic = "RouteToNextTopic";
+    private const string ActivityId_ProcessComplianceData = "ProcessComplianceData";
+
     private ITopic? _activeTopic;
     private readonly Stack<TopicFlow> _pausedTopics = new Stack<TopicFlow>(); // Track paused topics
 
@@ -145,14 +158,23 @@ public class InsuranceAgentService {
             }
 
             // Handle topic triggers
-            if (act is TriggerTopicActivity trigger) {
+            if (act is ITopicTriggeredActivity trigger) {
+                Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] *** SUBSCRIPTION *** Subscribing to TopicTriggered events from activity '{act.Id}' ({act.GetType().Name})");
                 trigger.TopicTriggered += OnTopicTriggered;
             }
 
             // Handle topic triggers from ConditionalActivity containers
             // (child TriggerTopicActivity is created dynamically, so we subscribe to the container's forwarded event)
             if (act is ConditionalActivity<TriggerTopicActivity> conditional) {
+                Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] *** SUBSCRIPTION *** Subscribing to TopicTriggered events from ConditionalActivity '{act.Id}'");
                 conditional.TopicTriggered += OnTopicTriggered;
+            }
+
+            // CRITICAL FIX: Handle topic triggers from CompositeActivity containers
+            // (child activities like TriggerTopicActivity are created dynamically in CompositeActivity, so we need to subscribe to the container's forwarded event)
+            if (act is CompositeActivity composite) {
+                Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] *** SUBSCRIPTION *** Subscribing to TopicTriggered events from CompositeActivity '{act.Id}'");
+                composite.TopicTriggered += OnTopicTriggered;
             }
         }
     }
@@ -176,6 +198,12 @@ public class InsuranceAgentService {
 
             if (act is ConditionalActivity<TriggerTopicActivity> conditional) {
                 conditional.TopicTriggered -= OnTopicTriggered;
+            }
+
+            // CRITICAL FIX: Unhook CompositeActivity TopicTriggered events
+            if (act is CompositeActivity composite) {
+                Console.WriteLine($"[InsuranceAgentService.UnhookTopicEvents] *** UNSUBSCRIPTION *** Unsubscribing from TopicTriggered events from CompositeActivity '{act.Id}'");
+                composite.TopicTriggered -= OnTopicTriggered;
             }
         }
     }
@@ -212,10 +240,10 @@ public class InsuranceAgentService {
         _logger.LogInformation("[InsuranceAgentService] Adding domain-specific activities to ConversationStartTopic");
 
         // Add compliance trigger
-        flow.Add(new TriggerTopicActivity("CollectCompliance", "ComplianceTopic", _logger, waitForCompletion: true));
+        flow.Add(new TriggerTopicActivity(ActivityId_CollectCompliance, "ComplianceTopic", _logger, waitForCompletion: true));
 
         // Add a simple activity to process the compliance data before continuing
-        flow.Add(new SimpleActivity("ProcessComplianceData", (ctx, input) => {
+        flow.Add(new SimpleActivity(ActivityId_ProcessComplianceData, (ctx, input) => {
             _logger.LogInformation("[InsuranceAgentService] Processing compliance data before decision tree");
             // No additional processing needed, just act as a buffer between topic completion and decision tree
             return Task.FromResult<object?>(null);
@@ -233,8 +261,6 @@ public class InsuranceAgentService {
         // Clear any previous execution state
         _pausedTopics.Clear();
 
-        // >>> this method is called from HybridChatAgent where we already retrieved the topic, yet we do it here again???
-        // NOTE: Only one retrieval is needed. Refactor to avoid duplicate lookups in future.
         var topic = _topicRegistry.GetTopic("ConversationStart");
 
         if (topic == null) {
@@ -245,7 +271,7 @@ public class InsuranceAgentService {
         if (topic is TopicFlow flow) {
             // Make sure we're not duplicating activities
             // Remove existing activities with the same IDs to be safe
-            flow.RemoveActivity("CollectCompliance");
+            flow.RemoveActivity(ActivityId_CollectCompliance);
             flow.RemoveActivity("ProcessComplianceData");
             flow.RemoveActivity("TCPAConsentSwitch");
 
@@ -431,15 +457,22 @@ public class InsuranceAgentService {
     }
 
     private async void OnTopicTriggered(object? sender, TopicTriggeredEventArgs e) {
+        var senderType = sender?.GetType().Name ?? "Unknown";
+        var senderId = sender is TopicFlowActivity activity ? activity.Id : "Unknown";
+        
+        Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] *** EVENT RECEIVED *** TopicTriggered event received from sender '{senderId}' ({senderType}) for topic '{e.TopicName}'");
+        
         // Extract WaitForCompletion from the TriggerTopicActivity sender
-        if (sender is not TriggerTopicActivity trigger) {
+        if (sender is not ITopicTriggeredActivity trigger) {
             _logger.LogWarning("[InsuranceAgentService] Topic triggered by unsupported sender type: {SenderType}", sender?.GetType().Name);
+            Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] ERROR: Sender does not implement ITopicTriggeredActivity - ignoring event");
             return;
         }
 
         var waitForCompletion = trigger.WaitForCompletion;
         _logger.LogInformation("[InsuranceAgentService] Topic triggered: {TopicName} (WaitForCompletion: {WaitForCompletion})",
             e.TopicName, waitForCompletion);
+        Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] Processing topic trigger: Topic='{e.TopicName}', WaitForCompletion={waitForCompletion}");
 
         var nextTopic = _topicRegistry.GetTopic(e.TopicName);
         if (nextTopic is TopicFlow nextFlow) {

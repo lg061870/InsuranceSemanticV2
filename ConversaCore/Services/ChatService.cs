@@ -2,6 +2,7 @@
 using ConversaCore.Events;
 using ConversaCore.Models;
 using ConversaCore.Topics;
+using ConversaCore.TopicFlow;
 using Microsoft.SemanticKernel;
 
 using System.Diagnostics;
@@ -163,7 +164,8 @@ public class ChatService : IChatService {
             return new ChatResponse {
                 Message = responseText,
                 AdaptiveCardJson = result.AdaptiveCardJson ?? string.Empty,
-                TopicName = topic.Name
+                TopicName = topic.Name,
+                wfContext = new TopicWorkflowContext()
             };
         } catch (Exception ex) {
             Console.WriteLine($"Error processing message: {ex}");
@@ -185,7 +187,8 @@ public class ChatService : IChatService {
 
         return new ChatResponse {
             Message = message,
-            TopicName = "Error"
+            TopicName = "Error",
+            wfContext = new TopicWorkflowContext()
         };
     }
 }

@@ -56,7 +56,8 @@ namespace ConversaCore.TopicFlow.Activities
                 {
                     // Store in conversation context with Global_ prefix to avoid conflicts
                     var globalKey = $"Global_{key}";
-                    ConversationContext.SetValue(globalKey, value);
+                    if (value != null)
+                        ConversationContext.SetValue(globalKey, value);
                     
                     Logger.LogDebug("[{ActivityId}] Promoted {Key} → {GlobalKey}", Id, key, globalKey);
                     promotedCount++;

@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using ConversaCore.Context;
+using ConversaCore.TopicFlow.Activities;
 
 namespace ConversaCore.TopicFlow {
     public class TopicTriggeredEventArgs : EventArgs {
@@ -17,7 +18,7 @@ namespace ConversaCore.TopicFlow {
     /// It does not run the topic directly — it just emits the trigger.
     /// Can optionally wait for the triggered topic to complete before continuing.
     /// </summary>
-    public class TriggerTopicActivity : TopicFlowActivity {
+    public class TriggerTopicActivity : TopicFlowActivity, ITopicTriggeredActivity {
         private readonly ILogger? _logger;
         private readonly IConversationContext? _conversationContext;
 

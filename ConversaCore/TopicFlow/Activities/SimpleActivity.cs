@@ -79,7 +79,7 @@ namespace ConversaCore.TopicFlow {
                 }
 
                 TransitionTo(ActivityState.Completed, modelContext);
-                return ActivityResult.Continue(modelContext);
+                return ActivityResult.Continue(modelContext ?? new object());
             } catch (Exception ex) {
                 TransitionTo(ActivityState.Failed, ex);
                 throw;

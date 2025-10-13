@@ -23,7 +23,7 @@ namespace ConversaCore.Services {
 
         public async Task<(string Intent, float Confidence)> RecognizeIntentAsync(
             string message,
-            string context = null) {
+            string? context = null) {
             try {
                 var chatCompletionService = _kernel.GetRequiredService<IChatCompletionService>();
 
@@ -65,7 +65,7 @@ namespace ConversaCore.Services {
         public async Task<float> GetTopicConfidenceAsync(
             string message,
             string topicName,
-            string context = null) {
+            string? context = null) {
             try {
                 var chatCompletionService = _kernel.GetRequiredService<IChatCompletionService>();
 

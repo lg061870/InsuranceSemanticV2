@@ -98,12 +98,8 @@ public class HybridChatService {
         // Initialize insurance-specific global variables first
         InitializeInsuranceGlobals();
         
-        var topic = _topicRegistry.GetTopic("ConversationStart");
-        // >>> we retrieve the corresponding topic but we don't seem to do anything with it, in fact the topic is re-retrieved in the InsuranceAgent (_agentService.StartConversationAsync)
-        if (topic != null) {
-            // Let the agent handle initialization + wiring
-            _ = _agentService.StartConversationAsync(sessionState);
-        }
+        // Let the agent handle topic retrieval and initialization
+        _ = _agentService.StartConversationAsync(sessionState);
     }
 
     public async Task ResetConversationAsync(CancellationToken ct = default) {
@@ -248,7 +244,7 @@ public class HybridChatService {
         }
     }
 
-    public void HandleCardAction(object? sender, ChatWinowCardActionEventArgs e) {
+    public void HandleCardAction(object? sender, ChatWindowCardActionEventArgs e) {
         _logger.LogInformation("[HybridChatService] CardActionInvoked: {ActionId}", e.ActionId);
         TrackMessageInContext("user_action", e.ActionId);
     }

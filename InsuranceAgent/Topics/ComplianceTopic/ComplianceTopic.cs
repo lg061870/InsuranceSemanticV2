@@ -116,6 +116,9 @@ namespace InsuranceAgent.Topics.ComplianceTopic
                 // Set next topic based on outcome
                 SetNextTopicBasedOnOutcome(outcomeType);
                 
+                // Update the trigger activity with the new next topic
+                UpdateTriggerActivity();
+                
                 return Task.FromResult<object?>(null);
             });
 

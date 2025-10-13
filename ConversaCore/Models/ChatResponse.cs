@@ -13,6 +13,6 @@ public class ChatResponse {
     public List<ChatEvent> Events { get; set; } = new();
     public string? TopicName { get; set; }
     public bool UsedTopicSystem { get; set; }
-    public string Message { get; internal set; }
-    public TopicWorkflowContext wfContext { get; set; }
+    public required string Message { get; set; }
+    public required TopicWorkflowContext wfContext { get; set; }
 }

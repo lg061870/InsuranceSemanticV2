@@ -89,6 +89,14 @@ public static class AdaptiveCardValidationHelper {
                 }
             }
             
+            // First, clear any existing error styling from previous validation attempts
+            if (element.ContainsKey("style") && element["style"]?.ToString() == "error") {
+                element.Remove("style");
+            }
+            if (element.ContainsKey("errorStyle")) {
+                element.Remove("errorStyle");
+            }
+            
             // Check for validation errors and apply styling BEFORE adding to body
             bool hasErrors = false;
             List<string>? fieldErrors = null;
@@ -172,10 +180,12 @@ public static class AdaptiveCardValidationHelper {
         var newBody = new List<object>();
 
         foreach (var element in bodyElements) {
-            // Skip any existing error messages
-            if (element.TryGetValue("color", out var colorObj) && 
+            // Skip any existing error messages (TextBlocks with Attention color)
+            if (element.TryGetValue("type", out var elementTypeObj) &&
+                elementTypeObj?.ToString() == "TextBlock" &&
+                element.TryGetValue("color", out var colorObj) && 
                 colorObj?.ToString() == "Attention") {
-                continue; // Skip error TextBlocks
+                continue; // Skip error TextBlocks only
             }
 
             // Preserve user input and disable all input elements
@@ -213,6 +223,11 @@ public static class AdaptiveCardValidationHelper {
             // Remove any error styling
             if (element.ContainsKey("style") && element["style"]?.ToString() == "error") {
                 element.Remove("style");
+            }
+            
+            // Remove errorStyle for choice sets (used to preserve expanded style while showing errors)
+            if (element.ContainsKey("errorStyle")) {
+                element.Remove("errorStyle");
             }
 
             newBody.Add(element);

@@ -91,7 +91,8 @@ namespace ConversaCore.TopicFlow.Activities
                 // Set the variable in appropriate context
                 if (IsGlobal)
                 {
-                    _conversationContext.SetValue(VariableName, Value);
+                    if (Value != null)
+                        _conversationContext.SetValue(VariableName, Value);
                 }
                 else
                 {
