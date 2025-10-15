@@ -163,7 +163,27 @@ public class DocumentEmbeddingService : IDocumentEmbeddingService
         try
         {
             var chunks = await _docProcessor.ProcessFileAsync(filePath, cancellationToken: cancellationToken);
+            
+            if (chunks.Count == 0)
+            {
+                _logger.LogWarning("No chunks generated for file: {FilePath}", filePath);
+                return 0;
+            }
+
             var successCount = await _vectorDb.StoreBatchAsync(collectionName, chunks, cancellationToken);
+
+            if (successCount == 0)
+            {
+                // No chunks were stored successfully - likely an OpenAI/embedding issue
+                _logger.LogError("Vector database failed to store any chunks for file: {FilePath}. This may indicate OpenAI API issues.", filePath);
+                throw new InvalidOperationException("Vector database could not store document chunks. This may be due to OpenAI API issues, missing API key, or network connectivity problems. Check the application logs for more details.");
+            }
+            else if (successCount < chunks.Count)
+            {
+                // Partial failure
+                _logger.LogWarning("Vector database stored only {SuccessCount}/{TotalCount} chunks for file: {FilePath}", 
+                    successCount, chunks.Count, filePath);
+            }
 
             _logger.LogInformation("Processed file {FilePath}: {SuccessCount}/{TotalCount} chunks stored", 
                 filePath, successCount, chunks.Count);

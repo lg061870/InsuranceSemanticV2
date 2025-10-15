@@ -66,8 +66,22 @@ public class InMemoryVectorDatabaseService : IVectorDatabaseService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to store document {DocumentId} in collection {CollectionName}", 
-                documentId, collectionName);
+            // Provide more detailed error logging for different exception types
+            var errorContext = ex switch
+            {
+                HttpRequestException => "OpenAI API connection failed",
+                TaskCanceledException => "OpenAI API request timed out", 
+                UnauthorizedAccessException => "OpenAI API authentication failed",
+                ArgumentException => "Invalid document content or parameters",
+                _ when ex.Message.Contains("API key") => "OpenAI API key is missing or invalid",
+                _ when ex.Message.Contains("quota") => "OpenAI API quota exceeded",
+                _ when ex.Message.Contains("rate") => "OpenAI API rate limit exceeded",
+                _ when ex.Message.Contains("embedding") => "Failed to generate embeddings via OpenAI",
+                _ => "Vector database storage failed"
+            };
+
+            _logger.LogError(ex, "Failed to store document {DocumentId} in collection {CollectionName}: {ErrorContext}", 
+                documentId, collectionName, errorContext);
             return false;
         }
     }
@@ -79,12 +93,24 @@ public class InMemoryVectorDatabaseService : IVectorDatabaseService
             documentChunks.Count, collectionName);
 
         int successCount = 0;
+        var failures = new List<string>();
+        
         foreach (var chunk in documentChunks)
         {
             if (await StoreDocumentAsync(collectionName, chunk.Id, chunk.Content, chunk.Metadata, cancellationToken))
             {
                 successCount++;
             }
+            else
+            {
+                failures.Add(chunk.Id);
+            }
+        }
+
+        if (failures.Any())
+        {
+            _logger.LogWarning("Failed to store {FailureCount} documents in batch: {FailedIds}", 
+                failures.Count, string.Join(", ", failures));
         }
 
         _logger.LogInformation("Successfully stored {SuccessCount}/{TotalCount} documents in batch", 

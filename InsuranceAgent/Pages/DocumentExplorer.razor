@@ -340,10 +340,16 @@
             }
             else {
                 // Show error message for no valid files
-                ShowStatusMessage("No valid files were found to upload.", StatusType.Error);
+                await InvokeAsync(() => {
+                    ShowStatusMessage("No valid files were found to upload.", StatusType.Error);
+                    StateHasChanged();
+                });
             }
         } catch (Exception ex) {
-            ShowStatusMessage($"Error processing dropped files: {ex.Message}", StatusType.Error);
+            await InvokeAsync(() => {
+                ShowStatusMessage($"Error processing dropped files: {ex.Message}", StatusType.Error);
+                StateHasChanged();
+            });
         }
 
         await InvokeAsync(StateHasChanged);
@@ -391,20 +397,27 @@
 
                 fileItem.Status = "Completed";
                 fileItem.IsCompleted = true;
-                ShowStatusMessage($"File '{fileItem.Name}' uploaded and processed successfully!", StatusType.Success);
-                await InvokeAsync(StateHasChanged);
+                await InvokeAsync(() => {
+                    ShowStatusMessage($"File '{fileItem.Name}' uploaded and processed successfully!", StatusType.Success);
+                    StateHasChanged();
+                });
             }
         } catch (Exception ex) {
             fileItem.Status = $"Error: {ex.Message}";
             fileItem.IsCompleted = false;
-            ShowStatusMessage($"Failed to process '{fileItem.Name}': {ex.Message}", StatusType.Error);
-            await InvokeAsync(StateHasChanged);
+            await InvokeAsync(() => {
+                ShowStatusMessage($"Failed to process '{fileItem.Name}': {ex.Message}", StatusType.Error);
+                StateHasChanged();
+            });
         }
     }
 
     private async Task ProcessFile(FileUploadItem fileItem) {
         if (fileItem.Data == null) {
-            ShowStatusMessage("File data is missing - upload failed", StatusType.Error);
+            await InvokeAsync(() => {
+                ShowStatusMessage("File data is missing - upload failed", StatusType.Error);
+                StateHasChanged();
+            });
             throw new InvalidOperationException("File data is null");
         }
 
@@ -434,24 +447,48 @@
                 var chunksProcessed = await DocumentService.ProcessFileAsync(filePath);
                 Console.WriteLine($"[DocumentExplorer] Document processing completed: {chunksProcessed} chunks processed");
 
-                // Update file status and show success message
-                uploadedFile.ProcessingStatus = $"Processed ({chunksProcessed} chunks)";
-                uploadedFile.IsProcessed = true;
-                ShowStatusMessage($"✅ File '{fileItem.Name}' uploaded and processed successfully! ({chunksProcessed} chunks)", StatusType.Success);
+                if (chunksProcessed > 0) {
+                    // Update file status and show success message
+                    uploadedFile.ProcessingStatus = $"Processed ({chunksProcessed} chunks)";
+                    uploadedFile.IsProcessed = true;
+                    await InvokeAsync(() => {
+                        ShowStatusMessage($"✅ File '{fileItem.Name}' uploaded and processed successfully! ({chunksProcessed} chunks)", StatusType.Success);
+                        StateHasChanged();
+                    });
+                } else {
+                    // No chunks processed - likely an embedding/vector DB issue
+                    uploadedFile.ProcessingStatus = "Processing failed - no chunks stored";
+                    uploadedFile.IsProcessed = false;
+                    uploadedFile.ProcessingError = "Vector database could not store document chunks. This may be due to OpenAI API issues, missing API key, or network connectivity problems.";
+                    await InvokeAsync(() => {
+                        ShowStatusMessage($"⚠️ File '{fileItem.Name}' uploaded but vector processing failed. Check OpenAI API configuration.", StatusType.Warning);
+                        StateHasChanged();
+                    });
+                }
             } catch (Exception ex) {
                 // Log the processing error but don't fail the upload - file is still saved
                 Console.WriteLine($"[DocumentExplorer] Document processing failed: {ex.Message}");
+                Console.WriteLine($"[DocumentExplorer] Full exception: {ex}");
                 Console.WriteLine($"[DocumentExplorer] File '{fileItem.Name}' was saved but could not be processed by vector database");
 
-                // Update file status and show warning message
-                uploadedFile.ProcessingStatus = "Upload successful, processing failed";
+                // Update file status and show detailed error message
+                uploadedFile.ProcessingStatus = "Processing failed";
                 uploadedFile.IsProcessed = false;
-                uploadedFile.ProcessingError = ex.Message;
-                ShowStatusMessage($"⚠️ File '{fileItem.Name}' uploaded but processing failed: {ex.Message}", StatusType.Warning);
+                
+                // Provide more specific error messaging based on exception type
+                var errorMessage = GetDetailedErrorMessage(ex);
+                uploadedFile.ProcessingError = errorMessage;
+                await InvokeAsync(() => {
+                    ShowStatusMessage($"⚠️ File '{fileItem.Name}' uploaded but processing failed: {GetShortErrorMessage(ex)}", StatusType.Warning);
+                    StateHasChanged();
+                });
             }
         } catch (Exception ex) {
             Console.WriteLine($"[DocumentExplorer] File upload failed: {ex.Message}");
-            ShowStatusMessage($"❌ Failed to upload '{fileItem.Name}': {ex.Message}", StatusType.Error);
+            await InvokeAsync(() => {
+                ShowStatusMessage($"❌ Failed to upload '{fileItem.Name}': {ex.Message}", StatusType.Error);
+                StateHasChanged();
+            });
             throw;
         }
         ;
@@ -599,5 +636,36 @@
         } catch (Exception ex) {
             ShowStatusMessage($"Failed to delete '{file.Name}': {ex.Message}", StatusType.Error);
         }
+    }
+
+    private string GetDetailedErrorMessage(Exception ex) {
+        return ex switch {
+            ArgumentException => "Invalid file format or content. Please check the file and try again.",
+            UnauthorizedAccessException => "Access denied. Please check file permissions.",
+            FileNotFoundException => "File not found. The file may have been moved or deleted.",
+            NotSupportedException => "File type not supported for vector processing.",
+            HttpRequestException => "Network error connecting to OpenAI API. Please check your internet connection and API key.",
+            TaskCanceledException => "Request timed out. The OpenAI API may be experiencing delays.",
+            _ when ex.Message.Contains("API key") => "OpenAI API key is missing or invalid. Please check your configuration.",
+            _ when ex.Message.Contains("quota") => "OpenAI API quota exceeded. Please check your OpenAI account usage.",
+            _ when ex.Message.Contains("rate") => "OpenAI API rate limit exceeded. Please wait a moment and try again.",
+            _ when ex.Message.Contains("embedding") => "Failed to generate text embeddings via OpenAI API. Please check your API configuration.",
+            _ when ex.Message.Contains("memory service") => "Vector database service is not available. Please check the configuration.",
+            _ => $"Unexpected error during processing: {ex.Message}"
+        };
+    }
+
+    private string GetShortErrorMessage(Exception ex) {
+        return ex switch {
+            NotSupportedException => "File type not supported",
+            HttpRequestException => "OpenAI API connection failed",
+            TaskCanceledException => "Request timed out",
+            _ when ex.Message.Contains("API key") => "Invalid OpenAI API key",
+            _ when ex.Message.Contains("quota") => "OpenAI quota exceeded",
+            _ when ex.Message.Contains("rate") => "OpenAI rate limit exceeded",
+            _ when ex.Message.Contains("embedding") => "Embedding generation failed",
+            _ when ex.Message.Contains("memory service") => "Vector database unavailable",
+            _ => "Processing failed"
+        };
     }
 }
