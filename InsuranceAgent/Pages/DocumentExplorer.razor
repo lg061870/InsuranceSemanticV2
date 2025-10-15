@@ -1,0 +1,603 @@
+@page "/documents"
+@using System.IO
+@using InsuranceAgent.Services
+@inject IDocumentEmbeddingService DocumentService
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<div id="main-content" class="max-w-7xl mx-auto px-6 py-8">
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">AI Document Processing</h2>
+        <p class="text-gray-600">Upload documents to be processed by the semantic kernel and added to the vector database.</p>
+    </div>
+
+    <div id="document-manager-container" class="bg-white rounded-lg shadow-sm border border-gray-soft overflow-hidden">
+        <div class="flex">
+            <div id="sidebar-nav" class="w-64 bg-gray-50 border-r border-gray-soft p-4">
+                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 px-2">Knowledge Base</h3>
+                <nav class="space-y-1">
+                    <span @onclick="() => SetActiveView(VIEW_UPLOAD)" class="@GetNavItemClasses(VIEW_UPLOAD)" style="cursor: pointer;">
+                        <i class="fa-solid fa-cloud-upload w-5 h-5 mr-3"></i>
+                        <span>Upload Documents</span>
+                    </span>
+
+                    <span @onclick="() => SetActiveView(VIEW_STATUS)" class="@GetNavItemClasses(VIEW_STATUS)" style="cursor: pointer;">
+                        <i class="fa-solid fa-database w-5 h-5 mr-3"></i>
+                        <span>Vector DB Status</span>
+                    </span>
+
+                    <span @onclick="() => SetActiveView(VIEW_FILES)" class="@GetNavItemClasses(VIEW_FILES)" style="cursor: pointer;">
+                        <i class="fa-solid fa-file-lines w-5 h-5 mr-3"></i>
+                        <span>Processed Files (@_uploadedFiles.Count)</span>
+                    </span>
+
+                    <span @onclick="() => SetActiveView(VIEW_CONFIG)" class="@GetNavItemClasses(VIEW_CONFIG)" style="cursor: pointer;">
+                        <i class="fa-solid fa-gears w-5 h-5 mr-3"></i>
+                        <span>Configuration</span>
+                    </span>
+                </nav>
+                <div class="mt-6 pt-4 border-t border-gray-200">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 px-2">Storage</h3>
+                    <div class="px-2 space-y-3">
+                        <p class="text-xs text-gray-600">Destination Folder:</p>
+                        <div class="flex items-center space-x-2 bg-gray-200 p-2 rounded-md">
+                            <i class="fa-solid fa-folder text-primary"></i>
+                            <span class="text-xs font-mono text-gray-700 truncate">wwroot\documents</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="main-panel" class="flex-1 p-6">
+                <div id="toolbar" class="flex justify-between items-center pb-4 border-b border-gray-soft mb-6">
+                    <div class="flex items-center space-x-2">
+                        <button @onclick="TriggerFileInput" class="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90 font-medium text-sm flex items-center space-x-2">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Upload New</span>
+                        </button>
+                        <InputFile @ref="_fileInput" OnChange="HandleFileSelect" id="file-input" class="hidden" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" />
+                        <button class="bg-gray-100 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 font-medium text-sm border border-gray-soft">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <div class="relative w-64">
+                            <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                            <input type="text" placeholder="Search documents..." class="w-full pl-9 pr-3 py-2 border border-gray-soft rounded-md text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                        </div>
+                        <button class="bg-gray-100 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 font-medium text-sm border border-gray-soft flex items-center space-x-2">
+                            <i class="fa-solid fa-filter text-sm"></i>
+                            <span>Filter</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Upload View -->
+                @if (_activeView == "upload") {
+                    <div id="upload-area-container">
+                        <div @onclick="TriggerFileInput" data-dropzone class="@GetDropzoneClasses()">
+                            <div class="flex flex-col items-center">
+                                <div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                                    <i class="fa-solid fa-cloud-arrow-up text-primary text-3xl"></i>
+                                </div>
+                                <h3 class="text-lg font-bold text-gray-800">Drag & drop files here</h3>
+                                <p class="text-gray-500 mt-1">or click to browse from your computer</p>
+                                <p class="text-xs text-gray-400 mt-4">Supports: PDF, DOC, DOCX, XLS, XLSX, TXT</p>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                @if (_showStatus) {
+                    <div class="mt-4">
+                        <div class="@GetStatusClasses() p-4 rounded-md flex items-center justify-between">
+                            <div class="flex items-center">
+                                <i class="@GetStatusIcon() mr-2"></i>
+                                <span>@_statusMessage</span>
+                            </div>
+                            <button @onclick="DismissStatus" class="text-current opacity-70 hover:opacity-100">
+                                <i class="fa-solid fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                }
+
+                @if (_showProcessingList) {
+                    <div class="mt-6">
+                        <h3 class="text-sm font-bold text-gray-600 mb-3">Processing Queue (@_fileQueue.Count)</h3>
+                        <div class="space-y-3">
+                            @foreach (var file in _fileQueue) {
+                                <div class="bg-white p-3 rounded-md border border-gray-soft flex items-center space-x-4">
+                                    <div class="text-2xl w-8 text-center">
+                                        <i class="@GetFileIcon(file.Name)"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="flex justify-between items-center">
+                                            <p class="text-sm font-medium text-gray-800 truncate">@file.Name</p>
+                                            <p class="text-sm text-gray-500">@FormatBytes(file.Size)</p>
+                                        </div>
+                                        <div class="mt-2">
+                                            <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                                <div class="bg-primary h-1.5 rounded-full" style="width: @(file.Progress)%"></div>
+                                            </div>
+                                            <div class="text-xs text-gray-500 mt-1 flex justify-between">
+                                                <span class="@(file.IsCompleted ? "text-green-600" : "")">
+                                                    @if (file.IsCompleted) {
+                                                        <i class="fa-solid fa-check-circle text-green-600 mr-1"></i>
+                                                        @file.Status
+                                                    }
+                                                    else {
+                                                        @file.Status
+                                                    }
+                                                </span>
+                                                <span>@(file.Progress == 100 ? "Done" : $"{file.Progress}%")</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    @if (!file.IsCompleted) {
+                                        <button @onclick="() => CancelUpload(file)" class="text-gray-400 hover:text-red-500 p-1 rounded-full">
+                                            <i class="fa-solid fa-times"></i>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_showEmptyState) {
+                    <div class="mt-8 text-center">
+                        <i class="fa-regular fa-file-excel text-5xl text-gray-300"></i>
+                        <h4 class="mt-4 text-lg font-medium text-gray-700">No files in queue</h4>
+                        <p class="mt-1 text-sm text-gray-500">Upload documents to start processing.</p>
+                    </div>
+                }
+
+                <!-- Uploaded Files View -->
+                @if (_activeView == "files") {
+                    <div class="mt-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-800">Uploaded Files (@_uploadedFiles.Count)</h3>
+                            @if (_uploadedFiles.Any()) {
+                                <button @onclick="ClearUploadedFiles" class="text-red-600 hover:text-red-800 text-sm">
+                                    <i class="fa-solid fa-trash mr-1"></i> Clear All
+                                </button>
+                            }
+                        </div>
+
+                        @if (!_uploadedFiles.Any()) {
+                            <div class="text-center py-8 text-gray-500">
+                                <i class="fa-solid fa-file-plus text-4xl mb-4 text-gray-300"></i>
+                                <p>No files uploaded yet</p>
+                                <p class="text-sm">Upload documents to see them listed here</p>
+                            </div>
+                        }
+                        else {
+                            <div class="space-y-3">
+                                @foreach (var file in _uploadedFiles.OrderByDescending(f => f.UploadedAt)) {
+                                    <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                        <div class="flex items-center justify-between">
+                                            <div class="flex items-center space-x-3">
+                                                <i class="@GetFileIcon(file.Name) text-2xl"></i>
+                                                <div>
+                                                    <h4 class="font-medium text-gray-900">@file.Name</h4>
+                                                    <p class="text-sm text-gray-500">@FormatBytes(file.Size) • @file.UploadedAt.ToString("MMM dd, yyyy HH:mm")</p>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center space-x-2">
+                                                @if (file.IsProcessed) {
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                        <i class="fa-solid fa-check mr-1"></i> @file.ProcessingStatus
+                                                    </span>
+                                                }
+                                                else if (!string.IsNullOrEmpty(file.ProcessingError)) {
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" title="@file.ProcessingError">
+                                                        <i class="fa-solid fa-exclamation-triangle mr-1"></i> Processing Failed
+                                                    </span>
+                                                }
+                                                else {
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                        <i class="fa-solid fa-clock mr-1"></i> @file.ProcessingStatus
+                                                    </span>
+                                                }
+                                                <button @onclick="() => DeleteUploadedFile(file)" class="text-red-600 hover:text-red-800 p-1" title="Delete file">
+                                                    <i class="fa-solid fa-trash text-sm"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(file.ProcessingError)) {
+                                            <div class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                                                <p class="text-sm text-yellow-800">
+                                                    <i class="fa-solid fa-exclamation-triangle mr-1"></i>
+                                                    <strong>Processing Error:</strong> @file.ProcessingError
+                                                </p>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _showProcessingList = false;
+    private bool _showEmptyState = true;
+    private bool _isDragOver = false;
+    private List<FileUploadItem> _fileQueue = new();
+    private InputFile? _fileInput;
+    private DotNetObjectReference<DocumentExplorer>? _dotNetReference;
+    private const string VIEW_UPLOAD = "upload";
+    private const string VIEW_STATUS = "status";
+    private const string VIEW_FILES = "files";
+    private const string VIEW_CONFIG = "config";
+
+    // Status message properties
+    private string _statusMessage = "";
+    private StatusType _statusType = StatusType.Info;
+    private bool _showStatus = false;
+
+    // Uploaded files tracking
+    private List<UploadedFileInfo> _uploadedFiles = new();
+    private bool _showUploadedFiles = false;
+
+    // Navigation
+    private string _activeView = VIEW_UPLOAD;
+
+    public class FileUploadItem {
+        public string Name { get; set; } = "";
+        public long Size { get; set; }
+        public string FileType { get; set; } = "";
+        public int Progress { get; set; } = 0;
+        public string Status { get; set; } = "Uploading...";
+        public bool IsCompleted { get; set; } = false;
+        public bool IsCancelled { get; set; } = false;
+        public byte[]? Data { get; set; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        if (firstRender) {
+            _dotNetReference = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("setupDragAndDrop", _dotNetReference);
+        }
+    }
+
+    public void Dispose() {
+        _dotNetReference?.Dispose();
+    }
+
+    private async Task TriggerFileInput() {
+        await JSRuntime.InvokeVoidAsync("triggerFileInput");
+    }
+
+    private async Task HandleFileSelect(InputFileChangeEventArgs e) {
+        var files = e.GetMultipleFiles();
+        var fileItems = new List<FileUploadItem>();
+
+        foreach (var file in files) {
+            var fileItem = new FileUploadItem {
+                Name = file.Name,
+                Size = file.Size,
+                FileType = file.ContentType
+            };
+
+            // Read file data efficiently with size limit
+            const int maxFileSize = 10 * 1024 * 1024; // 10MB limit
+            using var stream = file.OpenReadStream(maxAllowedSize: maxFileSize);
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            fileItem.Data = memoryStream.ToArray();
+
+            fileItems.Add(fileItem);
+        }
+
+        await HandleFiles(fileItems);
+    }
+
+    [JSInvokable]
+    public async Task HandleDragEnter() {
+        _isDragOver = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task HandleDragLeave() {
+        _isDragOver = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task HandleDroppedFiles(object[] filesData) {
+        _isDragOver = false;
+        var fileItems = new List<FileUploadItem>();
+
+        try {
+            foreach (var fileData in filesData) {
+                var fileInfo = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(fileData.ToString()!);
+
+                if (fileInfo != null &&
+                    fileInfo.TryGetValue("name", out var nameObj) &&
+                    fileInfo.TryGetValue("size", out var sizeObj) &&
+                    fileInfo.TryGetValue("type", out var typeObj) &&
+                    fileInfo.TryGetValue("data", out var dataObj)) {
+                    var fileItem = new FileUploadItem {
+                        Name = nameObj.ToString() ?? "Unknown",
+                        Size = Convert.ToInt64(sizeObj),
+                        FileType = typeObj.ToString() ?? "",
+                        Data = Convert.FromBase64String(dataObj.ToString() ?? "")
+                    };
+
+                    fileItems.Add(fileItem);
+                }
+            }
+
+            if (fileItems.Count > 0) {
+                await HandleFiles(fileItems);
+            }
+            else {
+                // Show error message for no valid files
+                ShowStatusMessage("No valid files were found to upload.", StatusType.Error);
+            }
+        } catch (Exception ex) {
+            ShowStatusMessage($"Error processing dropped files: {ex.Message}", StatusType.Error);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleFiles(List<FileUploadItem> files) {
+        foreach (var file in files) {
+            _fileQueue.Add(file);
+            AddFileToList();
+
+            // Start upload simulation for this file
+            _ = Task.Run(() => SimulateUpload(file));
+        }
+
+        UpdateQueueTitle();
+    }
+
+    private void AddFileToList() {
+        if (!_showProcessingList) {
+            _showProcessingList = true;
+            _showEmptyState = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SimulateUpload(FileUploadItem fileItem) {
+        var random = new Random();
+
+        try {
+            // Simulate upload progress
+            while (fileItem.Progress < 100 && !fileItem.IsCancelled) {
+                fileItem.Progress += random.Next(5, 15);
+                if (fileItem.Progress > 100) fileItem.Progress = 100;
+
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(200);
+            }
+
+            if (!fileItem.IsCancelled) {
+                fileItem.Status = "Processing...";
+                await InvokeAsync(StateHasChanged);
+
+                // Actually save the file and process it
+                await ProcessFile(fileItem);
+
+                fileItem.Status = "Completed";
+                fileItem.IsCompleted = true;
+                ShowStatusMessage($"File '{fileItem.Name}' uploaded and processed successfully!", StatusType.Success);
+                await InvokeAsync(StateHasChanged);
+            }
+        } catch (Exception ex) {
+            fileItem.Status = $"Error: {ex.Message}";
+            fileItem.IsCompleted = false;
+            ShowStatusMessage($"Failed to process '{fileItem.Name}': {ex.Message}", StatusType.Error);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ProcessFile(FileUploadItem fileItem) {
+        if (fileItem.Data == null) {
+            ShowStatusMessage("File data is missing - upload failed", StatusType.Error);
+            throw new InvalidOperationException("File data is null");
+        }
+
+        try {
+            // Save file to wwwroot/documents
+            var documentsPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "documents");
+            Directory.CreateDirectory(documentsPath);
+
+            var filePath = Path.Combine(documentsPath, fileItem.Name);
+            await File.WriteAllBytesAsync(filePath, fileItem.Data);
+
+            // Log the file save operation
+            Console.WriteLine($"[DocumentExplorer] File saved: {filePath} ({fileItem.Data.Length} bytes)");
+
+            // Add to uploaded files list
+            var uploadedFile = new UploadedFileInfo {
+                Name = fileItem.Name,
+                Size = fileItem.Data.Length,
+                UploadedAt = DateTime.Now,
+                FilePath = filePath,
+                ProcessingStatus = "Processing..."
+            };
+            _uploadedFiles.Add(uploadedFile);
+
+            try {
+                // Process with DocumentService (may fail due to vector DB limitations)
+                var chunksProcessed = await DocumentService.ProcessFileAsync(filePath);
+                Console.WriteLine($"[DocumentExplorer] Document processing completed: {chunksProcessed} chunks processed");
+
+                // Update file status and show success message
+                uploadedFile.ProcessingStatus = $"Processed ({chunksProcessed} chunks)";
+                uploadedFile.IsProcessed = true;
+                ShowStatusMessage($"✅ File '{fileItem.Name}' uploaded and processed successfully! ({chunksProcessed} chunks)", StatusType.Success);
+            } catch (Exception ex) {
+                // Log the processing error but don't fail the upload - file is still saved
+                Console.WriteLine($"[DocumentExplorer] Document processing failed: {ex.Message}");
+                Console.WriteLine($"[DocumentExplorer] File '{fileItem.Name}' was saved but could not be processed by vector database");
+
+                // Update file status and show warning message
+                uploadedFile.ProcessingStatus = "Upload successful, processing failed";
+                uploadedFile.IsProcessed = false;
+                uploadedFile.ProcessingError = ex.Message;
+                ShowStatusMessage($"⚠️ File '{fileItem.Name}' uploaded but processing failed: {ex.Message}", StatusType.Warning);
+            }
+        } catch (Exception ex) {
+            Console.WriteLine($"[DocumentExplorer] File upload failed: {ex.Message}");
+            ShowStatusMessage($"❌ Failed to upload '{fileItem.Name}': {ex.Message}", StatusType.Error);
+            throw;
+        }
+        ;
+
+        // For now, we'll consider this a partial success since the file is saved
+        // In the future, when vector DB is properly configured, this will work fully
+    }
+
+    private void CancelUpload(FileUploadItem fileItem) {
+        fileItem.IsCancelled = true;
+        _fileQueue.Remove(fileItem);
+        UpdateQueueTitle();
+        StateHasChanged();
+    }
+
+    private void UpdateQueueTitle() {
+        if (_fileQueue.Count == 0) {
+            _showProcessingList = false;
+            _showEmptyState = true;
+        }
+        StateHasChanged();
+    }
+
+    private string GetFileIcon(string fileName) {
+        var extension = Path.GetExtension(fileName).ToLower();
+        return extension switch {
+            ".pdf" => "fa-solid fa-file-pdf text-red-500",
+            ".doc" or ".docx" => "fa-solid fa-file-word text-blue-500",
+            ".xls" or ".xlsx" => "fa-solid fa-file-excel text-green-500",
+            ".txt" => "fa-solid fa-file-alt text-gray-500",
+            _ => "fa-solid fa-file text-gray-400"
+        };
+    }
+
+    private string FormatBytes(long bytes, int decimals = 2) {
+        if (bytes <= 0)
+            return "0 Bytes";
+
+        const int k = 1024;
+        var dm = Math.Max(0, decimals);
+        var sizes = new[] { "Bytes", "KB", "MB", "GB", "TB", "PB", "EB" };
+
+        // Compute logarithmic index safely
+        var i = (int)Math.Floor(Math.Log(bytes, k));
+        i = Math.Min(i, sizes.Length - 1); // Prevent IndexOutOfRange for huge values
+
+        var value = bytes / Math.Pow(k, i);
+        return $"{Math.Round(value, dm)} {sizes[i]}";
+    }
+
+
+    private string GetDropzoneClasses() {
+        var baseClasses = "border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer transition-colors";
+        if (_isDragOver) {
+            return $"{baseClasses} border-primary bg-primary/10";
+        }
+        return $"{baseClasses} hover:border-primary hover:bg-primary/5";
+    }
+
+    private void ShowStatusMessage(string message, StatusType type = StatusType.Info) {
+        _statusMessage = message;
+        _statusType = type;
+        _showStatus = true;
+        StateHasChanged();
+
+        // Auto-dismiss after 5 seconds
+        var timer = new System.Timers.Timer(5000);
+        timer.Elapsed += (sender, e) => {
+            InvokeAsync(() => {
+                DismissStatus();
+                timer.Dispose();
+            });
+        };
+        timer.Start();
+    }
+
+    private void DismissStatus() {
+        _showStatus = false;
+        StateHasChanged();
+    }
+
+    private string GetStatusClasses() {
+        return _statusType switch {
+            StatusType.Success => "bg-green-100 border border-green-400 text-green-700",
+            StatusType.Error => "bg-red-100 border border-red-400 text-red-700",
+            StatusType.Warning => "bg-yellow-100 border border-yellow-400 text-yellow-700",
+            _ => "bg-blue-100 border border-blue-400 text-blue-700"
+        };
+    }
+
+    private string GetStatusIcon() {
+        return _statusType switch {
+            StatusType.Success => "fa-solid fa-check-circle text-green-500",
+            StatusType.Error => "fa-solid fa-exclamation-circle text-red-500",
+            StatusType.Warning => "fa-solid fa-exclamation-triangle text-yellow-500",
+            _ => "fa-solid fa-info-circle text-blue-500"
+        };
+    }
+
+    private enum StatusType {
+        Info,
+        Success,
+        Warning,
+        Error
+    }
+
+    public class UploadedFileInfo {
+        public string Name { get; set; } = "";
+        public long Size { get; set; }
+        public DateTime UploadedAt { get; set; }
+        public string FilePath { get; set; } = "";
+        public string ProcessingStatus { get; set; } = "";
+        public bool IsProcessed { get; set; }
+        public string? ProcessingError { get; set; }
+    }
+
+    private void SetActiveView(string view) {
+        _activeView = view;
+        StateHasChanged();
+    }
+
+    private string GetNavItemClasses(string view) {
+        var baseClasses = "flex items-center px-2 py-2 text-sm font-medium rounded-md";
+        if (_activeView == view) {
+            return $"{baseClasses} bg-primary/10 text-primary";
+        }
+        return $"{baseClasses} text-gray-700 hover:bg-gray-200";
+    }
+
+    private void ClearUploadedFiles() {
+        _uploadedFiles.Clear();
+        ShowStatusMessage("All uploaded files cleared from list", StatusType.Info);
+    }
+
+    private async Task DeleteUploadedFile(UploadedFileInfo file) {
+        try {
+            // Delete physical file
+            if (File.Exists(file.FilePath)) {
+                File.Delete(file.FilePath);
+            }
+
+            // Remove from list
+            _uploadedFiles.Remove(file);
+            ShowStatusMessage($"File '{file.Name}' deleted successfully", StatusType.Success);
+        } catch (Exception ex) {
+            ShowStatusMessage($"Failed to delete '{file.Name}': {ex.Message}", StatusType.Error);
+        }
+    }
+}

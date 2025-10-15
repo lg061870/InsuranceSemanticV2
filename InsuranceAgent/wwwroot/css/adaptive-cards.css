@@ -218,36 +218,62 @@
 
 
 /* =========================
-   Toggle / Radio (our current DOM)
+   Toggle / Checkbox styling (styled like radio button cards)
    DOM we style:
    <div class="ac-input-container ac-toggleInput">
      <input class="ac-input ac-toggle" type="checkbox" id="...">
-     <label for="...">Label</label>
+     <label class="ac-toggle-label" for="...">Label</label>
    </div>
    ========================= */
 .ac-input-container.ac-toggleInput {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 0;
+    gap: 12px;
+    border: 1.5px solid #ccdcec;
+    border-radius: 12px;
+    padding: 12px 16px;
+    background-color: #fafafa;
+    transition: background 0.2s, border-color 0.2s, transform 0.2s;
+    box-sizing: border-box;
+    cursor: pointer;
+    margin-bottom: 12px;
+    width: 100%;
 }
+
+    /* Hover state for the entire toggle card */
+    .ac-input-container.ac-toggleInput:hover {
+        background-color: #f0f7ff;
+        border-color: #0078d4;
+        transform: translateY(-2px);
+    }
+
+    /* Selected state when checkbox is checked */
+    .ac-input-container.ac-toggleInput:has(input[type="checkbox"]:checked) {
+        background-color: #e9f3ff;
+        border-color: #2b88d8;
+    }
 
     /* Do NOT apply full-width text-input styles to the checkbox */
     .ac-input-container.ac-toggleInput .ac-input.ac-toggle {
-        width: auto;
-        padding: 0;
-        margin: 0;
-        border: none;
-        border-radius: 0;
-        background: transparent;
-        box-shadow: none;
-        outline: none;
+        width: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
         accent-color: #0078d4; /* modern browsers */
+        flex: 0 0 auto;
     }
 
-    /* Label click target + spacing */
-    .ac-input-container.ac-toggleInput label {
+    /* Label spans the rest of the card, styled like radio button labels */
+    .ac-input-container.ac-toggleInput .ac-toggle-label {
+        flex: 1 1 auto;
         margin: 0;
+        line-height: 1.35;
+        font-size: 15px;
+        color: #333;
         cursor: pointer;
         user-select: none;
     }

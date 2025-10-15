@@ -15,11 +15,7 @@ namespace InsuranceAgent.Topics.LeadDetailsTopic
             string? language = "",
             string? leadSource = "",
             string? interestLevel = "",
-            string? leadIntent = "",
-            string? appointmentDateTime = "",
-            bool? followUpNeeded = null,
-            string? notesForSalesAgent = "",
-            string? leadUrl = "")
+            string? leadIntent = "")
         {
             var bodyElements = new List<CardElement>
             {
@@ -36,14 +32,14 @@ namespace InsuranceAgent.Topics.LeadDetailsTopic
                 new CardElement
                 {
                     Type = "TextBlock",
-                    Text = "🧑 Lead Name",
+                    Text = "🧑 Lead Name ⓘ",
                     Wrap = true
                 },
                 new CardElement
                 {
                     Type = "Input.Text",
                     Id = "lead_name",
-                    Text = "Full name",
+                    Text = "Enter prospect's full name",
                     Value = leadName ?? ""
                 },
 
@@ -51,14 +47,14 @@ namespace InsuranceAgent.Topics.LeadDetailsTopic
                 new CardElement
                 {
                     Type = "TextBlock",
-                    Text = "🗣️ Preferred Language",
+                    Text = "🗣️ Preferred Language ⓘ",
                     Wrap = true
                 },
                 new CardElement
                 {
                     Type = "Input.Text",
                     Id = "language",
-                    Text = "e.g., English, Spanish",
+                    Text = "English, Spanish, French, etc.",
                     Value = language ?? ""
                 },
 
@@ -66,14 +62,14 @@ namespace InsuranceAgent.Topics.LeadDetailsTopic
                 new CardElement
                 {
                     Type = "TextBlock",
-                    Text = "🌐 Lead Source",
+                    Text = "🌐 Lead Source ⓘ",
                     Wrap = true
                 },
                 new CardElement
                 {
                     Type = "Input.Text",
                     Id = "lead_source",
-                    Text = "e.g., Website, Referral",
+                    Text = "Website, Referral, Google Ads, etc.",
                     Value = leadSource ?? ""
                 },
 
@@ -81,14 +77,14 @@ namespace InsuranceAgent.Topics.LeadDetailsTopic
                 new CardElement
                 {
                     Type = "TextBlock",
-                    Text = "📈 Interest Level",
+                    Text = "📈 Interest Level ⓘ",
                     Wrap = true
                 },
                 new CardElement
                 {
                     Type = "Input.Text",
                     Id = "interest_level",
-                    Text = "e.g., High, Medium, Low",
+                    Text = "High, Medium, or Low",
                     Value = interestLevel ?? ""
                 },
 
@@ -96,75 +92,15 @@ namespace InsuranceAgent.Topics.LeadDetailsTopic
                 new CardElement
                 {
                     Type = "TextBlock",
-                    Text = "🎯 Lead Intent",
+                    Text = "🎯 Lead Intent ⓘ",
                     Wrap = true
                 },
                 new CardElement
                 {
                     Type = "Input.Text",
                     Id = "lead_intent",
-                    Text = "e.g., Learn, Buy, Compare",
+                    Text = "Buy, Compare, Learn, or Schedule",
                     Value = leadIntent ?? ""
-                },
-
-                // Appointment Date/Time
-                new CardElement
-                {
-                    Type = "TextBlock",
-                    Text = "📅 Appointment Date/Time",
-                    Wrap = true
-                },
-                new CardElement
-                {
-                    Type = "Input.Text",
-                    Id = "appointment_date_time",
-                    Text = "e.g., 2025-09-05 14:30",
-                    Value = appointmentDateTime ?? ""
-                },
-
-                // Needs Follow-Up
-                new CardElement
-                {
-                    Type = "TextBlock",
-                    Text = "🔁 Needs Follow-Up?",
-                    Wrap = true
-                },
-                new CardElement
-                {
-                    Type = "Input.Toggle",
-                    Id = "follow_up_needed",
-                    Text = "Yes",
-                    Value = followUpNeeded == true ? "true" : "false"
-                },
-
-                // Notes for Sales Agent
-                new CardElement
-                {
-                    Type = "TextBlock",
-                    Text = "📝 Notes for Sales Agent",
-                    Wrap = true
-                },
-                new CardElement
-                {
-                    Type = "Input.Text",
-                    Id = "notes_for_sales_agent",
-                    Text = "Optional notes",
-                    Value = notesForSalesAgent ?? ""
-                },
-
-                // Lead URL
-                new CardElement
-                {
-                    Type = "TextBlock",
-                    Text = "🔗 Lead URL (optional)",
-                    Wrap = true
-                },
-                new CardElement
-                {
-                    Type = "Input.Text",
-                    Id = "lead_url",
-                    Text = "e.g., https://crm.example.com/lead",
-                    Value = leadUrl ?? ""
                 }
             };
 

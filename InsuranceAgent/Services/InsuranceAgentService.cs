@@ -477,6 +477,13 @@ public class InsuranceAgentService {
         var nextTopic = _topicRegistry.GetTopic(e.TopicName);
         if (nextTopic is TopicFlow nextFlow) {
 
+            // Guard against duplicate topic activation
+            if (_activeTopic != null && _activeTopic.Name == e.TopicName) {
+                _logger.LogWarning("[InsuranceAgentService] Topic '{TopicName}' is already active, ignoring duplicate trigger", e.TopicName);
+                Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] DUPLICATE IGNORED: Topic '{e.TopicName}' is already active");
+                return;
+            }
+
             if (waitForCompletion) {
                 // NEW: Sub-topic pattern - pause current topic
                 if (_activeTopic is TopicFlow currentFlow) {

@@ -12,7 +12,9 @@ using InsuranceAgent.Topics.LifeGoalsTopic;
 using InsuranceAgent.Topics.BasicNavigationTopic;
 using InsuranceAgent.Topics.RadioButtonDemoTopic;
 using InsuranceAgent.Topics.MarketingTypeTopics;
+using InsuranceAgent.Topics.Demo;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.SemanticKernel;
 using ConversaCore;
 
 namespace InsuranceAgent.Topics {
@@ -55,6 +57,8 @@ namespace InsuranceAgent.Topics {
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.RadioButtonDemoTopic.RadioButtonDemoTopic>());
             services.AddScoped<ILogger<InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic>>(sp =>
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic>());
+            services.AddScoped<ILogger<InsuranceAgent.Topics.Demo.SemanticActivitiesDemoTopic>>(sp =>
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.Demo.SemanticActivitiesDemoTopic>());
 
             // Register BeneficiaryInfoDemoTopic with all required dependencies
             services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
@@ -198,6 +202,15 @@ namespace InsuranceAgent.Topics {
                     sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
                     sp.GetRequiredService<ILogger<InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic>>(),
                     sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
+                ));
+
+            // Register SemanticActivitiesDemoTopic for AI-powered insurance analysis demonstration
+            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
+                new InsuranceAgent.Topics.Demo.SemanticActivitiesDemoTopic(
+                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
+                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.Demo.SemanticActivitiesDemoTopic>>(),
+                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>(),
+                    sp.GetRequiredService<Kernel>()
                 ));
 
             return services;

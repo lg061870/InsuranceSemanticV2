@@ -11,6 +11,11 @@
     <Folder Include="StateMachine\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SemanticKernel.Connectors.Chroma" Version="1.66.0-alpha" />
+    <PackageReference Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.66.0-preview" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>

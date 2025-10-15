@@ -152,28 +152,80 @@
         },
 
         // --- ELEMENTS ---
-        renderTextBlock({ text, size, weight, wrap, isSubtle }) {
+        renderTextBlock({ text, size, weight, wrap, isSubtle, tooltip }) {
             const div = el("div", "ac-textBlock");
             if (weight === "Bolder" || size === "Large" || size === "Medium") {
                 div.classList.add("ac-header");
             }
             if (wrap) div.style.whiteSpace = "normal";
             if (isSubtle) div.style.opacity = "0.7";
-            div.textContent = text || "";
+            
+            // Check if text contains info icon (ⓘ) and handle tooltip
+            if (text && text.includes("ⓘ")) {
+                const parts = text.split("ⓘ");
+                const labelPart = parts[0].trim();
+                
+                // Create label span
+                const labelSpan = document.createElement("span");
+                labelSpan.textContent = labelPart;
+                div.appendChild(labelSpan);
+                
+                // Create info icon with tooltip
+                const infoIcon = document.createElement("span");
+                infoIcon.textContent = " ⓘ";
+                infoIcon.className = "ac-info-icon";
+                infoIcon.style.cursor = "pointer";
+                infoIcon.style.color = "#666";
+                infoIcon.style.marginLeft = "8px";
+                infoIcon.style.fontSize = "14px";
+                infoIcon.style.fontWeight = "normal";
+                
+                // Add tooltip functionality
+                let tooltipText = "";
+                const fieldName = labelPart.replace(/[🧑🗣️🌐📈🎯📅🔁📝🔗]/g, "").trim();
+                
+                // Define tooltips for each field
+                const tooltips = {
+                    "Lead Name": "Full name of the potential customer or prospect",
+                    "Preferred Language": "The language the customer prefers for communication (e.g., English, Spanish, French)",
+                    "Lead Source": "Where did this lead come from? Examples: Website form, Google Ads, Referral from friend, Social media, Phone call, Email campaign, Event/Conference",
+                    "Interest Level": "How interested is the customer? High = ready to buy soon, Medium = shopping around, Low = just browsing/researching",
+                    "Lead Intent": "What is the customer trying to do? Buy = ready to purchase, Compare = shopping different options, Learn = gathering information, Schedule = wants to talk to agent"
+                };
+                
+                tooltipText = tooltips[fieldName] || tooltip || "Additional information";
+                
+                // Create tooltip on hover
+                infoIcon.title = tooltipText;
+                
+                // Add click handler for mobile/touch devices
+                infoIcon.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    alert(tooltipText);
+                });
+                
+                div.appendChild(infoIcon);
+            } else {
+                div.textContent = text || "";
+            }
+            
             return div;
         },
 
-        renderInputText({ id, value, placeholder, style, isEnabled = true }) {
+        renderInputText({ id, value, placeholder, text, style, isEnabled = true }) {
             const wrap = el("div", "ac-input-container");
             let className = "ac-input ac-textInput";
             if (style === "error") {
                 className += " ac-error"; // CSS class you define
             }
 
+            // Use 'text' property as placeholder if no explicit placeholder is provided
+            const placeholderText = placeholder || text || "";
+
             const input = el("input", className, {
                 type: "text",
                 id: id || "",
-                placeholder: placeholder || ""
+                placeholder: placeholderText
             });
             input.value = value || "";
             
@@ -287,7 +339,7 @@
         },
 
         // Toggle (checkbox) with valueOn/valueOff mapping
-        renderInputToggle({ id, title, value, valueOn, valueOff }) {
+        renderInputToggle({ id, title, text, value, valueOn, valueOff }) {
             const wrap = el("div", "ac-input-container ac-toggleInput");
 
             const on = valueOn ?? "true";
@@ -302,7 +354,15 @@
             input.dataset.valueOff = off;
             input.checked = initial;
 
-            const label = el("label", null, { for: id || "", text: title || "" });
+            // Use text property (from CardElement) or fallback to title
+            const labelText = text || title || "";
+            const label = el("label", "ac-toggle-label", { for: id || "" });
+            label.textContent = labelText;
+
+            // Add some basic styling for better visibility
+            label.style.marginLeft = "8px";
+            label.style.cursor = "pointer";
+            label.style.userSelect = "none";
 
             wrap.appendChild(input);
             wrap.appendChild(label);

@@ -22,29 +22,36 @@ namespace InsuranceAgent.Topics.LeadDetailsTopic
         public string? Language { get; set; }
 
         [JsonPropertyName("lead_source")]
+        [Required(ErrorMessage = "Lead source is required")]
         [StringLength(100, ErrorMessage = "Lead source cannot exceed 100 characters")]
         public string? LeadSource { get; set; }
 
         [JsonPropertyName("interest_level")]
+        [Required(ErrorMessage = "Interest level is required")]
         [StringLength(20, ErrorMessage = "Interest level cannot exceed 20 characters")]
         public string? InterestLevel { get; set; }
 
         [JsonPropertyName("lead_intent")]
+        [Required(ErrorMessage = "Lead intent is required")]
         [StringLength(50, ErrorMessage = "Lead intent cannot exceed 50 characters")]
         public string? LeadIntent { get; set; }
 
         [JsonPropertyName("appointment_date_time")]
+        [JsonIgnore] // Internal field - not for customer input
         [StringLength(50, ErrorMessage = "Appointment date/time cannot exceed 50 characters")]
         public string? AppointmentDateTime { get; set; }
 
         [JsonPropertyName("follow_up_needed")]
+        [JsonIgnore] // Internal field - not for customer input
         public string FollowUpNeededString { get; set; } = "false";
 
         [JsonPropertyName("notes_for_sales_agent")]
+        [JsonIgnore] // Internal field - not for customer input
         [StringLength(500, ErrorMessage = "Notes cannot exceed 500 characters")]
         public string? NotesForSalesAgent { get; set; }
 
         [JsonPropertyName("lead_url")]
+        [JsonIgnore] // Internal field - not for customer input
         [StringLength(200, ErrorMessage = "Lead URL cannot exceed 200 characters")]
         public string? LeadUrl { get; set; }
 

@@ -1,3 +1,4 @@
+using ConversaCore.Configuration;
 using ConversaCore.Context;
 using ConversaCore.Events;
 using ConversaCore.Services;
@@ -5,8 +6,16 @@ using ConversaCore.StateMachine;
 using ConversaCore.Topics;
 using ConversaCore.SystemTopics;
 using ConversaCore.TopicFlow;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.InMemory;
+using Microsoft.SemanticKernel.Embeddings;
+
+#pragma warning disable SKEXP0001
+using Microsoft.SemanticKernel.Memory;
+#pragma warning restore SKEXP0001
 
 namespace ConversaCore;
 
@@ -82,6 +91,8 @@ public static class ServiceCollectionExtensions {
             sp.GetRequiredService<TopicWorkflowContext>(),
             sp.GetRequiredService<ILogger<SignInTopic>>()));
 
+        // Vector database services
+        services.AddScoped<IDocumentProcessingService, DocumentProcessingService>();
 
         // This ensures DI can resolve loggers for ANY generic type including:
         // ILogger<AdaptiveCardActivity<TModel>>
@@ -127,6 +138,58 @@ public static class ServiceCollectionExtensions {
             registry.RegisterTopic(topic);
         }
         return registry;
+    }
+
+    /// <summary>
+    /// Adds vector database services with configuration.
+    /// </summary>
+    public static IServiceCollection AddVectorDatabase(this IServiceCollection services, IConfiguration configuration) {
+        // Bind vector database configuration
+        var vectorConfig = new VectorDatabaseConfiguration();
+        configuration.GetSection("VectorDatabase").Bind(vectorConfig);
+        services.AddSingleton(vectorConfig);
+
+        // Register vector database service based on provider
+        switch (vectorConfig.Provider) {
+            case VectorDatabaseProvider.InMemory:
+                services.AddInMemoryVectorDatabase();
+                break;
+            case VectorDatabaseProvider.Chroma:
+                services.AddChromaVectorDatabase(vectorConfig.ConnectionString ?? "http://localhost:8000");
+                break;
+            default:
+                // Default to in-memory if configuration is invalid
+                services.AddInMemoryVectorDatabase();
+                break;
+        }
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds in-memory vector database services.
+    /// </summary>
+    public static IServiceCollection AddInMemoryVectorDatabase(this IServiceCollection services) {
+        // Register minimal implementations for now
+#pragma warning disable SKEXP0001
+        services.AddScoped<ISemanticTextMemory>(sp => null!);
+#pragma warning restore SKEXP0001
+        
+        // Register Microsoft.Extensions.AI embedding generator placeholder
+        services.AddScoped<Microsoft.Extensions.AI.IEmbeddingGenerator<string, Microsoft.Extensions.AI.Embedding<float>>>(sp => null!);
+        
+        services.AddScoped<IVectorDatabaseService, InMemoryVectorDatabaseService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Adds Chroma vector database services.
+    /// </summary>
+    public static IServiceCollection AddChromaVectorDatabase(this IServiceCollection services, string endpoint) {
+        // TODO: Implement Chroma integration when needed
+        // For now, fallback to in-memory
+        services.AddInMemoryVectorDatabase();
+        return services;
     }
 
     // Convenience "batteries included"

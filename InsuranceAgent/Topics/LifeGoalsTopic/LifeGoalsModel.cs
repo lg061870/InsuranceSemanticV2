@@ -1,13 +1,47 @@
 using ConversaCore.Cards;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using System.Reflection;
 
 namespace InsuranceAgent.Topics.LifeGoalsTopic
 {
     /// <summary>
+    /// Custom validation attribute to ensure at least one option is selected
+    /// </summary>
+    public class RequiredAtLeastOneOptionAttribute : ValidationAttribute
+    {
+        public override bool IsValid(object? value)
+        {
+            if (value == null) return false;
+            
+            // First try to find a HasSelectedOptions property
+            var hasSelectedOptionsProperty = value.GetType().GetProperty("HasSelectedOptions");
+            if (hasSelectedOptionsProperty != null && hasSelectedOptionsProperty.PropertyType == typeof(bool))
+            {
+                return (bool)(hasSelectedOptionsProperty.GetValue(value) ?? false);
+            }
+            
+            // Fallback: use reflection to find any boolean properties that are true
+            // This checks for properties ending with common boolean option patterns
+            var boolProperties = value.GetType().GetProperties()
+                .Where(p => p.PropertyType == typeof(bool) && p.CanRead)
+                .Where(p => !p.Name.StartsWith("Has") && !p.Name.StartsWith("Is") && !p.Name.StartsWith("Can"))
+                .ToList();
+            
+            return boolProperties.Any(prop => (bool)(prop.GetValue(value) ?? false));
+        }
+
+        public override string FormatErrorMessage(string name)
+        {
+            return "Please select at least one option to continue.";
+        }
+    }
+
+    /// <summary>
     /// Model for life insurance goals and intentions.
     /// Inherits from BaseCardModel for continuation support.
     /// </summary>
+    [RequiredAtLeastOneOption(ErrorMessage = "Please select at least one life insurance goal to continue.")]
     public class LifeGoalsModel : BaseCardModel
     {
         [JsonPropertyName("intent_protect_loved_ones")]
@@ -54,6 +88,7 @@ namespace InsuranceAgent.Topics.LifeGoalsTopic
 
         public int TotalGoalsSelected => SelectedGoals.Count;
         public bool HasSelectedGoals => TotalGoalsSelected > 0;
+        public bool HasSelectedOptions => HasSelectedGoals;
         public bool HasMultipleGoals => TotalGoalsSelected > 1;
         public bool IsUnsureOnly => Unsure && TotalGoalsSelected == 1;
         public bool HasSpecificGoals => HasSelectedGoals && !IsUnsureOnly;

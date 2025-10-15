@@ -48,13 +48,128 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics
             Context.SetValue("TopicName", "Marketing Path Type 1");
             Context.SetValue("marketing_path_type", "T1");
 
-            // === Activities in queue order ===
+            // Initialize activities (constructor and after reset)
+            InitializeActivities();
+        }
 
-            // 1. Lead Details Collection
-            var leadDetailsActivity = new AdaptiveCardActivity<LeadDetailsCard, LeadDetailsModel>(
+        /// <summary>
+        /// Override Reset to re-initialize activities after conversation reset.
+        /// This ensures the topic can run again after being reset.
+        /// </summary>
+        public override void Reset()
+        {
+            _logger.LogInformation("[MarketingTypeOneTopic] Topic reset - re-initializing activities");
+            
+            // Call base reset to handle state machine and activity cleanup
+            base.Reset();
+            
+            // Re-initialize all activities specific to this topic
+            InitializeActivities();
+            
+            _logger.LogInformation("[MarketingTypeOneTopic] Topic reset completed with fresh activity queue");
+        }
+
+        /// <summary>
+        /// Initialize the activity queue. Called from constructor and after reset.
+        /// </summary>
+        private void InitializeActivities()
+        {
+            // Clear any existing activities first
+            ClearActivities();
+            
+            // Re-create all activities with fresh instances
+            var leadDetailsActivity = CreateLeadDetailsActivity();
+            var lifeGoalsActivity = CreateLifeGoalsActivity();
+            var summaryActivity = CreateSummaryActivity();
+            var nextTopicDecision = CreateNextTopicDecisionActivity();
+            
+            // Re-wire event handlers
+            WireActivityEvents(leadDetailsActivity, lifeGoalsActivity, nextTopicDecision);
+            
+            // Add activities to queue
+            Add(leadDetailsActivity);
+            Add(lifeGoalsActivity);
+            Add(summaryActivity);
+            Add(nextTopicDecision);
+            
+            // Development environment context dumping
+            var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+            if (isDevelopment)
+            {
+                Add(new DumpCtxActivity(ActivityId_DumpCtx, true));
+            }
+        }
+
+        /// <summary>
+        /// Intent detection (keyword matching for marketing path topics).
+        /// </summary>
+        public override Task<float> CanHandleAsync(
+            string message,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return Task.FromResult(0f);
+            var msg = message.ToLowerInvariant();
+
+            var matchCount = 0;
+            foreach (var kw in IntentKeywords)
+            {
+                if (msg.Contains(kw))
+                {
+                    matchCount++;
+                }
+            }
+
+            // Calculate confidence based on keyword matches
+            var confidence = matchCount > 0 ? Math.Min(1.0f, matchCount / 3.0f) : 0f;
+            
+            _logger.LogDebug("[MarketingTypeOneTopic] Intent confidence: {Confidence} for message: {Message}", 
+                confidence, message);
+                
+            return Task.FromResult(confidence);
+        }
+
+        /// <summary>
+        /// Execute the topic's activities in queue order.
+        /// Also handles optional NextTopic context handoff.
+        /// </summary>
+        public override async Task<TopicResult> RunAsync(CancellationToken cancellationToken = default)
+        {
+            Context.SetValue("MarketingTypeOneTopic_runasync", DateTime.UtcNow.ToString("o"));
+
+            var result = await base.RunAsync(cancellationToken);
+
+            var nextTopic = Context.GetValue<string>("NextTopic");
+            if (!string.IsNullOrEmpty(nextTopic))
+            {
+                result.NextTopicName = nextTopic;
+                Context.SetValue("NextTopic", null); // reset
+            }
+
+            return result;
+        }
+
+        #region Activity Creation Helper Methods
+
+        private AdaptiveCardActivity<LeadDetailsCard, LeadDetailsModel> CreateLeadDetailsActivity()
+        {
+            return new AdaptiveCardActivity<LeadDetailsCard, LeadDetailsModel>(
                 ActivityId_LeadDetails,
-                context,
-                cardFactory: card => card.Create(),
+                Context,
+                cardFactory: card => {
+                    // Check if we have existing model data to preserve user input
+                    var existingModel = Context.GetValue<LeadDetailsModel>("LeadDetailsModel");
+                    if (existingModel != null)
+                    {
+                        return card.Create(
+                            existingModel.LeadName,
+                            existingModel.Language,
+                            existingModel.LeadSource,
+                            existingModel.InterestLevel,
+                            existingModel.LeadIntent
+                        );
+                    }
+                    return card.Create();
+                },
                 modelContextKey: "LeadDetailsModel",
                 onTransition: (from, to, data) => {
                     var stamp = DateTime.UtcNow.ToString("o");
@@ -64,12 +179,29 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics
                 },
                 customMessage: "Let's start by collecting some basic lead information."
             );
+        }
 
-            // 2. Life Goals Collection
-            var lifeGoalsActivity = new AdaptiveCardActivity<LifeGoalsCard, LifeGoalsModel>(
+        private AdaptiveCardActivity<LifeGoalsCard, LifeGoalsModel> CreateLifeGoalsActivity()
+        {
+            return new AdaptiveCardActivity<LifeGoalsCard, LifeGoalsModel>(
                 ActivityId_LifeGoals,
-                context,
-                cardFactory: card => card.Create(),
+                Context,
+                cardFactory: card => {
+                    // Check if we have existing model data to preserve user selections
+                    var existingModel = Context.GetValue<LifeGoalsModel>("LifeGoalsModel");
+                    if (existingModel != null)
+                    {
+                        return card.Create(
+                            existingModel.ProtectLovedOnes,
+                            existingModel.PayMortgage,
+                            existingModel.PrepareFuture,
+                            existingModel.PeaceOfMind,
+                            existingModel.CoverExpenses,
+                            existingModel.Unsure
+                        );
+                    }
+                    return card.Create();
+                },
                 modelContextKey: "LifeGoalsModel",
                 onTransition: (from, to, data) => {
                     var stamp = DateTime.UtcNow.ToString("o");
@@ -79,9 +211,11 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics
                 },
                 customMessage: "Great! Now let's understand your goals for life insurance."
             );
+        }
 
-            // 3. Summary Activity
-            var summaryActivity = new SimpleActivity(ActivityId_Summary, (ctx, input) => {
+        private SimpleActivity CreateSummaryActivity()
+        {
+            return new SimpleActivity(ActivityId_Summary, (ctx, input) => {
                 var leadDetails = ctx.GetValue<LeadDetailsModel>("LeadDetailsModel");
                 var lifeGoals = ctx.GetValue<LifeGoalsModel>("LifeGoalsModel");
                 
@@ -152,27 +286,37 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics
                         // High priority lead - expedite with contact info
                         routingDecision = "high_priority";
                     }
-                    else if (lifeGoals != null && lifeGoals.HasProtectionGoals)
+                    else if (lifeGoals != null)
                     {
-                        // Has protection goals - continue with dependents topic
-                        routingDecision = "protection_goals";
-                    }
-                    else if (lifeGoals != null && lifeGoals.IsUnsureOnly)
-                    {
-                        // Unsure about goals - provide educational content
-                        routingDecision = "needs_education";
+                        if (!lifeGoals.HasSelectedGoals)
+                        {
+                            // No goals selected - provide educational content
+                            routingDecision = "needs_education";
+                        }
+                        else if (lifeGoals.HasProtectionGoals)
+                        {
+                            // Has protection goals - continue with dependents topic
+                            routingDecision = "protection_goals";
+                        }
+                        else if (lifeGoals.IsUnsureOnly)
+                        {
+                            // Unsure about goals - provide educational content
+                            routingDecision = "needs_education";
+                        }
                     }
                 }
                 
                 // Store the decision in context for the conditional activity
-                context.SetValue("t1_routing_decision", routingDecision);
+                Context.SetValue("t1_routing_decision", routingDecision);
                 
                 _logger.LogInformation("[MarketingTypeOneTopic] Generated T1 marketing path summary with routing decision: {Decision}", routingDecision);
                 return Task.FromResult<object?>(summary);
             });
+        }
 
-            // 4. Conditional Decision for Next Topic
-            var nextTopicDecision = ConditionalActivity<TriggerTopicActivity>.Switch(
+        private ConditionalActivity<TriggerTopicActivity> CreateNextTopicDecisionActivity()
+        {
+            return ConditionalActivity<TriggerTopicActivity>.Switch(
                 ActivityId_NextTopicDecision,
                 ctx => ctx.GetValue<string>("t1_routing_decision") ?? "default",
                 new Dictionary<string, Func<string, TopicWorkflowContext, TriggerTopicActivity>> {
@@ -215,9 +359,13 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics
                 defaultBranch: "default",
                 logger: _logger
             );
+        }
 
-            // === Event hooks for AdaptiveCard lifecycle ===
-
+        private void WireActivityEvents(
+            AdaptiveCardActivity<LeadDetailsCard, LeadDetailsModel> leadDetailsActivity,
+            AdaptiveCardActivity<LifeGoalsCard, LifeGoalsModel> lifeGoalsActivity,
+            ConditionalActivity<TriggerTopicActivity> nextTopicDecision)
+        {
             // Lead Details Activity Events
             leadDetailsActivity.ModelBound += (s, e) =>
             {
@@ -261,67 +409,8 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics
                 _logger.LogInformation("[MarketingTypeOneTopic] Triggering next topic via conditional: {Next}", e.TopicName);
                 _conversationContext.AddTopicToChain(e.TopicName);
             };
-
-            // === Enqueue activities ===
-            Add(leadDetailsActivity);
-            Add(lifeGoalsActivity);
-            Add(summaryActivity);
-            Add(nextTopicDecision);
-            
-            // Development environment context dumping
-            var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
-            if (isDevelopment)
-            {
-                Add(new DumpCtxActivity(ActivityId_DumpCtx, true));
-            }
         }
 
-        /// <summary>
-        /// Intent detection (keyword matching for marketing path topics).
-        /// </summary>
-        public override Task<float> CanHandleAsync(
-            string message,
-            CancellationToken cancellationToken = default)
-        {
-            if (string.IsNullOrWhiteSpace(message)) return Task.FromResult(0f);
-            var msg = message.ToLowerInvariant();
-
-            var matchCount = 0;
-            foreach (var kw in IntentKeywords)
-            {
-                if (msg.Contains(kw))
-                {
-                    matchCount++;
-                }
-            }
-
-            // Calculate confidence based on keyword matches
-            var confidence = matchCount > 0 ? Math.Min(1.0f, matchCount / 3.0f) : 0f;
-            
-            _logger.LogDebug("[MarketingTypeOneTopic] Intent confidence: {Confidence} for message: {Message}", 
-                confidence, message);
-                
-            return Task.FromResult(confidence);
-        }
-
-        /// <summary>
-        /// Execute the topic's activities in queue order.
-        /// Also handles optional NextTopic context handoff.
-        /// </summary>
-        public override async Task<TopicResult> RunAsync(CancellationToken cancellationToken = default)
-        {
-            Context.SetValue("MarketingTypeOneTopic_runasync", DateTime.UtcNow.ToString("o"));
-
-            var result = await base.RunAsync(cancellationToken);
-
-            var nextTopic = Context.GetValue<string>("NextTopic");
-            if (!string.IsNullOrEmpty(nextTopic))
-            {
-                result.NextTopicName = nextTopic;
-                Context.SetValue("NextTopic", null); // reset
-            }
-
-            return result;
-        }
+        #endregion
     }
 }
