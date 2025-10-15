@@ -53,6 +53,9 @@ public class InsuranceAgentService {
     public event EventHandler<TopicInsertedEventArgs>? TopicInserted;
     public event EventHandler<ActivityLifecycleEventArgs>? ActivityLifecycleChanged;
     public event EventHandler<ConversationResetEventArgs>? ConversationReset;
+    
+    // NEW: Custom event handling for EventTriggerActivity
+    public event EventHandler<CustomEventTriggeredEventArgs>? CustomEventTriggered;
 
     public InsuranceAgentService(
         TopicRegistry topicRegistry,
@@ -163,11 +166,22 @@ public class InsuranceAgentService {
                 trigger.TopicTriggered += OnTopicTriggered;
             }
 
+            // NEW: Handle custom event triggers from EventTriggerActivity
+            if (act is ICustomEventTriggeredActivity customTrigger) {
+                Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] *** SUBSCRIPTION *** Subscribing to CustomEventTriggered events from activity '{act.Id}' ({act.GetType().Name})");
+                customTrigger.CustomEventTriggered += OnCustomEventTriggered;
+            }
+
             // Handle topic triggers from ConditionalActivity containers
             // (child TriggerTopicActivity is created dynamically, so we subscribe to the container's forwarded event)
             if (act is ConditionalActivity<TriggerTopicActivity> conditional) {
                 Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] *** SUBSCRIPTION *** Subscribing to TopicTriggered events from ConditionalActivity '{act.Id}'");
                 conditional.TopicTriggered += OnTopicTriggered;
+                
+                // ALSO subscribe to CustomEventTriggered events from ConditionalActivity
+                // (child activities like EventTriggerActivity are created dynamically in ConditionalActivity, so we need to subscribe to the container's forwarded event)
+                Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] *** SUBSCRIPTION *** Subscribing to CustomEventTriggered events from ConditionalActivity '{act.Id}'");
+                conditional.CustomEventTriggered += OnCustomEventTriggered;
             }
 
             // CRITICAL FIX: Handle topic triggers from CompositeActivity containers
@@ -175,6 +189,11 @@ public class InsuranceAgentService {
             if (act is CompositeActivity composite) {
                 Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] *** SUBSCRIPTION *** Subscribing to TopicTriggered events from CompositeActivity '{act.Id}'");
                 composite.TopicTriggered += OnTopicTriggered;
+                
+                // ALSO subscribe to CustomEventTriggered events from CompositeActivity
+                // (child activities like EventTriggerActivity are created dynamically in CompositeActivity, so we need to subscribe to the container's forwarded event)
+                Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] *** SUBSCRIPTION *** Subscribing to CustomEventTriggered events from CompositeActivity '{act.Id}'");
+                composite.CustomEventTriggered += OnCustomEventTriggered;
             }
         }
     }
@@ -196,14 +215,27 @@ public class InsuranceAgentService {
                 trigger.TopicTriggered -= OnTopicTriggered;
             }
 
+            // NEW: Unhook custom event triggers
+            if (act is ICustomEventTriggeredActivity customTrigger) {
+                customTrigger.CustomEventTriggered -= OnCustomEventTriggered;
+            }
+
             if (act is ConditionalActivity<TriggerTopicActivity> conditional) {
                 conditional.TopicTriggered -= OnTopicTriggered;
+                
+                // ALSO unsubscribe from CustomEventTriggered events from ConditionalActivity
+                Console.WriteLine($"[InsuranceAgentService.UnhookTopicEvents] *** UNSUBSCRIPTION *** Unsubscribing from CustomEventTriggered events from ConditionalActivity '{act.Id}'");
+                conditional.CustomEventTriggered -= OnCustomEventTriggered;
             }
 
             // CRITICAL FIX: Unhook CompositeActivity TopicTriggered events
             if (act is CompositeActivity composite) {
                 Console.WriteLine($"[InsuranceAgentService.UnhookTopicEvents] *** UNSUBSCRIPTION *** Unsubscribing from TopicTriggered events from CompositeActivity '{act.Id}'");
                 composite.TopicTriggered -= OnTopicTriggered;
+                
+                // ALSO unsubscribe from CustomEventTriggered events from CompositeActivity
+                Console.WriteLine($"[InsuranceAgentService.UnhookTopicEvents] *** UNSUBSCRIPTION *** Unsubscribing from CustomEventTriggered events from CompositeActivity '{act.Id}'");
+                composite.CustomEventTriggered -= OnCustomEventTriggered;
             }
         }
     }
@@ -523,13 +555,29 @@ public class InsuranceAgentService {
 
             var result = await nextFlow.RunAsync();
 
-            _logger.LogInformation("[InsuranceAgentService] Sub-topic completed. WaitForCompletion: {WaitForCompletion}, IsCompleted: {IsCompleted}",
+            _logger.LogInformation("[InsuranceAgentService] Topic completed. WaitForCompletion: {WaitForCompletion}, IsCompleted: {IsCompleted}",
                 waitForCompletion, result.IsCompleted);
 
-            // Only handle immediate completion for legacy topics or actually completed topics
-            if (!waitForCompletion && result.IsCompleted) {
-                _logger.LogInformation("[InsuranceAgentService] Calling HandleSubTopicCompletion for legacy topic {TopicName}", e.TopicName);
-                await HandleSubTopicCompletion(nextFlow, result);
+            if (!waitForCompletion) {
+                // LEGACY MODE: This is a topic hand-off, not a sub-topic call
+                // The new topic becomes the main conversation flow
+                _logger.LogInformation("[InsuranceAgentService] Legacy hand-off to {TopicName} - topic becomes main flow", e.TopicName);
+                
+                // Clear any paused topics since this is a flow hand-off, not a sub-topic
+                if (_pausedTopics.Count > 0) {
+                    _logger.LogInformation("[InsuranceAgentService] Clearing paused topics for legacy hand-off");
+                    _pausedTopics.Clear();
+                }
+                
+                // If the new topic completed immediately, handle any next topic routing
+                if (result.IsCompleted && !string.IsNullOrEmpty(result.NextTopicName)) {
+                    _logger.LogInformation("[InsuranceAgentService] Legacy topic completed with next topic: {NextTopic}", result.NextTopicName);
+                    // Trigger the next topic in the chain
+                    var nextTopicEvent = new TopicTriggeredEventArgs(result.NextTopicName);
+                    // Recursively handle the next topic trigger
+                    OnTopicTriggered(nextFlow, nextTopicEvent);
+                }
+                // Don't call HandleSubTopicCompletion for legacy mode - that's for sub-topics only
             }
             else if (waitForCompletion && result.IsCompleted) {
                 _logger.LogInformation("[InsuranceAgentService] Sub-topic completed immediately, calling HandleSubTopicCompletion for {TopicName}", e.TopicName);
@@ -544,6 +592,35 @@ public class InsuranceAgentService {
         }
         else {
             _logger.LogWarning("[InsuranceAgentService] Triggered topic {TopicName} not found or not a TopicFlow.", e.TopicName);
+        }
+    }
+
+    // NEW: Handle custom events from EventTriggerActivity
+    private async void OnCustomEventTriggered(object? sender, CustomEventTriggeredEventArgs e) {
+        var senderType = sender?.GetType().Name ?? "Unknown";
+        var senderId = sender is TopicFlowActivity activity ? activity.Id : "Unknown";
+        
+        Console.WriteLine($"[InsuranceAgentService.OnCustomEventTriggered] *** EVENT RECEIVED *** CustomEvent '{e.EventName}' from sender '{senderId}' ({senderType}) with data: {e.EventData}");
+        _logger.LogInformation("[InsuranceAgentService] Custom event triggered: {EventName} from {SenderId}", e.EventName, senderId);
+
+        // Forward the event to HybridChatService
+        CustomEventTriggered?.Invoke(this, e);
+
+        // For blocking events, provide a response
+        if (e.WaitForResponse && sender is EventTriggerActivity triggerActivity) {
+            // Simulate processing time for demo
+            await Task.Delay(100);
+            
+            // Provide a generic response - could be enhanced with specific event handling
+            var response = new { 
+                success = true, 
+                message = $"Event '{e.EventName}' processed successfully",
+                timestamp = DateTime.UtcNow,
+                processedBy = "InsuranceAgentService"
+            };
+            
+            Console.WriteLine($"[InsuranceAgentService.OnCustomEventTriggered] Providing response for blocking event: {response}");
+            triggerActivity.HandleUIResponse(e.Context, response);
         }
     }
 
@@ -608,7 +685,7 @@ public class InsuranceAgentService {
             conversationContext: _context);
 
     private TopicFlowActivity AskCaliforniaResidency(string id, string nextTopic, string marketingPath) {
-        return new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
+        var cardActivity = new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
             id,
             _wfContext,
             cardFactory: c => c.Create(),
@@ -626,6 +703,34 @@ public class InsuranceAgentService {
                     _wfContext.SetValue("next_topic", nextTopic);
                 }
             });
+
+        // Add EventTriggerActivity to show customer console after card completion
+        var consoleEventActivity = EventTriggerActivity.CreateFireAndForget(
+            $"{id}_ShowConsole",
+            "ui.customer-console.show",
+            new {
+                trigger = "california-resident-card",
+                timestamp = DateTime.UtcNow,
+                context = new {
+                    domain = "insurance",
+                    flowType = "california-residency",
+                    stage = "post-card-display"
+                },
+                animation = new {
+                    type = "slide-in", 
+                    direction = "right",
+                    duration = 300
+                }
+            },
+            _logger,
+            _context
+        );
+
+        // Return composite activity with both card and event trigger
+        return new CompositeActivity($"{id}_WithConsole", new List<TopicFlowActivity> {
+            cardActivity,
+            consoleEventActivity
+        });
     }
 
     private List<TopicFlowActivity>? ComplianceFlowActivities() {

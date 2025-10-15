@@ -69,11 +69,12 @@ namespace InsuranceAgent.Topics {
                     sp.GetRequiredService<ILoggerFactory>()
                 ));
 
-            // Register CaliforniaResidentDemoTopic (update if it needs IConversationContext in future)
+            // Register CaliforniaResidentDemoTopic with IConversationContext for TriggerTopicActivity
             services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
                 new CaliforniaResidentDemoTopic(
                     sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<CaliforniaResidentDemoTopic>>()
+                    sp.GetRequiredService<ILogger<CaliforniaResidentDemoTopic>>(),
+                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
                 ));
 
             // Register BeneficiaryRepeatDemoTopic with RepeatActivity support

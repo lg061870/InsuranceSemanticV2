@@ -23,6 +23,7 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics
         public const string ActivityId_TriggerContactInfo = "TriggerContactInfoTopic";
         public const string ActivityId_TriggerDependents = "TriggerDependentsTopic";
         public const string ActivityId_TriggerInsuranceContext = "TriggerInsuranceContextTopic";
+        public const string ActivityId_ShowCustomerConsole = "ShowCustomerConsole";
 
         /// <summary>
         /// Keywords for topic routing.
@@ -86,10 +87,70 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics
             // Re-wire event handlers
             WireActivityEvents(leadDetailsActivity, lifeGoalsActivity, nextTopicDecision);
             
-            // Add activities to queue
+            // Add EventTriggerActivity to show customer console early for real-time AI analysis
+            var showCustomerConsoleActivity = EventTriggerActivity.CreateFireAndForget(
+                ActivityId_ShowCustomerConsole,
+                "ui.dashboard.show",
+                new {
+                    dashboardType = "customer-console",
+                    userPath = "marketing-t1",
+                    progressStage = "qualification-started",
+                    timestamp = DateTime.UtcNow,
+                    context = new {
+                        domain = "insurance",
+                        flowType = "lead-qualification",
+                        consentLevel = "full" // TCPA + CCPA
+                    }
+                },
+                _logger,
+                _conversationContext
+            );
+            
+            // Add progress update events for each major step
+            var progressEvents = new List<EventTriggerActivity> {
+                EventTriggerActivity.CreateFireAndForget(
+                    "ProgressAfterLeadDetails",
+                    "ui.progress.update",
+                    new {
+                        stage = "lead-details-completed",
+                        progress = 33,
+                        message = "Lead information collected",
+                        nextStep = "life-goals"
+                    },
+                    _logger
+                ),
+                EventTriggerActivity.CreateFireAndForget(
+                    "ProgressAfterLifeGoals",
+                    "ui.progress.update",
+                    new {
+                        stage = "life-goals-completed",
+                        progress = 66,
+                        message = "Life goals assessed",
+                        nextStep = "summary"
+                    },
+                    _logger
+                ),
+                EventTriggerActivity.CreateFireAndForget(
+                    "QualificationComplete",
+                    "ui.progress.complete",
+                    new {
+                        stage = "qualification-finished",
+                        progress = 100,
+                        message = "T1 qualification completed",
+                        nextStep = "next-topic"
+                    },
+                    _logger
+                )
+            };
+            
+            // Add activities to queue with progress events
             Add(leadDetailsActivity);
+            Add(showCustomerConsoleActivity);
+            Add(progressEvents[0]); // After lead details
             Add(lifeGoalsActivity);
+            Add(progressEvents[1]); // After life goals
             Add(summaryActivity);
+            Add(progressEvents[2]); // Qualification complete
             Add(nextTopicDecision);
             
             // Development environment context dumping

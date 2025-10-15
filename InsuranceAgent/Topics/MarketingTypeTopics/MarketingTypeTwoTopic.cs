@@ -24,6 +24,7 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics
         public const string ActivityId_NextTopicDecision = "NextTopicDecision";
         public const string ActivityId_TriggerContactInfo = "TriggerContactInfoTopic";
         public const string ActivityId_TriggerInsuranceContext = "TriggerInsuranceContextTopic";
+        public const string ActivityId_ShowCustomerConsole = "ShowCustomerConsole";
 
         /// <summary>
         /// Keywords for topic routing.
@@ -194,9 +195,57 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics
                 _conversationContext.AddTopicToChain(e.TopicName);
             };
 
+            // Add EventTriggerActivity to show customer console early for real-time AI analysis
+            var showCustomerConsoleActivity = EventTriggerActivity.CreateFireAndForget(
+                ActivityId_ShowCustomerConsole,
+                "ui.dashboard.show",
+                new {
+                    dashboardType = "customer-console",
+                    userPath = "marketing-t2",
+                    progressStage = "qualification-started",
+                    timestamp = DateTime.UtcNow,
+                    context = new {
+                        domain = "insurance",
+                        flowType = "lead-qualification",
+                        consentLevel = "partial" // TCPA only
+                    }
+                },
+                _logger,
+                _conversationContext
+            );
+            
+            // Add progress update events for T2 (simpler flow)
+            var progressEvents = new List<EventTriggerActivity> {
+                EventTriggerActivity.CreateFireAndForget(
+                    "ProgressAfterLeadDetails",
+                    "ui.progress.update",
+                    new {
+                        stage = "lead-details-completed",
+                        progress = 50,
+                        message = "Lead information collected (T2 path)",
+                        nextStep = "summary"
+                    },
+                    _logger
+                ),
+                EventTriggerActivity.CreateFireAndForget(
+                    "QualificationComplete",
+                    "ui.progress.complete",
+                    new {
+                        stage = "qualification-finished",
+                        progress = 100,
+                        message = "T2 qualification completed",
+                        nextStep = "next-topic"
+                    },
+                    _logger
+                )
+            };
+            
             // === Enqueue activities ===
             Add(leadDetailsActivity);
+            Add(showCustomerConsoleActivity);
+            Add(progressEvents[0]); // After lead details
             Add(summaryActivity);
+            Add(progressEvents[1]); // Qualification complete
             Add(nextTopicDecision);
             
             // Development environment context dumping

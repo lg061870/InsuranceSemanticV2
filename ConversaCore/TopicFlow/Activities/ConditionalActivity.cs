@@ -134,7 +134,7 @@ namespace ConversaCore.TopicFlow.Activities
     /// Leverages lessons learned from RepeatActivity for clean event forwarding and state management.
     /// </summary>
     /// <typeparam name="TActivity">The type of activity to execute conditionally</typeparam>
-    public class ConditionalActivity<TActivity> : TopicFlowActivity, IAdaptiveCardActivity, ITopicTriggeredActivity
+    public class ConditionalActivity<TActivity> : TopicFlowActivity, IAdaptiveCardActivity, ITopicTriggeredActivity, ICustomEventTriggeredActivity
         where TActivity : TopicFlowActivity
     {
         private readonly Dictionary<string, Func<string, TopicWorkflowContext, TActivity>> _branchFactories;
@@ -162,6 +162,11 @@ namespace ConversaCore.TopicFlow.Activities
         /// Event fired when child TriggerTopicActivity triggers a topic
         /// </summary>
         public event EventHandler<TopicTriggeredEventArgs>? TopicTriggered;
+
+        /// <summary>
+        /// Event fired when child EventTriggerActivity triggers a custom event
+        /// </summary>
+        public event EventHandler<CustomEventTriggeredEventArgs>? CustomEventTriggered;
 
         /// <summary>
         /// ConditionalActivity itself doesn't wait, but forwards the child activity's WaitForCompletion behavior
@@ -375,6 +380,13 @@ namespace ConversaCore.TopicFlow.Activities
                 Console.WriteLine($"[ConditionalActivity.SubscribeToActivityEvents] Child '{activity.Id}' implements ITopicTriggeredActivity - subscribing to TopicTriggered events");
                 topicTriggeredActivity.TopicTriggered += OnChildTopicTriggered;
             }
+            
+            // Subscribe to EventTriggerActivity-specific events  
+            if (activity is ICustomEventTriggeredActivity customEventTriggeredActivity)
+            {
+                Console.WriteLine($"[ConditionalActivity.SubscribeToActivityEvents] Child '{activity.Id}' implements ICustomEventTriggeredActivity - subscribing to CustomEventTriggered events");
+                customEventTriggeredActivity.CustomEventTriggered += OnChildCustomEventTriggered;
+            }
         }
 
         /// <summary>
@@ -397,6 +409,12 @@ namespace ConversaCore.TopicFlow.Activities
             if (activity is TriggerTopicActivity triggerActivity)
             {
                 triggerActivity.TopicTriggered -= OnChildTopicTriggered;
+            }
+            
+            // Unsubscribe from EventTriggerActivity-specific events
+            if (activity is ICustomEventTriggeredActivity customEventActivity)
+            {
+                customEventActivity.CustomEventTriggered -= OnChildCustomEventTriggered;
             }
         }
 
@@ -462,6 +480,26 @@ namespace ConversaCore.TopicFlow.Activities
             Console.WriteLine($"[ConditionalActivity.OnChildTopicTriggered] About to forward TopicTriggered event to parent. Subscribers: {TopicTriggered?.GetInvocationList().Length ?? 0}");
             TopicTriggered?.Invoke(this, e);
             Console.WriteLine($"[ConditionalActivity.OnChildTopicTriggered] TopicTriggered event forwarded to parent");
+        }
+
+        /// <summary>
+        /// Forward CustomEventTriggered events from child activities (EventTriggerActivity, CompositeActivity, etc.)
+        /// 
+        /// EVENT BUBBLING: Child Activity → ConditionalActivity.OnChildCustomEventTriggered → ConditionalActivity.CustomEventTriggered → InsuranceAgentService
+        /// </summary>
+        private void OnChildCustomEventTriggered(object? sender, CustomEventTriggeredEventArgs e)
+        {
+            var senderType = sender?.GetType().Name ?? "Unknown";
+            var senderId = sender is TopicFlowActivity activity ? activity.Id : "Unknown";
+            
+            _logger?.LogWarning("[ConditionalActivity.OnChildCustomEventTriggered] *** EVENT BUBBLE *** Forwarding CustomEventTriggered from child '{ChildId}' ({ChildType}) in branch '{Branch}' - EventName: {EventName}, ConditionalActivity: {ConditionalId}", 
+                senderId, senderType, _selectedBranch, e.EventName, this.Id);
+            Console.WriteLine($"[ConditionalActivity.OnChildCustomEventTriggered] *** EVENT BUBBLE *** Forwarding CustomEventTriggered from child '{senderId}' ({senderType}) to parent: EventName='{e.EventName}', ConditionalActivity='{this.Id}', Branch='{_selectedBranch}'");
+            
+            // CRITICAL: Forward event to parent - this should reach InsuranceAgentService if properly subscribed
+            Console.WriteLine($"[ConditionalActivity.OnChildCustomEventTriggered] About to forward CustomEventTriggered event to parent. Subscribers: {CustomEventTriggered?.GetInvocationList().Length ?? 0}");
+            CustomEventTriggered?.Invoke(this, e);
+            Console.WriteLine($"[ConditionalActivity.OnChildCustomEventTriggered] CustomEventTriggered event forwarded to parent");
         }
     }
 }

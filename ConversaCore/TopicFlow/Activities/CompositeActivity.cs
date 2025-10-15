@@ -11,7 +11,7 @@ namespace ConversaCore.TopicFlow {
     /// <summary>
     /// An activity that contains and orchestrates a sequence of child activities.
     /// </summary>
-    public class CompositeActivity : TopicFlowActivity, IAdaptiveCardActivity, ITopicTriggeredActivity {
+    public class CompositeActivity : TopicFlowActivity, IAdaptiveCardActivity, ITopicTriggeredActivity, ICustomEventTriggeredActivity {
         private readonly IList<TopicFlowActivity> _activities;
         private TopicFlowActivity? _currentWaitingActivity; // Track which child activity is waiting for input
         private TopicWorkflowContext? _storedContext; // Store context for continued execution
@@ -20,6 +20,11 @@ namespace ConversaCore.TopicFlow {
         /// Event fired when child TriggerTopicActivity triggers a topic
         /// </summary>
         public event EventHandler<TopicTriggeredEventArgs>? TopicTriggered;
+
+        /// <summary>
+        /// Event fired when child EventTriggerActivity triggers a custom event
+        /// </summary>
+        public event EventHandler<CustomEventTriggeredEventArgs>? CustomEventTriggered;
 
         /// <summary>
         /// CompositeActivity forwards the WaitForCompletion behavior from its child activities
@@ -266,6 +271,23 @@ namespace ConversaCore.TopicFlow {
                 };
             }
 
+            // Hook custom event trigger events if the child can trigger custom events  
+            // EVENT BUBBLING: EventTriggerActivity.CustomEventTriggered → CompositeActivity.CustomEventTriggered → Parent Container
+            if (child is ICustomEventTriggeredActivity customEventTriggeredChild) {
+                Console.WriteLine($"[CompositeActivity.HookChildEvents] Child '{child.Id}' implements ICustomEventTriggeredActivity - subscribing to CustomEventTriggered events");
+                customEventTriggeredChild.CustomEventTriggered += (sender, e) => {
+                    var senderType = sender?.GetType().Name ?? "Unknown";
+                    var senderId = sender is TopicFlowActivity activity ? activity.Id : "Unknown";
+                    
+                    Console.WriteLine($"[CompositeActivity.CustomEventTriggered] *** EVENT BUBBLE *** Forwarding CustomEventTriggered from child '{senderId}' ({senderType}) to parent: EventName='{e.EventName}', CompositeActivity='{this.Id}'");
+                    
+                    // CRITICAL: Forward event to parent - this should reach InsuranceAgentService if properly subscribed
+                    Console.WriteLine($"[CompositeActivity.CustomEventTriggered] About to forward CustomEventTriggered event to parent. Subscribers: {CustomEventTriggered?.GetInvocationList().Length ?? 0}");
+                    CustomEventTriggered?.Invoke(sender, e);
+                    Console.WriteLine($"[CompositeActivity.CustomEventTriggered] CustomEventTriggered event forwarded to parent");
+                };
+            }
+
             // Future: Hook other specialized event interfaces as they are added
             // if (child is ISemanticEventsPrompt semanticChild) { ... }
             // if (child is IWorkflowEventActivity workflowChild) { ... }
@@ -340,6 +362,17 @@ namespace ConversaCore.TopicFlow {
                 // Copy isolated outputs back to parent context
                 if (IsolateContext)
                     context.SetValue(Id, workingContext);
+                
+                // CRITICAL FIX: Signal completion to parent when all activities are done
+                // This ensures the parent topic can continue to its next activity
+                Console.WriteLine($"[CompositeActivity] Signaling completion to parent after continuation");
+                TransitionTo(ActivityState.Completed, "All child activities completed during continuation");
+                
+                // Fire the completion events that the parent is waiting for
+                var completedEvent = new ActivityCompletedEventArgs(Id, ActivityResult.Continue("Composite activity completed"));
+                ActivityCompleted?.Invoke(this, completedEvent);
+                
+                Console.WriteLine($"[CompositeActivity] Completion signals sent to parent");
                     
             } catch (Exception ex) {
                 Console.WriteLine($"[CompositeActivity] Error in ContinueExecutionAsync: {ex.Message}");

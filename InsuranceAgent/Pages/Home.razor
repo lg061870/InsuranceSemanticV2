@@ -16,6 +16,13 @@
 <div class="flex flex-row w-full h-screen font-sans overflow-hidden max-w-screen-2xl mx-auto p-2">
     <!-- Left 2/3: Content container -->
     <div class="relative w-2/3 h-full overflow-hidden">
+        <!-- Customer Console (slides in from left to replace landing page) -->
+        <div class="absolute top-0 left-0 w-full h-full transition-transform duration-500 ease-in-out z-40"
+             style="@(showCustomerConsole ? "transform: translateX(0);" : "transform: translateX(-100%);")">
+            <CustomerConsole IsVisible="@showCustomerConsole" 
+                            OnClose="@CloseCustomerConsole" />
+        </div>
+        
         <!-- Questionnaire slides in/out (highest z-index) -->
         <div class="absolute top-0 left-0 w-full h-full bg-white transition-transform duration-500 ease-in-out z-30"
              style="@(currentView == ViewState.Questionnaire ? "transform: translateX(0);" : "transform: translateX(-100%);")">
@@ -58,24 +65,30 @@
         
         <!-- Landing page (lowest z-index) -->
         <div class="absolute top-0 left-0 w-full h-full transition-opacity duration-500 ease-in-out z-10"
-             style="@(currentView == ViewState.LandingPage ? "opacity: 1;" : "opacity: 0; pointer-events: none;")">
+             style="@(currentView == ViewState.LandingPage && !showCustomerConsole ? "opacity: 1;" : "opacity: 0; pointer-events: none;")">
             <InsuranceLandingPage />
         </div>
     </div>
 
     <!-- Right 1/3: Chat container -->
-    <div class="w-1/3 p-4 h-full">
+    <div class="w-1/3 p-4 h-full relative">
         <!-- Custom chat component replaces WebChat -->
-    <CustomChatWindowV2 />
+        <CustomChatWindowV2 />
     </div>
 </div>
 
 @code {
     [Inject]
     public INavigationEventService NavEvents { get; set; } = default!;
+    
+    [Inject]
+    public InsuranceAgentService InsuranceAgentService { get; set; } = default!;
 
     private enum ViewState { LandingPage, AgentConsole, Questionnaire, ConsentDenied }
     private ViewState currentView = ViewState.LandingPage;
+    
+    // Customer Console state
+    private bool showCustomerConsole = false;
 
    
     private string userConsentType = string.Empty;
@@ -94,7 +107,34 @@
 
     protected override void OnInitialized() {
         NavEvents.NavigateRequested += OnNavigateRequested;
-        // QuestionnaireEvents.QuestionnaireRequested += OnQuestionnaireRequested;
+        
+        // Subscribe to custom events from InsuranceAgentService
+        InsuranceAgentService.CustomEventTriggered += OnCustomEventReceived;
+    }
+    
+    private void OnCustomEventReceived(object? sender, ConversaCore.TopicFlow.Activities.CustomEventTriggeredEventArgs e)
+    {
+        Console.WriteLine($"[Home] Received custom event: {e.EventName}");
+        
+        // Handle customer console events
+        if (e.EventName == "ui.customer-console.show")
+        {
+            showCustomerConsole = true;
+            InvokeAsync(StateHasChanged);
+            Console.WriteLine("[Home] Customer console activated via event trigger");
+        }
+        else if (e.EventName == "ui.customer-console.hide")
+        {
+            showCustomerConsole = false;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+    
+    private async Task CloseCustomerConsole()
+    {
+        showCustomerConsole = false;
+        await InvokeAsync(StateHasChanged);
+        Console.WriteLine("[Home] Customer console closed by user");
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender) {
@@ -199,7 +239,7 @@
 
     public void Dispose() {
         NavEvents.NavigateRequested -= OnNavigateRequested;
-        // QuestionnaireEvents.QuestionnaireRequested -= OnQuestionnaireRequested;
+        InsuranceAgentService.CustomEventTriggered -= OnCustomEventReceived;
         
         // Clean up the JS interop reference
         _ = JS.InvokeVoidAsync("window.cleanupHomeComponent");

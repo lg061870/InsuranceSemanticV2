@@ -3,6 +3,7 @@ using ConversaCore.TopicFlow;
 using ConversaCore.TopicFlow.Activities;
 using InsuranceAgent.Cards;
 using InsuranceAgent.Topics.CaliforniaResidentTopic;
+using ConversaCore.Context;
 
 namespace InsuranceAgent.Topics; 
 /// <summary>
@@ -11,6 +12,8 @@ namespace InsuranceAgent.Topics;
 /// </summary>
 public class CaliforniaResidentDemoTopic : TopicFlow {
     public const string ActivityId_ShowCard = "ShowCaliforniaResidentCard";
+    public const string ActivityId_TriggerConsole = "TriggerCustomerConsole";
+    public const string ActivityId_TriggerNext = "TriggerNextTopic";
 
     /// <summary>
     /// Keywords for topic routing.
@@ -20,13 +23,16 @@ public class CaliforniaResidentDemoTopic : TopicFlow {
     };
 
     private readonly ILogger<CaliforniaResidentDemoTopic> _logger;
+    private readonly IConversationContext? _conversationContext;
     private static int _constructorCallCount = 0;
 
     public CaliforniaResidentDemoTopic(
         TopicWorkflowContext context,
-        ILogger<CaliforniaResidentDemoTopic> logger
+        ILogger<CaliforniaResidentDemoTopic> logger,
+        IConversationContext? conversationContext = null
     ) : base(context, logger, name: "CaliforniaResidentDemoTopic") {
         _logger = logger;
+        _conversationContext = conversationContext;
         
         _logger.LogWarning("[DEBUG] CaliforniaResidentDemoTopic CONSTRUCTOR #{Count} called at {Time}", 
             ++_constructorCallCount, DateTime.UtcNow);
@@ -46,6 +52,28 @@ public class CaliforniaResidentDemoTopic : TopicFlow {
                     $"[CaliforniaResidentCardActivity] {ActivityId_ShowCard}: {from} → {to} @ {stamp} | Data={data?.GetType().Name ?? "null"}"
                 );
             }
+        );
+        
+        // Add EventTriggerActivity to show customer console after card is displayed
+        var triggerConsoleActivity = EventTriggerActivity.CreateFireAndForget(
+            ActivityId_TriggerConsole,
+            "ui.customer-console.show",
+            new {
+                trigger = "california-resident-card",
+                timestamp = DateTime.UtcNow,
+                context = new {
+                    domain = "insurance",
+                    flowType = "california-residency",
+                    stage = "post-card-display"
+                },
+                animation = new {
+                    type = "slide-in",
+                    direction = "right",
+                    duration = 300
+                }
+            },
+            _logger,
+            _conversationContext
         );
 
         var isDevelopment =
@@ -67,14 +95,42 @@ public class CaliforniaResidentDemoTopic : TopicFlow {
         showCardActivity.CardDataReceived += (s, e) =>
             _logger.LogInformation("[{Topic}] Card data received: {Keys}", Name, string.Join(",", e.Data.Keys));
 
-        showCardActivity.ModelBound += (s, e) =>
+        showCardActivity.ModelBound += (s, e) => {
             _logger.LogInformation("[{Topic}] Model bound: {ModelType}", Name, e.Model?.GetType().Name);
+            
+            // Store California residency data in context for decision making
+            if (e.Model is CaliforniaResidentModel model) {
+                Context.SetValue("is_california_resident", model.IsCaliforniaResident);
+                Context.SetValue("california_zip_code", model.ZipCode);
+                
+                _logger.LogInformation("[{Topic}] Stored CA residency: {IsCA}, ZIP: {Zip}", 
+                    Name, model.IsCaliforniaResident, model.ZipCode);
+            }
+        };
 
         showCardActivity.ValidationFailed += (s, e) =>
             _logger.LogWarning("[{Topic}] Validation failed: {Message}", Name, e.Exception.Message);
 
+        // Add TriggerTopicActivity to continue to MarketingTypeOneTopic after collecting residency info
+        var triggerNextActivity = new TriggerTopicActivity(
+            ActivityId_TriggerNext,
+            "MarketingTypeOneTopic", // Default next topic - could be made configurable
+            _logger,
+            waitForCompletion: false,
+            _conversationContext
+        );
+
+        triggerNextActivity.TopicTriggered += (sender, e) => {
+            _logger.LogInformation("[{Topic}] Triggering next topic: {Next}", Name, e.TopicName);
+            if (_conversationContext != null) {
+                _conversationContext.AddTopicToChain(e.TopicName);
+            }
+        };
+
         // === Enqueue activities ===
         Add(showCardActivity);
+        Add(triggerConsoleActivity); // Show console after card is displayed  
+        Add(triggerNextActivity); // Continue to next topic after collecting residency info
     }
 
 
