@@ -1,3 +1,5 @@
+
+
 window.setupDragAndDrop = (dotNetReference) => {
     const dropzone = document.querySelector('[data-dropzone]');
     if (!dropzone) return;

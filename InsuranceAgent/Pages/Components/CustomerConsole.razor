@@ -1,1005 +1,671 @@
-@using System.Text.Json
+﻿@using System.Text.Json
+@using ConversaCore.TopicFlow
+@using ConversaCore.Models
+@using InsuranceAgent.Topics
+@using InsuranceAgent.DomainTypes
+@using System.Text.Json.Serialization
+@using System.Reflection
+
 @inject IJSRuntime JS
+@inject ILogger<CustomerConsole>? Logger
+@inherits ComponentBase
 
-<!-- Content-area console that slides in from left -->
-<div class="customer-console" @onclick:stopPropagation="true">
-    
-    <div class="console-content">
-        <div class="mb-6">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h2 class="text-2xl font-bold text-gray-800 mb-2">Customer Console</h2>
-                    <p class="text-gray-600">Real-time AI Analysis</p>
+@if (IsVisible)
+{
+    <div class="customer-console">
+        <!-- Header -->
+        <header class="console-header">
+            <h2>Customer Console</h2>
+            <p>Real-time AI Qualification Progress</p>
+            <button class="close-btn" @onclick="() => OnClose.InvokeAsync()">×</button>
+        </header>
+
+        <div class="console-body-vertical">
+            <!-- PROGRESS + SUMMARY SECTION -->
+            <section class="progress-section-grid">
+                <div class="progress-steps">
+                    <h3 class="section-title">Data Capture</h3>
+                    @foreach (var step in progressSteps)
+                    {
+                        <div class="step-row @(step.Completed ? "done" : step.Active ? "active" : "pending")">
+                            @if (step.Completed)
+                            {
+                                <i class="fa-solid fa-check-circle text-green-500"></i>
+                            }
+                            else if (step.Active)
+                            {
+                                <i class="fa-solid fa-circle-notch fa-spin text-blue-500"></i>
+                            }
+                            else
+                            {
+                                <i class="fa-regular fa-circle text-gray-400"></i>
+                            }
+                            <span>@step.Label</span>
+                        </div>
+                    }
+
+                    <div class="progress-bar-container mt-4">
+                        <div class="progress-bar-fill" style="width:@($"{analysisProgress}%")"></div>
+                    </div>
                 </div>
-                <button @onclick="CloseConsole" class="close-btn bg-gray-100 hover:bg-gray-200 p-2 rounded-lg">
-                    <i class="fa-solid fa-times text-gray-600"></i>
-                </button>
-            </div>
-        </div>
 
-        <div id="console-container" class="bg-white rounded-lg shadow-sm border border-gray-300 overflow-hidden">
-            <!-- Tab Navigation -->
-            <div id="tab-navigation" class="border-b border-gray-300">
-                <div class="flex">
-                    <button class="tab-button @(activeTab == "products" ? "active" : "")"
-                            @onclick="@(() => SetActiveTab("products"))">
-                        <i class="fa-solid fa-compass"></i>
-                        <span>Matched Products</span>
-                    </button>
-                    <button class="tab-button @(activeTab == "compliance" ? "active" : "")"
-                            @onclick="@(() => SetActiveTab("compliance"))">
-                        <i class="fa-solid fa-file-contract"></i>
-                        <span>Compliance</span>
-                    </button>
-                    <button class="tab-button @(activeTab == "agent" ? "active" : "")"
-                            @onclick="@(() => SetActiveTab("agent"))">
-                        <i class="fa-solid fa-phone"></i>
-                        <span>Live Agent</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Tab Content -->
-            <div id="tab-content" class="p-6">
-                
-                <!-- Products Tab -->
-                <div class="tab-panel @(activeTab == "products" ? "" : "hidden")">
-                    <div class="grid lg:grid-cols-3 gap-6">
-                        <div id="products-list" class="lg:col-span-2">
-                            <div class="bg-white rounded-lg border border-gray-300 p-8 text-center">
-                                <div class="flex flex-col items-center justify-center space-y-6">
-                                    
-                                    <!-- AI Analysis Icon and Status -->
-                                    <div class="relative">
-                                        <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-                                            <div class="relative">
-                                                <i class="fa-solid fa-brain text-blue-600 text-2xl @(isAnalyzing ? "animate-pulse" : "")"></i>
-                                                @if (!isAnalyzing)
-                                                {
-                                                    <div class="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                                                        <i class="fa-solid fa-check text-white text-xs"></i>
-                                                    </div>
-                                                }
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="text-center">
-                                        <h3 class="text-xl font-bold text-gray-800 mb-2">
-                                            @currentStatusMessage
-                                        </h3>
-                                        <p class="text-gray-600">
-                                            @currentSubStatusMessage
-                                        </p>
-                                    </div>
-
-                                    <!-- Progress Steps -->
-                                    <div class="w-full max-w-md">
-                                        <div class="flex justify-between mb-2">
-                                            <div class="flex items-center space-x-2">
-                                                <div class="w-4 h-4 @(complianceDataCollected ? "bg-green-500" : "bg-gray-300") rounded-full flex items-center justify-center">
-                                                    @if (complianceDataCollected)
-                                                    {
-                                                        <i class="fa-solid fa-check text-white text-xs"></i>
-                                                    }
-                                                </div>
-                                                <span class="text-sm @(complianceDataCollected ? "text-gray-700" : "text-gray-400")">Compliance requirements verified</span>
-                                            </div>
-                                        </div>
-                                        <div class="flex justify-between mb-2">
-                                            <div class="flex items-center space-x-2">
-                                                <div class="w-4 h-4 @(leadInfoCollected ? "bg-green-500" : (complianceDataCollected ? "bg-blue-500 animate-pulse" : "bg-gray-300")) rounded-full flex items-center justify-center">
-                                                    @if (leadInfoCollected)
-                                                    {
-                                                        <i class="fa-solid fa-check text-white text-xs"></i>
-                                                    }
-                                                    else if (complianceDataCollected)
-                                                    {
-                                                        <div class="w-2 h-2 bg-white rounded-full"></div>
-                                                    }
-                                                </div>
-                                                <span class="text-sm @(leadInfoCollected ? "text-gray-700" : (complianceDataCollected ? "text-blue-600 font-medium" : "text-gray-400"))">Lead personal information collected</span>
-                                            </div>
-                                        </div>
-                                        <div class="flex justify-between mb-2">
-                                            <div class="flex items-center space-x-2">
-                                                <div class="w-4 h-4 @(riskAssessmentCompleted ? "bg-green-500" : (leadInfoCollected ? "bg-blue-500 animate-pulse" : "bg-gray-300")) rounded-full flex items-center justify-center">
-                                                    @if (riskAssessmentCompleted)
-                                                    {
-                                                        <i class="fa-solid fa-check text-white text-xs"></i>
-                                                    }
-                                                    else if (leadInfoCollected)
-                                                    {
-                                                        <div class="w-2 h-2 bg-white rounded-full"></div>
-                                                    }
-                                                </div>
-                                                <span class="text-sm @(riskAssessmentCompleted ? "text-gray-700" : (leadInfoCollected ? "text-blue-600 font-medium" : "text-gray-400"))">Risk assessment completed</span>
-                                            </div>
-                                        </div>
-                                        <div class="flex justify-between mb-2">
-                                            <div class="flex items-center space-x-2">
-                                                <div class="w-4 h-4 @(productsMatched ? "bg-green-500" : (riskAssessmentCompleted ? "bg-blue-500 animate-pulse" : "bg-gray-300")) rounded-full flex items-center justify-center">
-                                                    @if (productsMatched)
-                                                    {
-                                                        <i class="fa-solid fa-check text-white text-xs"></i>
-                                                    }
-                                                    else if (riskAssessmentCompleted)
-                                                    {
-                                                        <div class="w-2 h-2 bg-white rounded-full"></div>
-                                                    }
-                                                </div>
-                                                <span class="text-sm @(productsMatched ? "text-gray-700" : (riskAssessmentCompleted ? "text-blue-600 font-medium" : "text-gray-400"))">Matching products...</span>
-                                            </div>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <div class="flex items-center space-x-2">
-                                                <div class="w-4 h-4 @(premiumsCalculated ? "bg-green-500" : "bg-gray-300") rounded-full flex items-center justify-center">
-                                                    @if (premiumsCalculated)
-                                                    {
-                                                        <i class="fa-solid fa-check text-white text-xs"></i>
-                                                    }
-                                                </div>
-                                                <span class="text-sm @(premiumsCalculated ? "text-gray-700" : "text-gray-400")">Calculating premiums</span>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="mt-4 flex items-center justify-center text-sm text-gray-500">
-                                            <i class="fa-solid fa-clock mr-2"></i>
-                                            <span>Processing based on submitted information</span>
-                                        </div>
-                                    </div>
-
-                                    <!-- Progress Bar -->
-                                    @if (isAnalyzing)
+                <!-- RIGHT: Summary Data -->
+                <div class="summary-panel">
+                    @if (!summaryCards.Any())
+                    {
+                        <p class="empty-summary">Captured data will appear here as you progress.</p>
+                    }
+                    else
+                    {
+                        @foreach (var card in summaryCards)
+                        {
+                            <div class="summary-card">
+                                <h4>@card.Title</h4>
+                                <ul>
+                                    @foreach (var item in card.Data)
                                     {
-                                        <div class="w-full max-w-md">
-                                            <div class="w-full bg-gray-200 rounded-full h-2">
-                                                <div class="bg-blue-600 h-2 rounded-full transition-all duration-500" style="width: @(analysisProgress)%"></div>
-                                            </div>
-                                        </div>
+                                        <li><strong>@item.Key:</strong> @item.Value</li>
                                     }
-                                </div>
+                                </ul>
                             </div>
-
-                            <!-- Product Cards (shown when analysis is complete) -->
-                            @if (!isAnalyzing && matchedProducts.Any())
-                            {
-                                <div class="mt-6 space-y-4">
-                                    @foreach (var product in matchedProducts)
-                                    {
-                                        <div class="bg-white rounded-lg border border-gray-300 p-6">
-                                            <div class="flex justify-between items-start mb-4">
-                                                <div class="flex-1">
-                                                    <h4 class="text-lg font-bold text-gray-800">@product.Name</h4>
-                                                    <p class="text-gray-600 mt-1">@product.Description</p>
-                                                </div>
-                                                <div class="text-right">
-                                                    <div class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                                                        @product.MatchScore% match
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="flex justify-between items-center">
-                                                <div class="flex space-x-6 text-sm text-gray-600">
-                                                    <div class="flex items-center">
-                                                        <i class="fa-solid fa-dollar-sign text-green-600 mr-1"></i>
-                                                        <span>$@product.MonthlyPremium/mo</span>
-                                                    </div>
-                                                    <div class="flex items-center">
-                                                        <i class="fa-solid fa-shield-alt text-blue-600 mr-1"></i>
-                                                        <span>$@product.Coverage coverage</span>
-                                                    </div>
-                                                </div>
-                                                <button class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 font-medium">
-                                                    View Details
-                                                </button>
-                                            </div>
-                                        </div>
-                                    }
-                                </div>
-                            }
-
-                            <!-- Placeholder product cards during analysis -->
-                            @if (isAnalyzing)
-                            {
-                                <div class="mt-6 space-y-4">
-                                    <div class="bg-white rounded-lg border border-gray-300 p-6 animate-pulse">
-                                        <div class="flex justify-between items-start mb-4">
-                                            <div class="flex-1">
-                                                <div class="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
-                                                <div class="h-3 bg-gray-200 rounded w-2/3"></div>
-                                            </div>
-                                            <div class="h-6 bg-gray-200 rounded-full w-16"></div>
-                                        </div>
-                                        <div class="flex justify-between items-center">
-                                            <div class="flex space-x-6">
-                                                <div class="h-3 bg-gray-200 rounded w-16"></div>
-                                                <div class="h-3 bg-gray-200 rounded w-20"></div>
-                                            </div>
-                                            <div class="h-8 bg-gray-200 rounded w-24"></div>
-                                        </div>
-                                    </div>
-
-                                    <div class="bg-white rounded-lg border border-gray-300 p-6 animate-pulse">
-                                        <div class="flex justify-between items-start mb-4">
-                                            <div class="flex-1">
-                                                <div class="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-                                                <div class="h-3 bg-gray-200 rounded w-3/4"></div>
-                                            </div>
-                                            <div class="h-6 bg-gray-200 rounded-full w-16"></div>
-                                        </div>
-                                        <div class="flex justify-between items-center">
-                                            <div class="flex space-x-6">
-                                                <div class="h-3 bg-gray-200 rounded w-16"></div>
-                                                <div class="h-3 bg-gray-200 rounded w-20"></div>
-                                            </div>
-                                            <div class="h-8 bg-gray-200 rounded w-24"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                        </div>
-
-                        <!-- User Profile Summary Sidebar -->
-                        <div id="user-summary" class="bg-gray-50 rounded-lg p-6 h-fit">
-                            <h4 class="font-bold text-gray-800 mb-4">User Profile Summary</h4>
-                            <div class="space-y-3">
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Age:</span>
-                                    <span class="font-medium">@(userProfile.Age > 0 ? $"{userProfile.Age} years" : "Pending")</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Annual Income:</span>
-                                    <span class="font-medium">@(string.IsNullOrEmpty(userProfile.AnnualIncome) ? "Pending" : userProfile.AnnualIncome)</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Dependents:</span>
-                                    <span class="font-medium">@(string.IsNullOrEmpty(userProfile.Dependents) ? "Pending" : userProfile.Dependents)</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Health Status:</span>
-                                    <span class="font-medium @(string.IsNullOrEmpty(userProfile.HealthStatus) ? "" : "text-green-600")">@(string.IsNullOrEmpty(userProfile.HealthStatus) ? "Pending" : userProfile.HealthStatus)</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Coverage Goal:</span>
-                                    <span class="font-medium">@(string.IsNullOrEmpty(userProfile.CoverageGoal) ? "Pending" : userProfile.CoverageGoal)</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Budget Range:</span>
-                                    <span class="font-medium">@(string.IsNullOrEmpty(userProfile.BudgetRange) ? "Pending" : userProfile.BudgetRange)</span>
-                                </div>
-                                @if (!string.IsNullOrEmpty(userProfile.State))
-                                {
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-600">State:</span>
-                                        <span class="font-medium">@userProfile.State</span>
-                                    </div>
-                                }
-                                @if (!string.IsNullOrEmpty(userProfile.ZipCode))
-                                {
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-600">Zip Code:</span>
-                                        <span class="font-medium">@userProfile.ZipCode</span>
-                                    </div>
-                                }
-                            </div>
-                            <div class="mt-6 pt-4 border-t border-gray-200">
-                                <div class="flex items-center justify-between text-sm">
-                                    <span class="text-gray-600">Risk Score:</span>
-                                    <div class="flex items-center space-x-2">
-                                        <div class="w-16 h-2 bg-gray-200 rounded-full">
-                                            <div class="@(riskAssessmentCompleted ? "w-1/4" : "w-0") h-2 bg-green-500 rounded-full transition-all duration-500"></div>
-                                        </div>
-                                        <span class="@(riskAssessmentCompleted ? "text-green-600" : "text-gray-400") font-medium">@(riskAssessmentCompleted ? "Low" : "Calculating")</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                        }
+                    }
                 </div>
+            </section>
 
-                <!-- Compliance Tab -->
-                <div class="tab-panel @(activeTab == "compliance" ? "" : "hidden")">
-                    <div class="max-w-4xl">
-                        <div class="grid md:grid-cols-2 gap-6">
-                            <div id="tcpa-section" class="bg-blue-50 rounded-lg border border-blue-200 p-6">
-                                <div class="flex items-center justify-between mb-4">
-                                    <div class="flex items-center space-x-3">
-                                        <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                                            <i class="fa-solid fa-phone text-white"></i>
-                                        </div>
-                                        <div>
-                                            <h3 class="font-bold text-gray-800">TCPA Consent</h3>
-                                            <p class="text-sm text-gray-600">Telephone Consumer Protection Act</p>
-                                        </div>
-                                    </div>
-                                    <span class="bg-@(tcpaConsent ? "green" : "yellow")-100 text-@(tcpaConsent ? "green" : "yellow")-800 px-3 py-1 rounded-full text-sm font-medium">
-                                        @(tcpaConsent ? "Approved" : "Pending")
-                                    </span>
-                                </div>
-                                <div class="text-sm text-gray-700 leading-relaxed mb-4">
-                                    TCPA consent allows us to contact you via phone, text, or automated dialing systems for insurance-related communications. 
-                                    This consent is required for personalized quotes and policy discussions.
+            <!-- MATCHED PRODUCTS SECTION -->
+            <section class="product-section-wide">
+                <h3 class="section-title">Matched Products</h3>
+
+                @if (isAnalyzing)
+                {
+                    <div class="skeleton-card"></div>
+                    <div class="skeleton-card delay-1"></div>
+                    <div class="skeleton-card delay-2"></div>
+                }
+                else if (matchedProducts.Any())
+                {
+                    <div class="product-grid">
+                        @foreach (var p in matchedProducts)
+                        {
+                            <div class="product-card">
+                                <div class="product-score">@p.MatchScore%</div>
+                                <h4>@p.Name</h4>
+                                <p>@p.Description</p>
+                                <div class="product-meta">
+                                    <span>@p.Coverage coverage</span>
+                                    <span>$@p.MonthlyPremium/mo</span>
                                 </div>
                             </div>
-
-                            <div id="ccpa-section" class="bg-purple-50 rounded-lg border border-purple-200 p-6">
-                                <div class="flex items-center justify-between mb-4">
-                                    <div class="flex items-center space-x-3">
-                                        <div class="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-                                            <i class="fa-solid fa-shield-alt text-white"></i>
-                                        </div>
-                                        <div>
-                                            <h3 class="font-bold text-gray-800">CCPA Acknowledgment</h3>
-                                            <p class="text-sm text-gray-600">California Consumer Privacy Act</p>
-                                        </div>
-                                    </div>
-                                    <span class="bg-@(ccpaConsent ? "green" : "yellow")-100 text-@(ccpaConsent ? "green" : "yellow")-800 px-3 py-1 rounded-full text-sm font-medium">
-                                        @(ccpaConsent ? "Approved" : "Pending")
-                                    </span>
-                                </div>
-                                <div class="text-sm text-gray-700 leading-relaxed mb-4">
-                                    Your acknowledgment of CCPA rights regarding personal information collection, use, and sharing for insurance purposes.
-                                </div>
-                            </div>
-                        </div>
-
-                        <div id="compliance-actions" class="mt-8 bg-white rounded-lg border border-gray-300 p-6">
-                            <h4 class="font-bold text-gray-800 mb-4">Compliance Actions</h4>
-                            <div class="flex flex-wrap gap-3">
-                                <button class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 font-medium">
-                                    <i class="fa-solid fa-check mr-2"></i>Verify Consent
-                                </button>
-                                <button class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 font-medium">
-                                    <i class="fa-solid fa-download mr-2"></i>Download Records
-                                </button>
-                                <button class="bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 font-medium">
-                                    <i class="fa-solid fa-eye mr-2"></i>View Details
-                                </button>
-                            </div>
-                        </div>
+                        }
                     </div>
-                </div>
-
-                <!-- Live Agent Tab -->
-                <div class="tab-panel @(activeTab == "agent" ? "" : "hidden")">
-                    <div class="max-w-6xl mx-auto">
-                        <div class="mb-8">
-                            <h3 class="text-2xl font-bold text-gray-800 mb-2">Connect with a Licensed Agent</h3>
-                            <p class="text-gray-600 text-lg">Our experienced insurance professionals are ready to provide personalized guidance and answer your questions.</p>
-                            <div class="mt-4 flex items-center space-x-6 text-sm">
-                                <div class="flex items-center text-green-600">
-                                    <i class="fa-solid fa-circle mr-2 text-xs"></i>
-                                    <span class="font-medium">5 agents available now</span>
-                                </div>
-                                <div class="flex items-center text-blue-600">
-                                    <i class="fa-solid fa-clock mr-2"></i>
-                                    <span>Average response: 2 minutes</span>
-                                </div>
-                                <div class="flex items-center text-purple-600">
-                                    <i class="fa-solid fa-award mr-2"></i>
-                                    <span>Licensed professionals</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div id="agents-grid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
-                            <!-- Agent Cards -->
-                            @foreach (var agent in availableAgents)
-                            {
-                                <div class="agent-card bg-white rounded-lg border border-gray-300 p-4 hover:shadow-lg transition-all duration-300 relative group">
-                                    <button class="disregard-btn absolute top-3 right-3 w-6 h-6 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600"
-                                            @onclick="@(() => RemoveAgent(agent.Id))">
-                                        <i class="fa-solid fa-times text-xs"></i>
-                                    </button>
-
-                                    <div class="text-center mb-4">
-                                        <div class="w-16 h-16 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full mx-auto mb-3 flex items-center justify-center">
-                                            <span class="text-white font-bold text-lg">@agent.Initials</span>
-                                        </div>
-                                        <h4 class="font-bold text-gray-800">@agent.Name</h4>
-                                        <p class="text-sm text-gray-600">@agent.Title</p>
-                                        <div class="flex items-center justify-center space-x-1 mt-1">
-                                            @for (int i = 0; i < 5; i++)
-                                            {
-                                                <i class="fa-solid fa-star text-yellow-400 text-xs"></i>
-                                            }
-                                            <span class="text-xs text-gray-500 ml-1">(@agent.ReviewCount))</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="space-y-2 mb-4">
-                                        <div class="flex items-center text-sm text-gray-600">
-                                            <i class="fa-solid fa-certificate text-blue-600 mr-2 w-4"></i>
-                                            <span>@agent.Experience years experience</span>
-                                        </div>
-                                        <div class="flex items-center text-sm text-gray-600">
-                                            <i class="fa-solid fa-map-marker-alt text-green-600 mr-2 w-4"></i>
-                                            <span>@agent.Location</span>
-                                        </div>
-                                        <div class="flex items-center text-sm text-gray-600">
-                                            <i class="fa-solid fa-language text-purple-600 mr-2 w-4"></i>
-                                            <span>@string.Join(", ", agent.Languages)</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="space-y-2">
-                                        <button class="connect-agent-btn w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 font-medium transition-colors"
-                                                @onclick="@(() => ConnectWithAgent(agent.Name))">
-                                            <i class="fa-solid fa-phone mr-2"></i>Connect Now
-                                        </button>
-                                        <div class="text-xs text-gray-500 text-center">
-                                            <span>Available until @agent.AvailableUntil</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                        </div>
-
-                        <div id="agent-info-section" class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-8 border border-blue-100">
-                            <div class="grid md:grid-cols-3 gap-8">
-                                <div class="text-center">
-                                    <div class="w-12 h-12 bg-blue-600 rounded-lg mx-auto mb-3 flex items-center justify-center">
-                                        <i class="fa-solid fa-shield-check text-white text-xl"></i>
-                                    </div>
-                                    <h4 class="font-bold text-gray-800 mb-2">Licensed & Certified</h4>
-                                    <p class="text-sm text-gray-600">All agents are state-licensed insurance professionals with ongoing certification requirements.</p>
-                                </div>
-                                <div class="text-center">
-                                    <div class="w-12 h-12 bg-green-600 rounded-lg mx-auto mb-3 flex items-center justify-center">
-                                        <i class="fa-solid fa-headset text-white text-xl"></i>
-                                    </div>
-                                    <h4 class="font-bold text-gray-800 mb-2">24/7 Support</h4>
-                                    <p class="text-sm text-gray-600">Expert guidance available around the clock for urgent insurance needs and questions.</p>
-                                </div>
-                                <div class="text-center">
-                                    <div class="w-12 h-12 bg-purple-600 rounded-lg mx-auto mb-3 flex items-center justify-center">
-                                        <i class="fa-solid fa-handshake text-white text-xl"></i>
-                                    </div>
-                                    <h4 class="font-bold text-gray-800 mb-2">No Obligation</h4>
-                                    <p class="text-sm text-gray-600">Free consultations with no pressure to purchase. Get expert advice at your own pace.</p>
-                                </div>
-                            </div>
-
-                            <div class="mt-8 pt-6 border-t border-blue-200">
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center space-x-4 text-sm text-gray-600">
-                                        <div class="flex items-center">
-                                            <i class="fa-solid fa-clock mr-2 text-blue-600"></i>
-                                            <span>Average call duration: 15-20 minutes</span>
-                                        </div>
-                                        <div class="flex items-center">
-                                            <i class="fa-solid fa-users mr-2 text-green-600"></i>
-                                            <span>Over 50,000 customers served</span>
-                                        </div>
-                                        <div class="flex items-center">
-                                            <i class="fa-solid fa-star mr-2 text-yellow-500"></i>
-                                            <span>4.9/5 average rating</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <p class="text-xs text-gray-500 mt-3">* TCPA consent is required to initiate contact. All calls are recorded for quality assurance.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                }
+                else
+                {
+                    <p class="empty-hint">Awaiting qualification data...</p>
+                }
+            </section>
         </div>
     </div>
-</div>
-
-<style>
-    .customer-console {
-        width: 100%;
-        height: calc(100vh - 2.25rem); /* Subtract header height (36px) */
-        background: #f9fafb;
-        overflow-y: auto;
-        padding: 1.5rem;
-    }
-    
-    .close-btn {
-        transition: all 0.2s;
-    }
-    
-    .close-btn:hover {
-        background: #e5e7eb !important;
-    }
-    
-    .tab-button {
-        flex: 1;
-        padding: 1rem 1.5rem;
-        border: none;
-        background: transparent;
-        color: #6b7280;
-        font-weight: 500;
-        transition: all 0.2s;
-        border-bottom: 2px solid transparent;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        space-x: 0.5rem;
-    }
-    
-    .tab-button:hover {
-        color: #374151;
-        background: #f3f4f6;
-    }
-    
-    .tab-button.active {
-        color: #3366CC;
-        border-bottom-color: #3366CC;
-        background: white;
-    }
-    
-    .tab-button i {
-        margin-right: 0.5rem;
-    }
-    
-    .tab-panel.hidden {
-        display: none;
-    }
-    
-    .agent-card {
-        transition: all 0.3s ease;
-    }
-    
-    .agent-card:hover {
-        transform: translateY(-2px);
-    }
-    
-    .disregard-btn {
-        transition: all 0.2s;
-    }
-    
-    .connect-agent-btn {
-        transition: all 0.2s;
-    }
-    
-    .connect-agent-btn:hover {
-        transform: translateY(-1px);
-    }
-
-    /* Ensure proper color classes work */
-    .bg-green-100 {
-        background-color: #dcfce7;
-    }
-    
-    .text-green-800 {
-        color: #166534;
-    }
-    
-    .bg-yellow-100 {
-        background-color: #fef3c7;
-    }
-    
-    .text-yellow-800 {
-        color: #92400e;
-    }
-</style>
+}
 
 @code {
-    [Parameter] public bool IsVisible { get; set; } = false;
+    [Parameter] public bool IsVisible { get; set; } = true;
     [Parameter] public EventCallback OnClose { get; set; }
-    
-    private string activeTab = "products";
+
+    private TopicWorkflowContext? context;
     private bool isAnalyzing = true;
     private int analysisProgress = 0;
-    
-    // Progress tracking for specific events
-    private bool complianceDataCollected = false;
-    private bool leadInfoCollected = false;
-    private bool riskAssessmentCompleted = false;
-    private bool productsMatched = false;
-    private bool premiumsCalculated = false;
-    
-    // Current status message
-    private string currentStatusMessage = "Compliance requirements verified";
-    private string currentSubStatusMessage = "Collecting lead personal information";
-    
-    // Compliance state - updated from actual events
-    private bool tcpaConsent = false;
-    private bool ccpaConsent = false;
-    private bool? californiaResident = null;
-    
-    // User profile data - updated from actual form submissions
-    private UserProfileData userProfile = new();
-    
-    // Agent escalation
-    private bool complexCase = false;
-    private bool customerRequest = false;
-    private bool highValue = false;
-    private bool canEscalate => complexCase || customerRequest || highValue;
-    
-    // Data
+
     private List<ProductMatch> matchedProducts = new();
-    private List<ComplianceEntry> complianceTimeline = new();
-    private List<AgentInfo> availableAgents = new();
-    
-    protected override async Task OnParametersSetAsync()
+    private List<SummaryCard> summaryCards = new();
+
+    private readonly List<ProgressStep> progressSteps = new()
     {
-        if (IsVisible && !availableAgents.Any())
+        new("Collecting lead details", "lead_details_submitted"),
+        new("Recording life goals", "life_goals_submitted"),
+        new("Capturing coverage intent", "coverage_intent_submitted"),
+        new("Collecting health information", "health_info_submitted"),
+        new("Saving dependents data", "dependents_submitted"),
+        new("Confirming employment", "employment_submitted"),
+        new("Listing beneficiaries", "beneficiaries_submitted"),
+        new("Verifying contact info", "contact_info_submitted"),
+        new("Finalizing qualification", "qualification_complete")
+    };
+
+    // === Summary Data Cards ===
+    private void AddSummaryData(string eventName, object? model)
+    {
+        try
         {
-            LoadAgentData();
-            InitializeFromComplianceState();
-        }
-    }
-    
-    private void InitializeFromComplianceState()
-    {
-        // Set initial state based on compliance being collected
-        complianceDataCollected = true;
-        currentStatusMessage = "Compliance requirements verified";
-        currentSubStatusMessage = "Collecting lead personal information";
-        analysisProgress = 25; // First step completed
-    }
-    
-    // Method to be called from parent when events occur
-    public void UpdateFromChatEvent(string eventType, object? data = null)
-    {
-        switch (eventType.ToLower())
-        {
-            case "compliance_collected":
-                HandleComplianceCollected(data);
-                break;
-            case "california_resident_submitted":
-                HandleCaliforniaResidentSubmitted(data);
-                break;
-            case "lead_details_submitted":
-                HandleLeadDetailsSubmitted(data);
-                break;
-            case "life_goals_submitted":
-                HandleLifeGoalsSubmitted(data);
-                break;
-            case "risk_assessment_complete":
-                HandleRiskAssessmentComplete();
-                break;
-            case "products_matched":
-                HandleProductsMatched(data);
-                break;
-        }
-        
-        StateHasChanged();
-    }
-    
-    private void HandleComplianceCollected(object? data)
-    {
-        complianceDataCollected = true;
-        // Update compliance status from actual data
-        if (data is Dictionary<string, object> complianceData)
-        {
-            if (complianceData.ContainsKey("tcpa"))
-                tcpaConsent = complianceData["tcpa"].ToString()?.ToLower() == "yes";
-            if (complianceData.ContainsKey("ccpa"))
-                ccpaConsent = complianceData["ccpa"].ToString()?.ToLower() == "yes";
-        }
-        
-        currentStatusMessage = "Compliance requirements verified";
-        currentSubStatusMessage = "Collecting lead personal information";
-        analysisProgress = 25;
-    }
-    
-    private void HandleCaliforniaResidentSubmitted(object? data)
-    {
-        if (data is Dictionary<string, object> caData)
-        {
-            if (caData.ContainsKey("isCaliforniaResident"))
+            if (model == null) return;
+
+            var type = model.GetType();
+            var props = type.GetProperties().Where(p => p.CanRead).ToList();
+
+            var card = new SummaryCard
             {
-                californiaResident = caData["isCaliforniaResident"].ToString()?.ToLower() == "true";
-                userProfile.State = californiaResident == true ? "California" : "Other";
+                Title = stepLabelForEvent(eventName),
+                Data = props.ToDictionary(p => p.Name, p => FormatValue(p.GetValue(model)))
+            };
+
+            summaryCards.Insert(0, card);
+            if (summaryCards.Count > 10)
+                summaryCards.RemoveAt(summaryCards.Count - 1);
+
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CustomerConsole] Error adding summary card: {ex.Message}");
+        }
+    }
+
+    private static string FormatValue(object? value)
+        => value switch
+        {
+            null => "—",
+            IEnumerable<string> list => string.Join(", ", list),
+            _ => value.ToString() ?? ""
+        };
+
+    private string stepLabelForEvent(string eventName)
+        => progressSteps.FirstOrDefault(s => s.EventKey == eventName)?.Label ?? eventName;
+
+    // === Event Bridge from Home.razor ===
+    public async Task UpdateFromChatEvent(string eventName, object? eventData = null, TopicWorkflowContext? ctx = null) {
+        await AnimateProgressListAsync(eventName);
+
+        if (ctx != null)
+            context = ctx;
+
+        QualifiedCarriers? carriers = null;
+
+        try {
+            // === CASE A: eventData is directly the payload ===
+            if (eventData is QualifiedCarriers qc) {
+                carriers = qc;
+                Console.WriteLine("[CustomerConsole] ✅ eventData is directly QualifiedCarriers.");
             }
-            if (caData.ContainsKey("zipCode"))
-            {
-                userProfile.ZipCode = caData["zipCode"].ToString() ?? "";
-            }
-        }
-        
-        // Partial lead info collected
-        currentStatusMessage = "Lead location information collected";
-        currentSubStatusMessage = "Collecting additional personal details";
-        analysisProgress = 40;
-    }
-    
-    private void HandleLeadDetailsSubmitted(object? data)
-    {
-        leadInfoCollected = true;
-        
-        if (data is Dictionary<string, object> leadData)
-        {
-            // Update user profile with real data
-            if (leadData.ContainsKey("age"))
-                userProfile.Age = int.TryParse(leadData["age"].ToString(), out var age) ? age : 32;
-            if (leadData.ContainsKey("income"))
-                userProfile.AnnualIncome = leadData["income"].ToString() ?? "$75,000";
-            if (leadData.ContainsKey("dependents"))
-                userProfile.Dependents = leadData["dependents"].ToString() ?? "2 children";
-            if (leadData.ContainsKey("healthStatus"))
-                userProfile.HealthStatus = leadData["healthStatus"].ToString() ?? "Good";
-            
-            // Personal contact information
-            if (leadData.ContainsKey("firstName"))
-                userProfile.FirstName = leadData["firstName"].ToString() ?? "";
-            if (leadData.ContainsKey("lastName"))
-                userProfile.LastName = leadData["lastName"].ToString() ?? "";
-            if (leadData.ContainsKey("email"))
-                userProfile.Email = leadData["email"].ToString() ?? "";
-            if (leadData.ContainsKey("phone"))
-                userProfile.Phone = leadData["phone"].ToString() ?? "";
-            if (leadData.ContainsKey("state"))
-                userProfile.State = leadData["state"].ToString() ?? "";
-            if (leadData.ContainsKey("zipCode"))
-                userProfile.ZipCode = leadData["zipCode"].ToString() ?? "";
-        }
-        
-        currentStatusMessage = "Lead personal information collected";
-        currentSubStatusMessage = "Performing risk assessment";
-        analysisProgress = 60;
-    }
-    
-    private void HandleLifeGoalsSubmitted(object? data)
-    {
-        if (data is Dictionary<string, object> goalsData)
-        {
-            if (goalsData.ContainsKey("coverageGoal"))
-                userProfile.CoverageGoal = goalsData["coverageGoal"].ToString() ?? "Family Protection";
-            if (goalsData.ContainsKey("budgetRange"))
-                userProfile.BudgetRange = goalsData["budgetRange"].ToString() ?? "$25-50/month";
-        }
-        
-        currentStatusMessage = "Life goals and preferences collected";
-        currentSubStatusMessage = "Finalizing risk assessment";
-        analysisProgress = 75;
-    }
-    
-    private void HandleRiskAssessmentComplete()
-    {
-        riskAssessmentCompleted = true;
-        currentStatusMessage = "Risk assessment completed";
-        currentSubStatusMessage = "Matching insurance products";
-        analysisProgress = 85;
-    }
-    
-    private void HandleProductsMatched(object? data)
-    {
-        productsMatched = true;
-        premiumsCalculated = true;
-        isAnalyzing = false;
-        
-        // Add matched products from real data
-        if (data is List<object> products)
-        {
-            matchedProducts.Clear();
-            foreach (var product in products)
-            {
-                if (product is Dictionary<string, object> productData)
-                {
-                    matchedProducts.Add(new ProductMatch
-                    {
-                        Name = productData.GetValueOrDefault("name", "Term Life Plus").ToString() ?? "",
-                        Description = productData.GetValueOrDefault("description", "").ToString() ?? "",
-                        MatchScore = int.TryParse(productData.GetValueOrDefault("matchScore", 92).ToString(), out var score) ? score : 92,
-                        MonthlyPremium = int.TryParse(productData.GetValueOrDefault("premium", 65).ToString(), out var premium) ? premium : 65,
-                        Coverage = productData.GetValueOrDefault("coverage", "500K").ToString() ?? ""
-                    });
+            else {
+                // === CASE B: eventData has a 'payload' property ===
+                var payloadProp = eventData?.GetType().GetProperty("payload") ??
+                                  eventData?.GetType().GetProperty("Payload"); // case-insensitive
+
+                if (payloadProp != null) {
+                    var payloadValue = payloadProp.GetValue(eventData);
+                    Console.WriteLine($"[CustomerConsole] ⚙️ Found payload property of type: {payloadValue?.GetType().Name}");
+
+                    switch (payloadValue) {
+                        case QualifiedCarriers innerQc:
+                            carriers = innerQc;
+                            Console.WriteLine("[CustomerConsole] ✅ payload is QualifiedCarriers.");
+                            break;
+
+                        case JsonElement elem when elem.ValueKind == JsonValueKind.Object:
+                            carriers = JsonSerializer.Deserialize<QualifiedCarriers>(elem.GetRawText());
+                            Console.WriteLine("[CustomerConsole] ✅ payload was JsonElement, deserialized to QualifiedCarriers.");
+                            break;
+
+                        case string s:
+                            carriers = JsonSerializer.Deserialize<QualifiedCarriers>(s);
+                            Console.WriteLine("[CustomerConsole] ✅ payload was string, deserialized to QualifiedCarriers.");
+                            break;
+
+                        default:
+                            Console.WriteLine($"[CustomerConsole] ⚠️ payload type {payloadValue?.GetType().Name} not handled.");
+                            break;
+                    }
+                }
+                else {
+                    Console.WriteLine($"[CustomerConsole] ⚠️ No payload property found on type {eventData?.GetType().Name ?? "null"}.");
                 }
             }
+        } catch (Exception ex) {
+            Console.WriteLine($"[CustomerConsole] ❌ Failed to extract carriers payload: {ex.Message}");
         }
-        
-        // If no products provided, add defaults
-        if (!matchedProducts.Any())
-        {
-            matchedProducts.AddRange(new[] {
-                new ProductMatch {
-                    Name = "Term Life Plus",
-                    Description = "20-year term life insurance with competitive rates",
-                    MatchScore = 92,
-                    MonthlyPremium = 65,
-                    Coverage = "500K"
-                },
-                new ProductMatch {
-                    Name = "Whole Life Pro", 
-                    Description = "Permanent life insurance with cash value growth",
-                    MatchScore = 78,
-                    MonthlyPremium = 185,
-                    Coverage = "250K"
-                }
-            });
+
+        // === If we found carriers and it's from a semantic query ===
+        if (carriers != null && carriers.Carriers != null && carriers.Carriers.Any()) {
+            // Only update if this was a semantic query (payload not null)
+            isAnalyzing = false;
+
+            matchedProducts = carriers.Carriers.Select(c => new ProductMatch(
+                c.CarrierName,
+                c.ProductName ?? "Life Insurance Product",
+                c.MatchScore ?? 80,
+                c.EstimatedMonthlyPremium ?? 0,
+                c.CoverageAmount ?? "N/A"
+            )).ToList();
+
+            await InvokeAsync(StateHasChanged);
         }
-        
-        currentStatusMessage = "Analysis Complete";
-        currentSubStatusMessage = $"Found {matchedProducts.Count} matching products for your profile";
-        analysisProgress = 100;
-    }
-    
-    private void SetActiveTab(string tab)
-    {
-        activeTab = tab;
-        StateHasChanged();
-    }
-    
-    private async Task CloseConsole()
-    {
-        await OnClose.InvokeAsync();
-    }
-    
-    private async Task StartAnalysisSimulation()
-    {
-        // Simulate AI analysis progress
-        for (int i = 0; i <= 100; i += 10)
-        {
-            analysisProgress = i;
-            StateHasChanged();
-            await Task.Delay(300);
+        else {
+            // Keep previously matched products if this event had no payload (non-query event)
+            Console.WriteLine("[CustomerConsole] 🟡 No payload or empty carriers — skipping matched product update.");
         }
-        
-        // Add sample products after analysis
-        matchedProducts.AddRange(new[] {
-            new ProductMatch {
-                Name = "Term Life Plus",
-                Description = "20-year term life insurance with competitive rates",
-                MatchScore = 92,
-                MonthlyPremium = 65,
-                Coverage = "500K"
-            },
-            new ProductMatch {
-                Name = "Whole Life Pro", 
-                Description = "Permanent life insurance with cash value growth",
-                MatchScore = 78,
-                MonthlyPremium = 185,
-                Coverage = "250K"
+
+
+        // === Otherwise, handle summary cards ===
+        if (context == null) return;
+
+        switch (eventName) {
+            case "lead_details_submitted": AddSummaryData(eventName, context.GetValue<object>("LeadDetailsModel")); break;
+            case "life_goals_submitted": AddSummaryData(eventName, context.GetValue<object>("LifeGoalsModel")); break;
+            case "coverage_intent_submitted": AddSummaryData(eventName, context.GetValue<object>("CoverageIntentModel")); break;
+            case "health_info_submitted": AddSummaryData(eventName, context.GetValue<object>("HealthInfoModel")); break;
+            case "dependents_submitted": AddSummaryData(eventName, context.GetValue<object>("DependentsModel")); break;
+            case "employment_submitted": AddSummaryData(eventName, context.GetValue<object>("EmploymentModel")); break;
+            case "beneficiaries_submitted": AddSummaryData(eventName, context.GetValue<object>("BeneficiariesModel")); break;
+            case "contact_info_submitted": AddSummaryData(eventName, context.GetValue<object>("ContactInfoModel")); break;
+            case "qualification_complete":
+                isAnalyzing = false;
+                analysisProgress = 100;
+                break;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+
+
+    // === Progress Animation ===
+    private async Task AnimateProgressListAsync(string eventKey) {
+        try {
+            var normalizedKey = eventKey.Replace("_started", "_submitted", StringComparison.OrdinalIgnoreCase);
+            int index = progressSteps.FindIndex(s => s.EventKey.Equals(normalizedKey, StringComparison.OrdinalIgnoreCase));
+            if (index == -1) return;
+
+            bool isStarted = eventKey.EndsWith("_started", StringComparison.OrdinalIgnoreCase);
+            bool isSubmitted = eventKey.EndsWith("_submitted", StringComparison.OrdinalIgnoreCase);
+
+            for (int i = 0; i < progressSteps.Count; i++) {
+                var s = progressSteps[i];
+                s.Completed = i < index || (isSubmitted && i == index);
+                s.Active = (isStarted && i == index) || (isSubmitted && i == index + 1);
             }
-        });
-        
-        isAnalyzing = false;
-        StateHasChanged();
-    }
-    
-    private void LoadAgentData()
-    {
-        availableAgents.AddRange(new[] {
-            new AgentInfo {
-                Id = 1,
-                Name = "Sarah Martinez",
-                Title = "Senior Life Insurance Specialist",
-                Initials = "SM",
-                Experience = 8,
-                Location = "California",
-                Languages = new[] { "English", "Spanish" },
-                ReviewCount = 127,
-                AvailableUntil = "6:00 PM"
-            },
-            new AgentInfo {
-                Id = 2,
-                Name = "Michael Chen",
-                Title = "Insurance Advisor",
-                Initials = "MC",
-                Experience = 5,
-                Location = "California",
-                Languages = new[] { "English", "Mandarin" },
-                ReviewCount = 89,
-                AvailableUntil = "8:00 PM"
-            },
-            new AgentInfo {
-                Id = 3,
-                Name = "Emily Rodriguez",
-                Title = "Policy Specialist",
-                Initials = "ER",
-                Experience = 6,
-                Location = "California",
-                Languages = new[] { "English", "Spanish" },
-                ReviewCount = 156,
-                AvailableUntil = "5:30 PM"
-            },
-            new AgentInfo {
-                Id = 4,
-                Name = "David Thompson",
-                Title = "Insurance Consultant",
-                Initials = "DT",
-                Experience = 12,
-                Location = "California", 
-                Languages = new[] { "English" },
-                ReviewCount = 203,
-                AvailableUntil = "7:00 PM"
-            },
-            new AgentInfo {
-                Id = 5,
-                Name = "Lisa Wang",
-                Title = "Life Insurance Expert",
-                Initials = "LW",
-                Experience = 9,
-                Location = "California",
-                Languages = new[] { "English", "Mandarin", "Cantonese" },
-                ReviewCount = 174,
-                AvailableUntil = "6:30 PM"
-            }
-        });
-    }
-    
-    private void ConnectWithAgent(string agentName)
-    {
-        // Simulate connection
-        Console.WriteLine($"Connecting with {agentName}...");
-    }
-    
-    private void RemoveAgent(int agentId)
-    {
-        availableAgents.RemoveAll(a => a.Id == agentId);
-        StateHasChanged();
-    }
-    
-    private void EscalateToAgent()
-    {
-        if (canEscalate)
-        {
-            Console.WriteLine("Escalating to live agent...");
+
+            analysisProgress = (int)Math.Round(((double)(index + 1) / progressSteps.Count) * 100);
+
+            await InvokeAsync(StateHasChanged);
+        } catch (Exception ex) {
+            Console.WriteLine($"[CustomerConsole] AnimateProgressListAsync error: {ex.Message}");
         }
     }
-    
-    public void UpdateCompliance(string eventType, bool approved)
-    {
-        switch (eventType.ToLower())
-        {
-            case "tcpa":
-                tcpaConsent = approved;
-                break;
-            case "ccpa":
-                ccpaConsent = approved;
-                break;
-            case "california":
-                californiaResident = approved;
-                break;
+
+    // === Supporting Classes ===
+    private class ProgressStep {
+        public ProgressStep(string label, string key) {
+            Label = label;
+            EventKey = key;
         }
-        
-        complianceTimeline.Add(new ComplianceEntry {
-            Timestamp = DateTime.Now,
-            Event = $"{eventType} {(approved ? "approved" : "denied")}",
-            Status = approved ? "Approved" : "Denied"
-        });
-        
-        StateHasChanged();
+        public string Label { get; }
+        public string EventKey { get; }
+        public bool Active { get; set; }
+        public bool Completed { get; set; }
     }
-    
-    public class ProductMatch
-    {
-        public string Name { get; set; } = "";
-        public string Description { get; set; } = "";
-        public int MatchScore { get; set; }
-        public int MonthlyPremium { get; set; }
-        public string Coverage { get; set; } = "";
-    }
-    
-    public class ComplianceEntry
-    {
-        public DateTime Timestamp { get; set; }
-        public string Event { get; set; } = "";
-        public string Status { get; set; } = "";
-    }
-    
-    public class AgentInfo
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = "";
+
+    private record ProductMatch(string Name, string Description, int MatchScore, int MonthlyPremium, string Coverage);
+
+    private record SummaryCard {
         public string Title { get; set; } = "";
-        public string Initials { get; set; } = "";
-        public int Experience { get; set; }
-        public string Location { get; set; } = "";
-        public string[] Languages { get; set; } = Array.Empty<string>();
-        public int ReviewCount { get; set; }
-        public string AvailableUntil { get; set; } = "";
-    }
-    
-    public class UserProfileData
-    {
-        public int Age { get; set; }
-        public string AnnualIncome { get; set; } = "";
-        public string Dependents { get; set; } = "";
-        public string HealthStatus { get; set; } = "";
-        public string CoverageGoal { get; set; } = "";
-        public string BudgetRange { get; set; } = "";
-        public string State { get; set; } = "";
-        public string ZipCode { get; set; } = "";
-        public string FirstName { get; set; } = "";
-        public string LastName { get; set; } = "";
-        public string Email { get; set; } = "";
-        public string Phone { get; set; } = "";
+        public Dictionary<string, string> Data { get; set; } = new();
     }
 }
+
+<style>
+    /* === Layout === */
+    .customer-console {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        background: #fafafa;
+        padding: 1.5rem 2rem;
+        border-radius: 1rem;
+    }
+
+    .console-header {
+        margin-bottom: 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+        .console-header h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #111827;
+            margin: 0;
+        }
+
+        .console-header p {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin: 0;
+        }
+
+    /* === Stacked Sections === */
+    .console-body-vertical {
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+    }
+
+    /* === Section Titles === */
+    .section-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #1f2937;
+        margin-bottom: 1rem;
+    }
+
+    /* === Progress Section === */
+    .progress-section {
+        background: #ffffff;
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        padding: 1.5rem 2rem;
+    }
+
+    /* === Two-Column Capture Layout === */
+    .capture-layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+    }
+
+    .capture-progress {
+        border-right: 1px solid #f3f4f6;
+        padding-right: 1.5rem;
+    }
+
+    .capture-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding-left: 1.5rem;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    /* === Step Rows === */
+    .step-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        transition: color 0.3s ease;
+    }
+
+        .step-row i {
+            width: 1rem;
+            min-width: 1rem;
+        }
+
+        .step-row span {
+            flex: 1;
+        }
+
+        .step-row.pending span {
+            color: #9ca3af;
+        }
+
+        .step-row.active span {
+            color: #2563eb;
+            font-weight: 600;
+        }
+
+        .step-row.done span {
+            color: #16a34a;
+        }
+
+    /* === Progress Bar === */
+    .progress-bar-container {
+        width: 100%;
+        height: 8px;
+        background: #e5e7eb;
+        border-radius: 9999px;
+        overflow: hidden;
+        margin-top: 1rem;
+    }
+
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #3b82f6, #2563eb);
+        border-radius: 9999px;
+        transition: width 0.6s ease-in-out;
+    }
+
+    /* === Data Summary Cards === */
+    .summary-card {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.75rem;
+        padding: 0.9rem 1rem;
+        font-size: 0.875rem;
+        animation: fadeIn 0.5s ease forwards;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .summary-title {
+        font-weight: 600;
+        color: #1f2937;
+        margin-bottom: 0.5rem;
+    }
+
+    .summary-card ul {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .summary-card li {
+        margin-bottom: 0.25rem;
+        color: #374151;
+        display: flex;
+        justify-content: space-between;
+    }
+
+        .summary-card li strong {
+            color: #111827;
+            font-weight: 500;
+            margin-right: 0.5rem;
+        }
+
+    /* === Product Section (Wide) === */
+    .product-section-wide {
+        background: #ffffff;
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        padding: 1.5rem 2rem;
+    }
+
+    .product-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 1.25rem;
+    }
+
+    /* === Product Card === */
+    .product-card {
+        background: #fff;
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        padding: 1rem;
+        animation: fadeIn 0.6s ease forwards;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+        .product-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
+
+        .product-card h4 {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.25rem;
+        }
+
+        .product-card p {
+            font-size: 0.875rem;
+            color: #4b5563;
+            margin-bottom: 0.75rem;
+        }
+
+        .product-card .product-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+
+    .product-score {
+        font-weight: 700;
+        color: #2563eb;
+        float: right;
+    }
+
+    /* === Skeleton Loader (slower) === */
+    .skeleton-card {
+        width: 100%;
+        height: 120px;
+        border-radius: 0.75rem;
+        background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+        background-size: 200% 100%;
+        animation: shimmer 4.5s infinite linear;
+        margin-bottom: 1rem;
+    }
+
+        .skeleton-card.delay-1 {
+            animation-delay: 0.5s;
+        }
+
+        .skeleton-card.delay-2 {
+            animation-delay: 1s;
+        }
+
+    @@keyframes shimmer {
+        0% {
+            background-position: 200% 0;
+        }
+
+        100% {
+            background-position: -200% 0;
+        }
+    }
+
+    /* === Empty Placeholder === */
+    .empty-hint {
+        font-size: 0.875rem;
+        color: #9ca3af;
+        text-align: center;
+        margin-top: 2rem;
+    }
+
+    /* === Animations === */
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* === Close Button === */
+    .close-btn {
+        background: transparent;
+        border: none;
+        font-size: 1.25rem;
+        color: #9ca3af;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+
+        .close-btn:hover {
+            color: #111827;
+        }
+
+    /* === Responsive Behavior === */
+    @@media (max-width: 900px) {
+        .capture-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .capture-progress {
+            border-right: none;
+            padding-right: 0;
+            border-bottom: 1px solid #f3f4f6;
+            padding-bottom: 1.5rem;
+        }
+
+        .capture-summary {
+            padding-left: 0;
+        }
+    }
+
+    /* === Progress Grid Layout === */
+    .progress-section-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        background: #ffffff;
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        padding: 1.5rem 2rem;
+    }
+
+    .progress-steps {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .summary-panel {
+        background: #f9fafb;
+        border-radius: 0.75rem;
+        padding: 1rem 1.25rem;
+        overflow-y: auto;
+        max-height: 320px;
+    }
+
+    .summary-card {
+        background: white;
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+        animation: fadeIn 0.6s ease forwards;
+    }
+
+        .summary-card h4 {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+            color: #1f2937;
+        }
+
+        .summary-card ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .summary-card li {
+            font-size: 0.875rem;
+            color: #374151;
+            margin-bottom: 0.25rem;
+        }
+
+    .empty-summary {
+        font-size: 0.875rem;
+        color: #9ca3af;
+        text-align: center;
+        margin-top: 2rem;
+    }
+
+</style>

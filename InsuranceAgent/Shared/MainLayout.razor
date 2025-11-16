@@ -2,9 +2,9 @@
 
 <PageTitle>InsuranceAgent</PageTitle>
 
-<div class="page container-center">
+<div class="page">
     <main class="full-width">
-        <div class="top-row px-4">
+        <div class="top-row">
             <div class="top-nav-links">
                 <a href="/documents" class="nav-icon-link" title="Document Explorer">
                     <i class="fa-solid fa-folder-open"></i>
@@ -15,11 +15,32 @@
                     <span class="nav-text">Cards</span>
                 </a>
             </div>
+
             <div class="status-indicators">
+                <!-- 🧠 OpenAI Health Indicator -->
+                @if (checkingHealth) {
+                    <span class="status-icon text-secondary" title="Checking OpenAI...">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                    </span>
+                }
+                else if (isOpenAiHealthy) {
+                    <span class="status-icon text-success" title="OpenAI Connected">
+                        <i class="fa-solid fa-circle"></i>
+                        <span class="ms-1 small">@($"{remainingBalance:F2}$")</span>
+                    </span>
+                }
+                else {
+                    <span class="status-icon text-danger" title="OpenAI Offline">
+                        <i class="fa-solid fa-circle"></i>
+                    </span>
+                }
+
+                <!-- Existing icons -->
                 <span class="status-icon" title="Connection Status"><i class="fa-solid fa-wifi"></i></span>
                 <span class="status-icon" title="System Health"><i class="fa-solid fa-heart-pulse"></i></span>
                 <span class="status-icon" title="Notifications"><i class="fa-solid fa-bell"></i></span>
             </div>
+
             <a href="https://docs.microsoft.com/aspnet/" target="_blank">About</a>
         </div>
 
@@ -28,3 +49,98 @@
         </article>
     </main>
 </div>
+
+@inject IConfiguration Configuration
+
+@code {
+    private bool isOpenAiHealthy = false;
+    private bool checkingHealth = true;
+    private decimal remainingBalance = 0m;
+    private readonly HttpClient http = new();
+    private Timer? healthTimer;
+
+    protected override async Task OnInitializedAsync() {
+        Console.WriteLine("[OpenAI Health] 🟡 Initializing main layout monitor...");
+        await CheckOpenAiHealthAsync();
+
+        // ♻️ Refresh every 10 minutes
+        healthTimer = new Timer(async _ => {
+            await InvokeAsync(async () => {
+                await CheckOpenAiHealthAsync();
+            });
+        }, null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
+    }
+
+    private async Task CheckOpenAiHealthAsync() {
+        checkingHealth = true;
+        try {
+            var apiKey = Configuration["OpenAI:ApiKey"]
+                      ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+
+            if (string.IsNullOrWhiteSpace(apiKey)) {
+                Console.WriteLine("[OpenAI Health] ❌ No API key found.");
+                isOpenAiHealthy = false;
+                remainingBalance = 0;
+                return;
+            }
+
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+
+            // 🌐 Connectivity check
+            var models = await http.GetAsync("https://api.openai.com/v1/models");
+            Console.WriteLine($"[OpenAI Health] /v1/models → {(int)models.StatusCode} {models.ReasonPhrase}");
+            if (!models.IsSuccessStatusCode) {
+                isOpenAiHealthy = false;
+                return;
+            }
+
+            // 🔎 Try new PAYG balance calculation
+            decimal totalGranted = 0m;
+            decimal totalUsed = 0m;
+
+            // 1️⃣ Subscription (granted credit limit)
+            var subResponse = await http.GetAsync("https://api.openai.com/v1/dashboard/billing/subscription");
+            if (subResponse.IsSuccessStatusCode) {
+                var subJson = await subResponse.Content.ReadAsStringAsync();
+                using var subDoc = System.Text.Json.JsonDocument.Parse(subJson);
+                if (subDoc.RootElement.TryGetProperty("hard_limit_usd", out var granted)) {
+                    totalGranted = granted.GetDecimal();
+                    Console.WriteLine($"[OpenAI Health] 💰 Granted limit: ${totalGranted:F2}");
+                }
+            }
+
+            // 2️⃣ Usage (spent so far in this period)
+            var startDate = DateTime.UtcNow.AddMonths(-1).ToString("yyyy-MM-dd");
+            var endDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var usageUrl = $"https://api.openai.com/v1/dashboard/billing/usage?start_date={startDate}&end_date={endDate}";
+            var usageResponse = await http.GetAsync(usageUrl);
+            if (usageResponse.IsSuccessStatusCode) {
+                var usageJson = await usageResponse.Content.ReadAsStringAsync();
+                using var usageDoc = System.Text.Json.JsonDocument.Parse(usageJson);
+                if (usageDoc.RootElement.TryGetProperty("total_usage", out var used)) {
+                    totalUsed = used.GetDecimal() / 100; // API returns cents
+                    Console.WriteLine($"[OpenAI Health] 🧾 Used so far: ${totalUsed:F2}");
+                }
+            }
+
+            // 🧮 Compute remaining
+            remainingBalance = Math.Max(totalGranted - totalUsed, 0);
+            isOpenAiHealthy = true;
+            Console.WriteLine($"[OpenAI Health] ✅ Balance computed: ${remainingBalance:F2}");
+        } catch (Exception ex) {
+            Console.WriteLine($"[OpenAI Health] ❌ Exception: {ex.Message}");
+            isOpenAiHealthy = false;
+        } finally {
+            checkingHealth = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+
+    public void Dispose() {
+        healthTimer?.Dispose();
+        http.Dispose();
+        Console.WriteLine("[OpenAI Health] 🔴 Disposed resources.");
+    }
+}

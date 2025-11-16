@@ -1,4 +1,5 @@
-﻿using ConversaCore.Events;
+﻿using ConversaCore.Cards;
+using ConversaCore.Events;
 using ConversaCore.Models;
 using ConversaCore.Validation;
 using Microsoft.Extensions.Logging;
@@ -38,12 +39,14 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
     protected readonly ILogger<AdaptiveCardActivity<TModel>> _logger;
     protected readonly string _customMessage;
 
+    // 🆕 NEW: marks whether this card is mandatory before user can continue
+    public bool IsRequired { get; init; } = false;
+
     // === Semantic Events ===
     public event EventHandler<CardJsonEventArgs>? CardJsonEmitted;
     public event EventHandler<CardJsonEventArgs>? CardJsonSending;
     public event EventHandler<CardJsonEventArgs>? CardJsonSent;
     public event EventHandler<CardJsonRenderedEventArgs>? CardJsonRendered;
-
     public event EventHandler<CardDataReceivedEventArgs>? CardDataReceived;
     public event EventHandler<ModelBoundEventArgs>? ModelBound;
     public event EventHandler<ValidationFailedEventArgs>? ValidationFailed;
@@ -67,6 +70,21 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
             : typeof(TModel).Name;
 
         SubmissionContextKey = $"{id}_raw";
+
+        ModelBound += (_, e) => {
+            if (e.Model is BaseCardModel baseModel) {
+                try {
+                    baseModel.UpdateContext(Context);
+                    _logger.LogInformation(
+                        "[{ActivityId}] ✅ Auto-updated Context on ModelBound ({ModelType})",
+                        Id, e.Model.GetType().Name);
+                } catch (Exception ex) {
+                    _logger.LogError(
+                        ex, "[{ActivityId}] ⚠️ Failed auto-context update on ModelBound ({ModelType})",
+                        Id, e.Model.GetType().Name);
+                }
+            }
+        };
     }
 
 
@@ -127,7 +145,7 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
             if (model == null)
                 throw new InvalidOperationException("Model binding returned null.");
 
-            // Run DataAnnotations validation
+            // 🧩 Run DataAnnotations validation
             var context = new ValidationContext(model);
             var results = new List<ValidationResult>();
             bool isValid = Validator.TryValidateObject(model, context, results, validateAllProperties: true);
@@ -142,19 +160,19 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
                 }
             }
 
+            var cardJson = GetCardJsonWithMetadata();
+
+            // ─────────────────────────────
+            // ⚠️ INVALID → Inject errors & re-render
+            // ─────────────────────────────
             if (!isValid) {
                 _logger.LogWarning("[Validation] Activity {ActivityId} failed for model {ModelType}. Errors: {Errors}",
-                    Id,
-                    typeof(TModel).Name,
-                    string.Join(" | ", results.Select(r => $"{string.Join(",", r.MemberNames)}: {r.ErrorMessage}"))
-                );
+                    Id, typeof(TModel).Name,
+                    string.Join(" | ", results.Select(r => $"{string.Join(",", r.MemberNames)}: {r.ErrorMessage}")));
 
-                foreach (var r in results) {
+                foreach (var r in results)
                     _logger.LogDebug("[Validation] -> {Members}: {Message}",
                         string.Join(",", r.MemberNames), r.ErrorMessage);
-                }
-
-                var cardJson = GetCardJson(Context);
 
                 try {
                     cardJson = AdaptiveCardValidationHelper.InjectErrors(cardJson, results, data, typeof(TModel));
@@ -168,49 +186,46 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
                 ValidationFailed?.Invoke(this, new ValidationFailedEventArgs(
                     new ValidationException(
                         results.FirstOrDefault() ?? new ValidationResult("Validation failed"),
-                        null,   // supply "null" as the value parameter explicitly
-                        model   // supply the model in the correct slot
-                    )
-                ));
+                        null,
+                        model)));
 
                 // 🔹 Emit updated card (replace existing one)
                 CardJsonEmitted?.Invoke(this,
-                    new CardJsonEventArgs(cardJson, "⚠️ Please fix the highlighted errors", RenderMode.Replace, Id));
+                    new CardJsonEventArgs(cardJson, "⚠️ Please fix the highlighted errors", RenderMode.Replace, Id, null, IsRequired));
 
-                // 🔹 Mirror RunActivity sequence so client updates correctly
                 CardJsonSending?.Invoke(this,
-                    new CardJsonEventArgs(string.Empty, "Please fix the form.", RenderMode.Replace, Id));
+                    new CardJsonEventArgs(string.Empty, "Please fix the form.", RenderMode.Replace, Id, null, IsRequired));
 
                 CardJsonSent?.Invoke(this,
-                    new CardJsonEventArgs(cardJson, "Sent to client (with validation errors)", RenderMode.Replace, Id));
+                    new CardJsonEventArgs(cardJson, "Sent to client (with validation errors)", RenderMode.Replace, Id, null, IsRequired));
 
                 CardJsonRendered?.Invoke(this,
                     new CardJsonRenderedEventArgs(cardJson));
 
-                // 🔹 Allow user to retry input
                 TransitionTo(ActivityState.WaitingForUserInput);
                 return;
             }
 
-            // Save to context if valid
+            // ─────────────────────────────
+            // ✅ VALID → Save + success render
+            // ─────────────────────────────
             if (!string.IsNullOrEmpty(ModelContextKey))
                 Context.SetValue(ModelContextKey!, model);
 
             _logger.LogInformation("[Validation] Activity {ActivityId} succeeded. Model {ModelType} bound.",
                 Id, typeof(TModel).Name);
 
-            // 🔹 Emit a "success" version of the card with clean state
             try {
-                var successCardJson = AdaptiveCardValidationHelper.InjectSuccessState(GetCardJson(Context), data);
-                
+                var successCardJson = AdaptiveCardValidationHelper.InjectSuccessState(cardJson, data);
+
                 CardJsonEmitted?.Invoke(this,
-                    new CardJsonEventArgs(successCardJson, "✅ Validation successful", RenderMode.Replace, Id));
+                    new CardJsonEventArgs(successCardJson, "✅ Validation successful", RenderMode.Replace, Id, null, IsRequired));
 
                 CardJsonSending?.Invoke(this,
-                    new CardJsonEventArgs(string.Empty, "Validation passed", RenderMode.Replace, Id));
+                    new CardJsonEventArgs(string.Empty, "Validation passed", RenderMode.Replace, Id, null, IsRequired));
 
                 CardJsonSent?.Invoke(this,
-                    new CardJsonEventArgs(successCardJson, "Sent clean card to client", RenderMode.Replace, Id));
+                    new CardJsonEventArgs(successCardJson, "Sent clean card to client", RenderMode.Replace, Id, null, IsRequired));
 
                 CardJsonRendered?.Invoke(this,
                     new CardJsonRenderedEventArgs(successCardJson));
@@ -228,17 +243,16 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
             TransitionTo(ActivityState.ValidationFailed, ex);
             ValidationFailed?.Invoke(this, new ValidationFailedEventArgs(ex));
 
-            var cardJson = GetCardJson(Context);
+            var cardJson = GetCardJsonWithMetadata();
 
-            // 🔹 Even in hard failure, emit a replace so UI doesn’t stack duplicates
             CardJsonEmitted?.Invoke(this,
-                new CardJsonEventArgs(cardJson, "⚠️ Validation failed", RenderMode.Replace, Id));
+                new CardJsonEventArgs(cardJson, "⚠️ Validation failed", RenderMode.Replace, Id, null, IsRequired));
 
             CardJsonSending?.Invoke(this,
-                new CardJsonEventArgs(string.Empty, "Validation failed.", RenderMode.Replace, Id));
+                new CardJsonEventArgs(string.Empty, "Validation failed.", RenderMode.Replace, Id, null, IsRequired));
 
             CardJsonSent?.Invoke(this,
-                new CardJsonEventArgs(cardJson, "Sent to client (validation exception)", RenderMode.Replace, Id));
+                new CardJsonEventArgs(cardJson, "Sent to client (validation exception)", RenderMode.Replace, Id, null, IsRequired));
 
             CardJsonRendered?.Invoke(this,
                 new CardJsonRenderedEventArgs(cardJson));
@@ -255,29 +269,31 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
         TopicWorkflowContext context,
         object? input = null,
         CancellationToken cancellationToken = default) {
-
         if (input != null)
-            throw new InvalidOperationException($"{nameof(AdaptiveCardActivity<TModel>)} does not accept direct input. Use {nameof(OnInputCollected)} instead.");
+            throw new InvalidOperationException(
+                $"{nameof(AdaptiveCardActivity<TModel>)} does not accept direct input. " +
+                $"Use {nameof(OnInputCollected)} instead.");
 
-        var cardJson = GetCardJson(Context);
+        var cardJson = GetCardJsonWithMetadata();
 
         _logger.LogInformation("[Lifecycle] Rendering AdaptiveCard for {ActivityId}", Id);
 
         TransitionTo(ActivityState.Rendered);
 
-        // Use Replace and include ActivityId so the chat window can match/re-render
+        // 🧩 Emit the card lifecycle events (now including IsRequired)
         CardJsonEmitted?.Invoke(this,
-            new CardJsonEventArgs(cardJson, "Generated JSON", RenderMode.Replace, Id));
+            new CardJsonEventArgs(cardJson, "Generated JSON", RenderMode.Replace, Id, null, IsRequired));
 
         CardJsonSending?.Invoke(this,
-            new CardJsonEventArgs(string.Empty, _customMessage, RenderMode.Replace, Id));
+            new CardJsonEventArgs(string.Empty, _customMessage, RenderMode.Replace, Id, null, IsRequired));
 
         CardJsonSent?.Invoke(this,
-            new CardJsonEventArgs(cardJson, "Sent to client", RenderMode.Replace, Id));
+            new CardJsonEventArgs(cardJson, "Sent to client", RenderMode.Replace, Id, null, IsRequired));
 
         CardJsonRendered?.Invoke(this,
             new CardJsonRenderedEventArgs(cardJson));
 
+        // 🕒 Transition to waiting state
         TransitionTo(ActivityState.WaitingForUserInput);
 
         var payload = new {
@@ -288,6 +304,30 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
 
         return Task.FromResult(ActivityResult.WaitForInput(JsonSerializer.Serialize(payload.Message)));
     }
+
+    // ================================
+    // Protected Event Invokers
+    // ================================
+    protected virtual void OnCardJsonEmitted(CardJsonEventArgs e)
+        => CardJsonEmitted?.Invoke(this, e);
+
+    protected virtual void OnCardJsonSending(CardJsonEventArgs e)
+        => CardJsonSending?.Invoke(this, e);
+
+    protected virtual void OnCardJsonSent(CardJsonEventArgs e)
+        => CardJsonSent?.Invoke(this, e);
+
+    protected virtual void OnCardJsonRendered(CardJsonRenderedEventArgs e)
+        => CardJsonRendered?.Invoke(this, e);
+
+    /// <summary>
+    /// Returns the AdaptiveCard JSON with injected metadata (_metadata.activityId, _metadata.isRequired)
+    /// </summary>
+    private string GetCardJsonWithMetadata() {
+        var baseJson = GetCardJson(Context);
+        return AdaptiveCardValidationHelper.InjectMetadata(baseJson, Id, IsRequired, _logger);
+    }
+
 }
 
 /// <summary>
@@ -329,6 +369,21 @@ public class AdaptiveCardActivity<TCard, TModel> : AdaptiveCardActivity<TModel>
     protected override void OnStateTransition(ActivityState from, ActivityState to, object? data) {
         base.OnStateTransition(from, to, data);
         _onTransition?.Invoke(from, to, data);
+
+        // ✅ Notify service when a required card completes
+        //if (to == ActivityState.Completed && IsRequired) {
+        //    try {
+        //        OnCardJsonSent(new CardJsonEventArgs(
+        //            GetCardJson(Context),
+        //            "Required card completed",
+        //            RenderMode.Replace,
+        //            Id,
+        //            isRequired: false // re-enable input after completion
+        //        ));
+        //    } catch (Exception ex) {
+        //        _logger.LogError(ex, "[{ActivityId}] Error emitting CardJsonSent on completion", Id);
+        //    }
+        //}
     }
 }
 

@@ -1,44 +1,57 @@
-@page "/"
+﻿@page "/"
 @implements IDisposable
-@using ConversaCore.Services
-@using InsuranceAgent.Models
-@using InsuranceAgent.Services
-@using InsuranceAgent.Pages.Components
-@using System.Text.Json
 
+@using System.Text.Json
+@using ConversaCore.DTO
+@using ConversaCore.Events
+@using ConversaCore.Interfaces
+@using ConversaCore.Services
+@using ConversaCore.TopicFlow
+@using ConversaCore.TopicFlow.Extensions
+@using InsuranceAgent.DomainTypes
+@using InsuranceAgent.Models
+@using InsuranceAgent.Pages.Components
+@using InsuranceAgent.Services
+@using InsuranceAgent.Topics
+@using System.Dynamic
+@using System.Reflection
 
 @inject NavigationManager Nav
 @inject IJSRuntime JS
-@inject InsuranceAgent.Services.HybridChatService ChatService
+@inject ILogger<Home> Logger
+@inject INavigationEventService NavEvents
+@inject InsuranceAgentService InsuranceAgentService
+@inject HybridChatService ChatService
 
-<!-- Top navigation button removed -->
-
-<div class="flex flex-row w-full h-screen font-sans overflow-hidden max-w-screen-2xl mx-auto p-2">
-    <!-- Left 2/3: Content container -->
+<div class="flex flex-row w-full h-screen font-sans overflow-hidden">
+    <!-- ===========================
+         LEFT SECTION (2/3 width)
+         =========================== -->
     <div class="relative w-2/3 h-full overflow-hidden">
-        <!-- Customer Console (slides in from left to replace landing page) -->
+
+        <!-- Customer Console -->
         <div class="absolute top-0 left-0 w-full h-full transition-transform duration-500 ease-in-out z-40"
-             style="@(showCustomerConsole ? "transform: translateX(0);" : "transform: translateX(-100%);")">
-            <CustomerConsole IsVisible="@showCustomerConsole" 
-                            OnClose="@CloseCustomerConsole" />
-        </div>
-        
-        <!-- Questionnaire slides in/out (highest z-index) -->
-        <div class="absolute top-0 left-0 w-full h-full bg-white transition-transform duration-500 ease-in-out z-30"
-             style="@(currentView == ViewState.Questionnaire ? "transform: translateX(0);" : "transform: translateX(-100%);")">
-@*             <QuestionnaireAccordion Categories="Questionnaire"
-                                    OnSubmittedJson="HandleSubmittedJson" /> *@
+             style="@TranslateX(showCustomerConsole)">
+            <CustomerConsole @ref="customerConsoleRef"
+                             IsVisible="@showCustomerConsole"
+                             OnClose="@CloseCustomerConsole" />
         </div>
 
-        <!-- Agent Console (middle z-index) -->
+        <!-- Questionnaire -->
+        <div class="absolute top-0 left-0 w-full h-full bg-white transition-transform duration-500 ease-in-out z-30"
+             style="@TranslateX(currentView == ViewState.Questionnaire)">
+            @* Placeholder for QuestionnaireAccordion *@
+        </div>
+
+        <!-- Agent Console -->
         <div class="absolute top-0 left-0 w-full h-full transition-opacity duration-500 ease-in-out z-20"
-             style="@(currentView == ViewState.AgentConsole ? "opacity: 1;" : "opacity: 0; pointer-events: none;")">
+             style="@Opacity(currentView == ViewState.AgentConsole)">
             <AgentConsole />
         </div>
 
-        <!-- Consent Denied View -->
+        <!-- Consent Denied -->
         <div class="absolute top-0 left-0 w-full h-full transition-opacity duration-500 ease-in-out z-15"
-             style="@(currentView == ViewState.ConsentDenied ? "opacity: 1;" : "opacity: 0; pointer-events: none;")">
+             style="@Opacity(currentView == ViewState.ConsentDenied)">
             <div class="flex flex-col items-center justify-center h-full p-8 bg-white">
                 <div class="max-w-2xl mx-auto p-6 bg-red-50 rounded-lg border border-red-200 text-center">
                     <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -47,206 +60,43 @@
                     <h2 class="text-2xl font-bold text-gray-800 mb-4">Consent Required</h2>
                     <p class="text-gray-700 mb-6">@consentDeniedMessage</p>
                     <div class="flex justify-center space-x-4">
-                        <button @onclick="() => currentView = ViewState.LandingPage" 
-                                class="px-5 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-800 font-medium transition-colors">
+                        <button class="px-5 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-800 font-medium transition-colors"
+                                @onclick="() => currentView = ViewState.LandingPage">
                             Return to Homepage
                         </button>
-                        <button @onclick="RequestConsentAgain" 
-                                class="px-5 py-2 bg-primary hover:bg-primary-dark rounded-lg text-white font-medium transition-colors">
+                        <button class="px-5 py-2 bg-primary hover:bg-primary-dark rounded-lg text-white font-medium transition-colors"
+                                @onclick="RequestConsentAgain">
                             Provide Consent
                         </button>
                     </div>
                     <p class="mt-4 text-sm text-gray-500">
-                        If you have questions about our data practices, please review our <a href="#" class="text-primary hover:underline">Privacy Policy</a>.
+                        If you have questions about our data practices, please review our
+                        <a href="#" class="text-primary hover:underline">Privacy Policy</a>.
                     </p>
                 </div>
             </div>
         </div>
-        
-        <!-- Landing page (lowest z-index) -->
+
+        <!-- Landing Page -->
         <div class="absolute top-0 left-0 w-full h-full transition-opacity duration-500 ease-in-out z-10"
-             style="@(currentView == ViewState.LandingPage && !showCustomerConsole ? "opacity: 1;" : "opacity: 0; pointer-events: none;")">
+             style="@Opacity(currentView == ViewState.LandingPage && !showCustomerConsole)">
             <InsuranceLandingPage />
         </div>
     </div>
 
-    <!-- Right 1/3: Chat container -->
-    <div class="w-1/3 p-4 h-full relative">
-        <!-- Custom chat component replaces WebChat -->
-        <CustomChatWindowV2 />
+    <!-- ===========================
+         RIGHT SECTION (Chat Window)
+         =========================== -->
+    <div class="w-1/3 h-full relative flex">
+        <div class="flex-1 mx-4 my-2">
+            <CustomChatWindowV2 />
+        </div>
     </div>
 </div>
 
-@code {
-    [Inject]
-    public INavigationEventService NavEvents { get; set; } = default!;
-    
-    [Inject]
-    public InsuranceAgentService InsuranceAgentService { get; set; } = default!;
-
-    private enum ViewState { LandingPage, AgentConsole, Questionnaire, ConsentDenied }
-    private ViewState currentView = ViewState.LandingPage;
-    
-    // Customer Console state
-    private bool showCustomerConsole = false;
-
-   
-    private string userConsentType = string.Empty;
-    private string userConsentData = string.Empty;
-    private bool hasConsent = false;
-    private string consentDenialReason = string.Empty;
-    
-    // Messages to display based on consent outcome
-    private string consentDeniedMessage = "We respect your privacy choice. Without consent, we can't proceed with personalized insurance recommendations. You can still explore our general information, or consent anytime to unlock personalized assistance.";
-
-    private Task HandleSubmittedJson(string json) {
-        Console.WriteLine($"Questionnaire JSON: {json}");
-        // TODO: send to CRM / API
-        return Task.CompletedTask;
-    }
-
-    protected override void OnInitialized() {
-        NavEvents.NavigateRequested += OnNavigateRequested;
-        
-        // Subscribe to custom events from InsuranceAgentService
-        InsuranceAgentService.CustomEventTriggered += OnCustomEventReceived;
-    }
-    
-    private void OnCustomEventReceived(object? sender, ConversaCore.TopicFlow.Activities.CustomEventTriggeredEventArgs e)
-    {
-        Console.WriteLine($"[Home] Received custom event: {e.EventName}");
-        
-        // Handle customer console events
-        if (e.EventName == "ui.customer-console.show")
-        {
-            showCustomerConsole = true;
-            InvokeAsync(StateHasChanged);
-            Console.WriteLine("[Home] Customer console activated via event trigger");
-        }
-        else if (e.EventName == "ui.customer-console.hide")
-        {
-            showCustomerConsole = false;
-            InvokeAsync(StateHasChanged);
-        }
-    }
-    
-    private async Task CloseCustomerConsole()
-    {
-        showCustomerConsole = false;
-        await InvokeAsync(StateHasChanged);
-        Console.WriteLine("[Home] Customer console closed by user");
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender) {
-        if (firstRender) {
-            // Register this component instance as a reference for JS interop
-            var thisRef = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("window.registerHomeComponent", thisRef);
-        }
-    }
-
-    private Task OnNavigateRequested(string url)
-        => InvokeAsync(() => Nav.NavigateTo(url));
-
-    private Task OnQuestionnaireRequested(string data) {
-        Console.WriteLine($"Questionnaire data from bot: {data}");
-        currentView = ViewState.Questionnaire;
-        return InvokeAsync(StateHasChanged);
-    }
-
-    // Instance method that will be called by the JS interop for consent approval
-    [JSInvokable]
-    public Task ProcessConsent(string consentType, string consentData)
-    {
-        userConsentType = consentType;
-        userConsentData = consentData;
-        hasConsent = true;
-        
-        // Log the consent type and data
-        Console.WriteLine($"Consent received - Type: {consentType}");
-        Console.WriteLine($"Consent data: {consentData}");
-        
-        // Different handling based on consent type
-        if (consentType == "userTCPAAuthorizationReceived") {
-            // Standard TCPA consent received
-            Console.WriteLine("Standard TCPA consent received, activating agent console");
-            // Record consent for compliance purposes
-            RecordConsent(consentType, consentData, true);
-        }
-        else if (consentType == "userCCPAAuthorizationReceived") {
-            // California-specific CCPA consent received
-            Console.WriteLine("CCPA consent received, activating agent console with California-specific options");
-            // Record consent for CCPA compliance
-            RecordConsent(consentType, consentData, true);
-        }
-        
-        // Switch view to Agent Console after receiving consent (for both types)
-        currentView = ViewState.AgentConsole;
-        
-        return InvokeAsync(StateHasChanged);
-    }
-    
-    // Instance method that will be called when consent is denied
-    [JSInvokable]
-    public Task ProcessConsentDenied(string denialData)
-    {
-        hasConsent = false;
-        
-        try {
-            // Try to parse the denial data if available
-            var denialInfo = JsonDocument.Parse(denialData);
-            if (denialInfo.RootElement.TryGetProperty("reason", out var reasonElement)) {
-                consentDenialReason = reasonElement.GetString() ?? "No specific reason provided";
-            }
-        }
-        catch (JsonException) {
-            consentDenialReason = "Unknown reason";
-        }
-        
-        Console.WriteLine($"Consent denied. Reason: {consentDenialReason}");
-        
-        // Record the denial for compliance records
-        RecordConsent("userTCPAConsentDenied", denialData, false);
-        
-        // Switch to a consent denied view or stay on landing page with a message
-        currentView = ViewState.ConsentDenied;
-        
-        return InvokeAsync(StateHasChanged);
-    }
-    
-    // Helper method to record consent for compliance purposes
-    private void RecordConsent(string consentType, string consentData, bool isApproved)
-    {
-        // In a real application, this would save to a database or other persistent storage
-        // Here we just log to the console for demonstration
-        Console.WriteLine($"COMPLIANCE RECORD: {DateTime.UtcNow} - Type: {consentType}, Approved: {isApproved}");
-        
-        // TODO: Implement actual recording of consent for compliance purposes
-        // This should include timestamp, IP address, consent text shown, user response, etc.
-    }
-    
-    // Method to request consent again from the bot
-    private async Task RequestConsentAgain()
-    {
-        // Reset to landing page
-        currentView = ViewState.LandingPage;
-        
-        // Trigger the bot to request consent again by sending an event
-        await JS.InvokeVoidAsync("sendEventToBot", "requestConsentForm", new { retry = true });
-        
-        Console.WriteLine("Requesting consent form again from bot");
-    }
-
-    public void Dispose() {
-        NavEvents.NavigateRequested -= OnNavigateRequested;
-        InsuranceAgentService.CustomEventTriggered -= OnCustomEventReceived;
-        
-        // Clean up the JS interop reference
-        _ = JS.InvokeVoidAsync("window.cleanupHomeComponent");
-    }
-}
-
-
+<!-- ===========================
+     Metadata Container
+     =========================== -->
 <div id="page-context"
      data-page-id="landing-page"
      data-landing-id="LP-2025-08-13-A"
@@ -262,5 +112,269 @@
      data-referrer-doc="">
 </div>
 
+@code {
+
+    #region --- Fields & Enums ---
+    private CustomerConsole? customerConsoleRef;
+
+    private enum ViewState { LandingPage, AgentConsole, Questionnaire, ConsentDenied }
+    private ViewState currentView = ViewState.LandingPage;
+
+    private bool showCustomerConsole;
+    private bool hasConsent;
+    private bool stageProfileCollected, stageRiskDone, stageMatching, stageCalculating, isComplete;
+
+    private string userConsentType = string.Empty;
+    private string userConsentData = string.Empty;
+    private string consentDeniedMessage = "We respect your privacy choice...";
+    private string progressMessage = "Initializing...";
+    private string progressStage = "Starting workflow...";
+    private int progressPercent;
+    #endregion
+
+    #region --- Lifecycle ---
+    protected override void OnInitialized() {
+        NavEvents.NavigateRequested += OnNavigateRequested;
+        InsuranceAgentService.CustomEventTriggered += OnCustomEventReceived;
+        Logger.LogInformation("[Home] Initialized and subscribed to events");
+    }
+
+    public void Dispose() {
+        Logger.LogInformation("[Home] Dispose() — unsubscribing events");
+        NavEvents.NavigateRequested -= OnNavigateRequested;
+        InsuranceAgentService.CustomEventTriggered -= OnCustomEventReceived;
+        _ = JS.InvokeVoidAsync("window.cleanupHomeComponent");
+    }
+    #endregion
+
+    #region --- Navigation & Events ---
+    private Task OnNavigateRequested(string url) {
+        Logger.LogInformation("[Home] Navigate requested → {Url}", url);
+        return InvokeAsync(() => Nav.NavigateTo(url));
+    }
+
+    private async void OnCustomEventReceived(object? sender, CustomEventTriggeredEventArgs e) {
+        Logger.LogInformation(
+            "[Home] CustomEventTriggered → {Event} | Type={Type}",
+            e.EventName,
+            e.EventData?.GetType()?.Name
+        );
+
+        try {
+            var eventName = e.EventName?.Trim().ToLowerInvariant() ?? string.Empty;
+
+            if (e.Context != null)
+                lastKnownContext = e.Context;
+
+            // =============================================================
+            // 1) Stage-handling
+            // =============================================================
+            switch (eventName) {
+                case "customer_console_show":
+                    showCustomerConsole = true;
+                    break;
+
+                case "lead_details_submitted":
+                case "life_goals_submitted":
+                case "coverage_intent_submitted":
+                case "health_info_submitted":
+                case "dependents_submitted":
+                case "employment_submitted":
+                case "beneficiaries_submitted":
+                case "contact_info_submitted":
+                    HandleProgressUpdate(e.EventData);
+                    break;
+
+                case "qualification_complete":
+                    HandleProgressComplete(e.EventData);
+                    break;
+            }
+
+            // =============================================================
+            // 2) Extract payload for CustomerConsole
+            // =============================================================
+            object? payload = null;
+
+            try {
+                var dict = DecodeEventData(e.EventData);
+
+                if (dict != null && dict.TryGetValue("payload", out var raw)) {
+                    payload = raw switch {
+                        JsonElement elem => JsonSerializer.Deserialize<QualifiedCarriers>(elem.GetRawText()),
+                        string s => JsonSerializer.Deserialize<QualifiedCarriers>(s),
+                        QualifiedCarriers qc => qc,
+                        IEnumerable<CarrierEligibility> list => new QualifiedCarriers {
+                            Carriers = list.ToList()
+                        },
+                        _ => raw
+                    };
+                }
+            } catch (Exception ex2) {
+                Logger.LogWarning(ex2, "[Home] Failed to extract payload for {Event}", e.EventName);
+            }
+
+            // =============================================================
+            // 3) Forward to CustomerConsole
+            // =============================================================
+            if (showCustomerConsole && customerConsoleRef is not null) {
+                await customerConsoleRef.UpdateFromChatEvent(
+                    e.EventName,
+                    payload ?? e.EventData,
+                    e.Context
+                );
+            }
+        } catch (Exception ex) {
+            Logger.LogError(ex, "[Home] Exception while processing custom event {Event}", e.EventName);
+        }
+
+        _ = InvokeAsync(StateHasChanged);
+    }
 
 
+    #endregion
+
+    #region --- Progress Handlers ---
+    private void HandleProgressUpdate(object? data) {
+        try {
+            var dict = DecodeEventData(data);
+            if (dict is null)
+                return;
+
+            UpdateProgressFromDictionary(dict);
+        } catch (Exception ex) {
+            Logger.LogError(ex, "[Home] Error parsing progress update event");
+        }
+    }
+
+    private static bool IsAnonymousType(Type t) =>
+        Attribute.IsDefined(t, typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), false)
+        && t.IsGenericType && t.Name.Contains("AnonymousType")
+        && t.Name.StartsWith("<>")
+        && t.Attributes.HasFlag(TypeAttributes.NotPublic);
+
+    /// <summary>
+    /// Converts ANY incoming event payload into a dictionary<string, object>.
+    /// Handles: anonymous objects, ExpandoObject, Dictionary, JSON, JsonElement,
+    /// UiProgressEvent, and strongly typed POCOs.
+    /// </summary>
+    private static Dictionary<string, object>? DecodeEventData(object? data) {
+        if (data is null)
+            return null;
+
+        // ---------- 1. Anonymous type ----------
+        var t = data.GetType();
+        if (IsAnonymousType(t)) {
+            return t.GetProperties().ToDictionary(
+                p => p.Name,
+                p => p.GetValue(data)!
+            );
+        }
+
+        // ---------- 2. UiProgressEvent ----------
+        if (data is UiProgressEvent dto) {
+            return new() {
+                ["stage"] = dto.Stage,
+                ["progress"] = dto.Progress,
+                ["message"] = dto.Message,
+                ["nextStep"] = dto.NextStep,
+                ["payload"] = dto.Payload
+            };
+        }
+
+        // ---------- 3. ExpandoObject ----------
+        if (data is ExpandoObject exp) {
+            var d = new Dictionary<string, object>();
+            foreach (var kv in exp)
+                d[kv.Key] = kv.Value!;
+            return d;
+        }
+
+        // ---------- 4. Dictionary ----------
+        if (data is IDictionary<string, object> dict) {
+            return new Dictionary<string, object>(dict);
+        }
+
+        // ---------- 5. JSON string ----------
+        if (data is string jsonStr && jsonStr.TrimStart().StartsWith("{")) {
+            return JsonDocument.Parse(jsonStr)
+                .RootElement
+                .EnumerateObject()
+                .ToDictionary(
+                    x => x.Name,
+                    x => (object)x.Value.ToString()
+                );
+        }
+
+        // ---------- 6. JsonElement ----------
+        if (data is JsonElement elem && elem.ValueKind == JsonValueKind.Object) {
+            return elem
+                .EnumerateObject()
+                .ToDictionary(
+                    x => x.Name,
+                    x => (object)x.Value.ToString()
+                );
+        }
+
+        // ---------- 7. Fallback: reflect POCO ----------
+        var props = t.GetProperties();
+        if (props.Length > 0) {
+            return props.ToDictionary(
+                p => p.Name,
+                p => p.GetValue(data) ?? ""
+            );
+        }
+
+        return null;
+    }
+
+    private void HandleProgressComplete(object? data) {
+        progressPercent = 100;
+        progressMessage = "Qualification Complete!";
+        progressStage = "Your results are ready.";
+        isComplete = true;
+        _ = InvokeAsync(StateHasChanged);
+        Logger.LogInformation("[Home] ✅ Progress complete");
+    }
+
+    private void UpdateProgressFromDictionary(Dictionary<string, object> dict) {
+        if (dict.TryGetValue("progress", out var pObj) && int.TryParse(pObj?.ToString(), out var progress))
+            progressPercent = progress;
+
+        progressStage = dict.TryGetValue("stage", out var sObj) ? sObj?.ToString() ?? "" : "";
+        progressMessage = dict.TryGetValue("message", out var mObj) ? mObj?.ToString() ?? "" : "Processing...";
+
+        stageProfileCollected = progressPercent >= 25;
+        stageRiskDone = progressPercent >= 50;
+        stageMatching = progressPercent >= 70;
+        stageCalculating = progressPercent >= 85;
+        isComplete = progressPercent >= 100;
+
+        Logger.LogInformation("[Home] Progress {Percent}% | Stage={Stage}", progressPercent, progressStage);
+        _ = InvokeAsync(StateHasChanged);
+    }
+    #endregion
+
+    #region --- UI Actions ---
+    private async Task CloseCustomerConsole() {
+        showCustomerConsole = false;
+        await InvokeAsync(StateHasChanged);
+        Logger.LogInformation("[Home] Customer console closed");
+    }
+
+    private async Task RequestConsentAgain() {
+        currentView = ViewState.LandingPage;
+        Logger.LogInformation("[Home] User retried consent");
+        await JS.InvokeVoidAsync("sendEventToBot", "requestConsentForm", new { retry = true });
+    }
+    #endregion
+
+    #region --- Helpers ---
+    private static string TranslateX(bool condition) => condition ? "transform: translateX(0);" : "transform: translateX(-100%);";
+    private static string Opacity(bool visible) => visible ? "opacity: 1;" : "opacity: 0; pointer-events: none;";
+    #endregion
+
+    #region --- Data Models ---
+    private TopicWorkflowContext? lastKnownContext;
+    private LeadDetailsModel? leadDetailsModel;
+    #endregion
+}

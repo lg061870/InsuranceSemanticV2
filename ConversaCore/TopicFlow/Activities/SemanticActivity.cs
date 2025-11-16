@@ -1,213 +1,310 @@
-using ConversaCore.Context;
-using ConversaCore.Models;
+﻿using ConversaCore.Interfaces;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using System.Diagnostics;
 using System.Text.Json;
 
-namespace ConversaCore.TopicFlow.Activities;
+namespace ConversaCore.TopicFlow;
 
 /// <summary>
-/// Base class for semantic activities that leverage AI/LLM capabilities within ConversaCore workflows.
-/// Inherits from TopicFlowActivity for seamless integration with existing topic flows.
+/// Base class for semantic (LLM-driven) activities compatible with SK 1.66.
+/// Provides background execution, async completion callbacks, and event signaling.
 /// </summary>
-public abstract class SemanticActivity : TopicFlowActivity
-{
+public abstract class SemanticActivity : TopicFlowActivity, IAsyncNotifiableActivity {
+    private static readonly ActivitySource _otelSource = new("ConversaCore.Semantic");
+
     protected readonly Kernel _kernel;
     protected readonly IChatCompletionService _chatCompletion;
     protected readonly ILogger _semanticLogger;
 
-    // Configuration properties
-    public string ModelId { get; set; } = "gpt-4o-mini";
-    public float Temperature { get; set; } = 0.7f;
-    public int MaxTokens { get; set; } = 2048;
-    public bool RequireJsonOutput { get; set; } = false;
+    private string? _cachedSystemPrompt;
+
+    public string ModelId { get; set; }
+    public float Temperature { get; set; }
+    public int MaxTokens { get; set; }
+    public bool RequireJsonOutput { get; set; }
+    public string? JsonSchemaHint { get; set; }
+
+    /// <summary> Indicates whether the activity should execute asynchronously in background. </summary>
+    public bool RunInBackground { get; set; }
+
+    /// <summary> User-supplied callback to execute when async reasoning completes. </summary>
+    public Func<TopicWorkflowContext, Task<TopicFlowActivity?>>? OnAsyncCompletedCallback { get; private set; }
+
+    /// <summary> Raised when the semantic query completes asynchronously. </summary>
+    public event EventHandler<AsyncQueryCompletedEventArgs>? AsyncCompleted;
 
     protected SemanticActivity(
-        string activityId, 
-        Kernel kernel, 
-        ILogger logger) : base(activityId, null)
-    {
+        string activityId,
+        Kernel kernel,
+        ILogger logger,
+        IOptions<SemanticActivityOptions>? options = null)
+        : base(activityId, null) {
+
         _kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
         _semanticLogger = logger ?? throw new ArgumentNullException(nameof(logger));
         _chatCompletion = kernel.GetRequiredService<IChatCompletionService>();
+
+        var cfg = options?.Value ?? new SemanticActivityOptions();
+        ModelId = cfg.DefaultModelId;
+        Temperature = cfg.DefaultTemperature;
+        MaxTokens = cfg.DefaultMaxTokens;
+        RequireJsonOutput = cfg.RequireJsonOutput;
     }
 
-    protected override async Task<ActivityResult> RunActivity(TopicWorkflowContext context, object? input = null, CancellationToken cancellationToken = default)
-    {
-        try
+    // ============================================================
+    // CALLBACK REGISTRATION
+    // ============================================================
+    public void OnAsyncCompleted(Func<TopicWorkflowContext, Task<TopicFlowActivity?>> callback) {
+        OnAsyncCompletedCallback = async ctx =>
         {
+            // Execute user-defined callback (e.g., AttachQueryPayloadAsync)
+            var activity = await callback(ctx);
+
+            // ✅ Build event args and raise AsyncCompleted
+            if (AsyncCompleted != null) {
+                try {
+                    var args = new AsyncQueryCompletedEventArgs(
+                        ctx,
+                        output: null,        // no specific payload — semantic result already in context
+                        queryId: Id,
+                        activity: activity   // attach the created activity
+                    );
+
+                    AsyncCompleted.Invoke(this, args);
+                } catch (Exception ex) {
+                    _semanticLogger.LogWarning(
+                        ex,
+                        "[{ActivityId}] ⚠ Failed to raise AsyncCompleted event after callback.",
+                        Id
+                    );
+
+                    return null;
+                }
+            }
+
+            return null;
+        };
+    }
+
+    protected void RaiseAsyncCompleted(TopicWorkflowContext context, TopicFlowActivity nextActivity) {
+        try {
+            var queryId = nextActivity.Id;
+            var output = context.GetValue<object>($"{Id}_Result");
+
+            _semanticLogger.LogInformation(
+                "[{ActivityId}] 📡 Raising AsyncCompleted event for next activity {NextActivityId}",
+                Id, queryId);
+
+            AsyncCompleted?.Invoke(this, new AsyncQueryCompletedEventArgs(context, output, queryId));
+        } catch (Exception ex) {
+            _semanticLogger.LogWarning(ex,
+                "[{ActivityId}] ⚠ Failed to raise AsyncCompleted event.", Id);
+        }
+    }
+
+    // ============================================================
+    // EXECUTION ENTRY POINT
+    // ============================================================
+    protected override async Task<ActivityResult> RunActivity(
+        TopicWorkflowContext context,
+        object? input = null,
+        CancellationToken cancellationToken = default) {
+
+        if (RunInBackground) {
+            _semanticLogger.LogInformation("[{ActivityId}] 🚀 Running semantic activity in background.", Id);
+
+            _ = Task.Run(async () => {
+                try {
+                    var result = await RunSemanticCoreAsync(context, input, cancellationToken);
+
+                    // 🔹 Run user-provided callback (if any)
+                    TopicFlowActivity? nextActivity = null;
+                    if (OnAsyncCompletedCallback != null) {
+                        try {
+                            _semanticLogger.LogDebug("[{ActivityId}] 🔁 Executing OnAsyncCompleted callback...", Id);
+                            nextActivity = await OnAsyncCompletedCallback(context);
+                        } catch (Exception cbEx) {
+                            _semanticLogger.LogWarning(cbEx,
+                                "[{ActivityId}] ⚠ OnAsyncCompleted callback failed.", Id);
+                        }
+                    }
+
+                    // 🔹 Raise AsyncCompleted event
+                    if (nextActivity != null)
+                        RaiseAsyncCompleted(context, nextActivity);
+
+                    _semanticLogger.LogInformation("[{ActivityId}] ✅ Background semantic activity completed.", Id);
+                } catch (Exception ex) {
+                    _semanticLogger.LogError(ex, "[{ActivityId}] ❌ Background semantic activity failed.", Id);
+                }
+            }, cancellationToken);
+
+            return ActivityResult.Continue($"[{Id}] running in background");
+        }
+
+        // Default synchronous path
+        return await RunSemanticCoreAsync(context, input, cancellationToken);
+    }
+
+    // ============================================================
+    // CORE SEMANTIC EXECUTION LOGIC
+    // ============================================================
+    private async Task<ActivityResult> RunSemanticCoreAsync(
+        TopicWorkflowContext context,
+        object? input,
+        CancellationToken cancellationToken) {
+
+        using var otelActivity = _otelSource.StartActivity("SemanticActivity.Run", ActivityKind.Internal);
+        otelActivity?.SetTag("activity.id", Id);
+        otelActivity?.SetTag("model.id", ModelId);
+        otelActivity?.SetTag("temperature", Temperature);
+        otelActivity?.SetTag("require.json", RequireJsonOutput);
+
+        var stopwatch = Stopwatch.StartNew();
+
+        try {
             _semanticLogger.LogInformation("Executing semantic activity {ActivityId}", Id);
 
-            // Build the system prompt
-            var systemPrompt = await BuildSystemPromptAsync(context, input);
-            
-            // Build the user prompt  
+            // Build prompts
+            var systemPrompt = _cachedSystemPrompt ??= await BuildSystemPromptAsync(context, input);
             var userPrompt = await BuildUserPromptAsync(context, input);
+            var fullPrompt = $"{systemPrompt}\n\nUser: {userPrompt}";
 
-            // Prepare chat history
-            var chatHistory = new ChatHistory();
-            chatHistory.AddSystemMessage(systemPrompt);
-            chatHistory.AddUserMessage(userPrompt);
-
-            // Configure execution settings
-            var executionSettings = new OpenAIPromptExecutionSettings
-            {
+            var exec = new OpenAIPromptExecutionSettings {
                 ModelId = ModelId,
                 Temperature = Temperature,
                 MaxTokens = MaxTokens
             };
 
-            // Add JSON formatting instruction if required
-            if (RequireJsonOutput)
-            {
-                executionSettings.ResponseFormat = "json_object";
-                chatHistory.AddSystemMessage("You must respond with valid JSON only. Do not include any text outside of the JSON object.");
+            if (RequireJsonOutput) {
+                exec.ResponseFormat = "json_object";
+                fullPrompt += "\n\nRespond with valid JSON only. No text outside the object.";
             }
 
-            _semanticLogger.LogDebug("Sending request to {ModelId} with temperature {Temperature}", ModelId, Temperature);
+            _semanticLogger.LogDebug("[{ActivityId}] Sending prompt to {ModelId}", Id, ModelId);
 
-            // Execute the semantic operation
+            // Run the OpenAI call
             var response = await _chatCompletion.GetChatMessageContentAsync(
-                chatHistory, 
-                executionSettings,
+                fullPrompt,
+                exec,
                 cancellationToken: cancellationToken);
 
-            var responseText = response.Content ?? string.Empty;
+            var text = response.Content ?? string.Empty;
+            stopwatch.Stop();
 
-            _semanticLogger.LogDebug("Received response: {ResponseLength} characters", responseText.Length);
+            var tokens = response.Metadata?.TryGetValue("token_count", out var tk) == true
+                ? Convert.ToInt32(tk)
+                : 0;
 
-            // Process and validate the response
-            var processedResponse = await ProcessResponseAsync(context, input, responseText);
+            otelActivity?.SetTag("duration.ms", stopwatch.Elapsed.TotalMilliseconds);
+            otelActivity?.SetTag("tokens.used", tokens);
+            otelActivity?.SetTag("response.length", text.Length);
 
-            // Store results in context for downstream activities
-            await StoreResultsInContextAsync(context, processedResponse);
+            _semanticLogger.LogInformation(
+                "[{ActivityId}] Model={ModelId}, Tokens={Tokens}, Duration={Duration} ms",
+                Id, ModelId, tokens, stopwatch.ElapsedMilliseconds);
 
-            return ActivityResult.Continue(processedResponse, processedResponse);
-        }
-        catch (Exception ex)
-        {
-            _semanticLogger.LogError(ex, "Error executing semantic activity {ActivityId}", Id);
+            var processed = await ProcessResponseAsync(context, input, text);
+            processed = await OnResponseReadyAsync(context, processed);
+            await StoreResultsInContextAsync(context, processed);
+
+            return ActivityResult.Continue(processed, processed);
+        } catch (OperationCanceledException) {
+            stopwatch.Stop();
+            _semanticLogger.LogWarning("[{ActivityId}] Canceled", Id);
+            return ActivityResult.Continue("Operation canceled.");
+        } catch (JsonException ex) {
+            stopwatch.Stop();
+            _semanticLogger.LogWarning(ex, "[{ActivityId}] Invalid JSON", Id);
+            return await HandleErrorAsync(context, input, ex, "Invalid JSON format received.");
+        } catch (Exception ex) {
+            stopwatch.Stop();
+            _semanticLogger.LogError(ex, "[{ActivityId}] Error executing semantic activity", Id);
             return await HandleErrorAsync(context, input, ex);
         }
     }
 
-    /// <summary>
-    /// Build the system prompt that provides context and instructions to the AI model.
-    /// Override this method to provide activity-specific system instructions.
-    /// </summary>
+    // ============================================================
+    // PROMPT BUILDERS
+    // ============================================================
     protected abstract Task<string> BuildSystemPromptAsync(TopicWorkflowContext context, object? input);
-
-    /// <summary>
-    /// Build the user prompt that contains the specific data and query for the AI model.
-    /// Override this method to provide activity-specific user input formatting.
-    /// </summary>
     protected abstract Task<string> BuildUserPromptAsync(TopicWorkflowContext context, object? input);
 
-    /// <summary>
-    /// Process and validate the AI response before returning it.
-    /// Override this method to add custom response processing logic.
-    /// </summary>
-    protected virtual async Task<string> ProcessResponseAsync(TopicWorkflowContext context, object? input, string response)
-    {
-        await Task.CompletedTask; // Base implementation is async for consistency
-        
-        if (RequireJsonOutput)
-        {
-            // Validate JSON format
-            try
-            {
-                JsonDocument.Parse(response);
-                _semanticLogger.LogDebug("JSON response validation successful");
-            }
-            catch (JsonException ex)
-            {
-                _semanticLogger.LogWarning(ex, "Invalid JSON response received, attempting to clean up");
-                // Attempt to extract JSON from response if it's wrapped in other text
+    // ============================================================
+    // RESPONSE PROCESSING / CONTEXT STORAGE
+    // ============================================================
+    protected virtual async Task<string> ProcessResponseAsync(
+        TopicWorkflowContext context, object? input, string response) {
+        await Task.CompletedTask;
+
+        if (RequireJsonOutput) {
+            try { JsonDocument.Parse(response); } catch (JsonException) {
+                _semanticLogger.LogWarning("[{ActivityId}] Attempting JSON cleanup", Id);
                 response = ExtractJsonFromResponse(response);
             }
         }
-
         return response;
     }
 
-    /// <summary>
-    /// Store semantic activity results in the conversation context for use by subsequent activities.
-    /// Override this method to customize how results are stored.
-    /// </summary>
-    protected virtual async Task StoreResultsInContextAsync(TopicWorkflowContext context, string response)
-    {
-        await Task.CompletedTask; // Base implementation is async for consistency
-        
-        var contextKey = $"{Id}_Result";
-        context.SetValue(contextKey, response);
-        
-        if (RequireJsonOutput)
-        {
-            // Also store parsed JSON for easy access
-            try
-            {
-                var jsonDocument = JsonDocument.Parse(response);
-                context.SetValue($"{contextKey}_Json", jsonDocument);
-                _semanticLogger.LogDebug("Stored JSON result in context at key {ContextKey}_Json", contextKey);
-            }
-            catch (JsonException ex)
-            {
-                _semanticLogger.LogWarning(ex, "Failed to parse JSON for context storage");
-            }
-        }
-        
-        _semanticLogger.LogDebug("Stored semantic activity result in context at key {ContextKey}", contextKey);
+    protected virtual async Task<string> OnResponseReadyAsync(
+        TopicWorkflowContext context, string response) {
+        await Task.CompletedTask;
+        return response.Trim();
     }
 
-    /// <summary>
-    /// Handle errors that occur during semantic activity execution.
-    /// Override this method to provide custom error handling.
-    /// </summary>
-    protected virtual async Task<ActivityResult> HandleErrorAsync(TopicWorkflowContext context, object? input, Exception exception)
-    {
-        await Task.CompletedTask; // Base implementation is async for consistency
-        
-        var errorMessage = $"I apologize, but I encountered an error while processing your request. Please try again.";
-        
-        return ActivityResult.Continue(errorMessage);
+    protected async Task StoreResultsInContextAsync(
+        TopicWorkflowContext context, string response) {
+        await Task.CompletedTask;
+        var key = $"{Id}_Result";
+        context.SetValue(key, response);
+
+        if (RequireJsonOutput) {
+            try {
+                var jsonDoc = JsonDocument.Parse(response);
+                context.SetValue($"{key}_Json", jsonDoc);
+            } catch (JsonException ex) {
+                _semanticLogger.LogWarning(ex,
+                    "[{ActivityId}] JSON parse failed during storage", Id);
+            }
+        }
+
+        _semanticLogger.LogDebug("[{ActivityId}] Stored result in context (Key={Key})", Id, key);
     }
 
-    /// <summary>
-    /// Extract JSON content from a response that may contain additional text.
-    /// </summary>
-    private string ExtractJsonFromResponse(string response)
-    {
-        try
-        {
-            // Look for JSON object boundaries
-            var startIndex = response.IndexOf('{');
-            var endIndex = response.LastIndexOf('}');
-            
-            if (startIndex >= 0 && endIndex > startIndex)
-            {
-                var jsonCandidate = response.Substring(startIndex, endIndex - startIndex + 1);
-                JsonDocument.Parse(jsonCandidate); // Validate
-                return jsonCandidate;
-            }
-            
-            // Look for JSON array boundaries
-            startIndex = response.IndexOf('[');
-            endIndex = response.LastIndexOf(']');
-            
-            if (startIndex >= 0 && endIndex > startIndex)
-            {
-                var jsonCandidate = response.Substring(startIndex, endIndex - startIndex + 1);
-                JsonDocument.Parse(jsonCandidate); // Validate
-                return jsonCandidate;
-            }
-        }
-        catch (JsonException)
-        {
-            // If extraction fails, return original response
-        }
-        
-        return response;
+    protected virtual async Task<ActivityResult> HandleErrorAsync(
+        TopicWorkflowContext context, object? input, Exception ex, string? userMessage = null) {
+        await Task.CompletedTask;
+        var msg = userMessage ?? "Sorry, an error occurred while processing your request.";
+        context.SetValue($"{Id}_Error", ex.Message);
+        return ActivityResult.Continue(msg);
     }
+
+    // ============================================================
+    // UTILITIES
+    // ============================================================
+    private static string ExtractJsonFromResponse(string text) {
+        try {
+            int start = text.IndexOf('{');
+            int end = text.LastIndexOf('}');
+            if (start >= 0 && end > start) return text[start..(end + 1)];
+            start = text.IndexOf('[');
+            end = text.LastIndexOf(']');
+            if (start >= 0 && end > start) return text[start..(end + 1)];
+        } catch { }
+        return text;
+    }
+}
+
+/// <summary>
+/// Default configuration options for SemanticActivity.
+/// </summary>
+public class SemanticActivityOptions {
+    public string DefaultModelId { get; set; } = "gpt-4o-mini";
+    public float DefaultTemperature { get; set; } = 0.7f;
+    public int DefaultMaxTokens { get; set; } = 2048;
+    public bool RequireJsonOutput { get; set; } = false;
 }

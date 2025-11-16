@@ -1,181 +1,70 @@
-# ConversaCore AI Coding Agent Instructions
 
-## Project Architecture Overview
+# ConversaCore/InsuranceSemantic AI Agent Instructions
 
-This is a **conversational AI framework** built around the **ConversaCore** library with an **InsuranceAgent** implementation. The architecture follows an event-driven, topic-based conversation flow pattern using state machines with **hand-down/regain control** mechanisms for complex nested workflows.
+## Architecture Overview
 
-### Core Components
+This solution is a modular conversational AI framework built around the **ConversaCore** library, with a Blazor Server implementation (`InsuranceAgent`) and a workflow visualization/editor (`WorkflowEditor`).
 
-- **ConversaCore/**: Framework library providing topic flows, activities, state machines, and event system
-- **InsuranceAgent/**: Blazor Server web app implementing insurance-specific conversation topics  
-- **WorkflowEditor/**: Component library for workflow visualization/editing
+**Major components:**
+- `ConversaCore/`: Core framework (topic flows, activities, state machines, event system)
+- `InsuranceAgent/`: Blazor Server app with insurance-specific topics and orchestration
+- `WorkflowEditor/`: Workflow visualization and editing components
 
-### Key Architecture Principles
+**Key design:**
+- **Topic-based flows:** Each conversation topic is a class inheriting `TopicFlow`, composed of a FIFO queue of activities (see `ConversaCore/TopicFlow/` and `InsuranceAgent/Topics/`).
+- **Hand-down/regain control:** Topics can call sub-topics and resume after completion using `TriggerTopicActivity` with `waitForCompletion: true` and `CompleteTopicActivity`.
+- **Event-driven:** Activities and topics communicate via C# events, with event bubbling through container activities (`ConditionalActivity`, `CompositeActivity`).
+- **State machines:** Each topic uses an explicit state machine (`TopicStateMachine<TState>`) for flow control.
 
-- **Sub-Topic Composition**: Topics can call sub-topics and wait for completion using `waitForCompletion: true`
-- **Event-Driven Coordination**: `InsuranceAgentService` orchestrates topic lifecycle through event handlers
-- **Complex Decision Trees**: Use `ConditionalActivity` + `CompositeActivity` for multi-path compliance flows
+## Developer Workflows
 
-## Critical Patterns & Conventions
+- **Build:** Open `InsuranceSemantic.sln` in VS or use `dotnet build` (requires .NET 9.0.306, see `global.json`).
+- **Run:** Start the `InsuranceAgent` project (Blazor Server, HTTPS by default).
+- **Test:** Use `runTests.ps1` for full diagnostics, or run tests via VS Test Explorer. Tests are in `ConversaCore.Tests/` and use `RollForward=LatestMajor` for .NET 9 compatibility.
+- **Debug:** Use `DumpCtxActivity` for context inspection; structured logging is enabled throughout.
 
-### Topic-Based Conversation Architecture
+## Project-Specific Patterns
 
-Topics are the central unit of conversation logic. Each topic inherits from `TopicFlow` and contains a queue of activities:
+- **Topic registration:** Register topics in DI with explicit logger pattern (see `AddInsuranceTopics.cs`). Example:
+  ```csharp
+  services.AddScoped<ILogger<MyTopic>>(sp => sp.GetRequiredService<ILoggerFactory>().CreateLogger<MyTopic>());
+  services.AddScoped<ITopic>(sp => new MyTopic(
+      sp.GetRequiredService<TopicWorkflowContext>(),
+      sp.GetRequiredService<ILogger<MyTopic>>(),
+      sp.GetRequiredService<IConversationContext>()
+  ));
+  ```
+- **Activity types:**
+  - `AdaptiveCardActivity<TCard, TModel>`: Renders adaptive cards, handles input/validation
+  - `TriggerTopicActivity`: Calls sub-topics, optionally waits for completion
+  - `EventTriggerActivity`: Triggers UI events (fire-and-forget or wait-for-response)
+  - `ConditionalActivity<T>`, `CompositeActivity`: For branching and grouping
+  - `DumpCtxActivity`: Dumps context for debugging
+- **Adaptive card UX:** Each card has a unique ID; use `RenderMode.Replace` to avoid duplicate cards on validation errors.
+- **Intent recognition:** Topics implement `CanHandleAsync()` and define `IntentKeywords` for routing; uses Semantic Kernel with fallback.
+- **Service lifetimes:** Most services are **scoped** (not singleton) due to context dependencies. Topic registry setup must occur in a service scope (see `Program.cs`).
+- **Event interfaces:** Topics using dynamic activities should implement `ITopicTriggeredActivity` or `ICustomEventTriggeredActivity` for event forwarding.
 
-```csharp
-// Topic registration pattern in AddInsuranceTopics.cs
-services.AddScoped<ITopic>(sp => new BeneficiaryInfoDemoTopic(
-    sp.GetRequiredService<TopicWorkflowContext>(),
-    sp.GetRequiredService<ILogger<BeneficiaryInfoDemoTopic>>(),
-    sp.GetRequiredService<IConversationContext>()
-));
-```
+## File/Directory Conventions
 
-**Key dependencies**: All custom topics require `TopicWorkflowContext`, `ILogger<T>`, and optionally `IConversationContext`.
+- **Topics:** `InsuranceAgent/Topics/TopicName/` (Demo topics: `InsuranceAgent/Topics/Demo/`)
+- **Activities:** Framework: `ConversaCore/TopicFlow/Activities/`; app-specific: in topic classes
+- **System topics:** `ConversaCore/SystemTopics/`
+- **Tests:** `ConversaCore.Tests/`
 
-### Hand-Down/Regain Control Pattern (NEW)
+## Integration & External Dependencies
 
-Topics can now call sub-topics and wait for completion instead of terminating:
+- **Semantic Kernel:** LLM-based intent recognition and topic routing
+- **SQLite:** Vector DB auto-initializes at `vectorstore.db`
+- **Blazor Server:** Main UI host
+- **xUnit, FluentAssertions, Moq:** Testing
 
-```csharp
-// Call sub-topic and wait for completion
-Add(new TriggerTopicActivity("CollectCompliance", "ComplianceTopic", _logger, 
-    waitForCompletion: true));  // KEY: Wait instead of hand-off
+## Common Pitfalls
 
-// This ONLY executes after sub-topic completes  
-Add(new SimpleActivity("ProcessResults", (ctx, input) => {
-    var data = ctx.GetValue<object>("SubTopicCompletionData");
-    // Process completion data...
-}));
-```
+- Topic registry/configuration must be done in a service scope after app build, before `app.Run()`
+- Most services must be scoped, not singleton
+- Event bubbling is required for correct UI/event handling
+- Use `CompleteTopicActivity` to signal sub-topic completion
 
-**Critical**: Use `CompleteTopicActivity` to properly signal completion in sub-topics.
-
-### Activity Queue Pattern
-
-Topics execute activities in FIFO order. Common activity types:
-- `AdaptiveCardActivity<TCard, TModel>`: Renders cards and waits for input
-- `TriggerTopicActivity`: Chains to next topic (legacy) or calls sub-topic (new `waitForCompletion: true`)
-- `CompleteTopicActivity`: Signals topic completion for hand-down pattern
-- `ConditionalActivity<T>`: Complex decision branches with typed inner activities
-- `CompositeActivity`: Groups multiple activities into sequences
-- `DumpCtxActivity`: Debug context dumping
-- System activities: `SimpleActivity`, `DelayActivity`, `RepeatActivity`
-
-### State Machine Integration
-
-Topics use `TopicStateMachine<TState>` with explicit transition configuration:
-
-```csharp
-_fsm.ConfigureTransition(FlowState.Idle, FlowState.Starting);
-_fsm.ConfigureTransition(FlowState.Running, FlowState.WaitingForInput);
-```
-
-### Service Registration Patterns
-
-**CRITICAL**: Most services are **scoped**, not singleton, due to `IConversationContext` dependency:
-
-```csharp
-// In Program.cs
-builder.Services.AddConversaCore();
-builder.Services.AddScoped<ISemanticKernelService, SemanticKernelService>();
-```
-
-Topic registry setup **must be in a service scope** to avoid singleton/scoped conflicts.
-
-## Development Workflows
-
-### Building & Running
-- **Solution**: `InsuranceSemantic.sln` (3 projects)
-- **Target**: .NET 8.0 with nullable enabled
-- **Web app**: Run `InsuranceAgent` project (Blazor Server on HTTPS)
-- **Tests**: Use `runTests.ps1` for diagnostic logging or VS Test Explorer
-
-### Topic Development Pattern
-1. Create topic class inheriting `TopicFlow`
-2. Add to DI in `AddInsuranceTopics()` method
-3. Implement `CanHandleAsync()` for intent recognition
-4. Build activity queue in constructor using `.Add(activity)`
-
-### Intent Recognition
-Uses Semantic Kernel with keyword fallback. Topics define `IntentKeywords` arrays and implement `CanHandleAsync()` returning confidence 0-1.
-
-### Adaptive Cards
-Cards follow the pattern: `Card + Model + Activity`:
-- Card class creates JSON schema
-- Model defines data binding with validation attributes
-- `AdaptiveCardActivity<TCard, TModel>` handles lifecycle
-
-**Card ID & Render Modes**: Each adaptive card receives a unique ID that flows through all layers. This enables:
-- `RenderMode.Replace`: Overwrites existing card with same ID (e.g., validation errors)
-- `RenderMode.Append`: Adds new card to end of chat window
-- Critical for maintaining clean UX when validation fails - user sees only one card instead of duplicates
-
-### Complex Decision Trees
-
-Use nested `ConditionalActivity` + `CompositeActivity` for compliance flows:
-
-```csharp
-// Multi-path decision tree example from InsuranceAgentService
-IfCase("TCPA_YES_CCPA_YES", ctx =>
-    IsYes(ctx,"tcpa_consent") && IsYes(ctx,"ccpa_acknowledgment"),
-    ConditionalActivity<TopicFlowActivity>.If(
-        "HAS_CA_INFO_YES_YES",
-        c => c.GetValue<bool?>("is_california_resident").HasValue,
-        (id,c) => ToMarketingT1Topic("CA_KNOWN_YES_YES"),
-        (id,c) => new CompositeActivity("ASK_CA_YES_YES", new List<TopicFlowActivity>{
-            AskCaliforniaResidency("CA_CARD_YES_YES","MarketingTypeOneTopic","full_with_ca_protection"),
-            ToMarketingT1Topic("AFTER_CA_YES_YES")
-        })
-    )
-)
-```
-
-## Integration Points
-
-### Event System
-Heavy use of C# events for component communication:
-- `TopicLifecycleChanged`, `ActivityCompleted`, `ModelBound`
-- `ITopicEventBus` for cross-topic messaging (singleton instance)
-
-### Context Management
-- `IConversationContext`: Per-conversation state (scoped)
-- `TopicWorkflowContext`: Key-value store for topic data
-- Context flows through activity pipeline automatically
-
-### Semantic Kernel Integration
-- Intent recognition via `IntentRecognitionService`
-- Kernel configured as singleton, services as scoped
-- Used for LLM-based topic routing and confidence scoring
-
-## File Organization Conventions
-
-### Topic Structure
-```
-Topics/
-  TopicName/
-    TopicNameDemoTopic.cs    # Main topic flow
-    TopicNameCard.cs         # Adaptive card definition  
-    TopicNameModels.cs       # Data models
-```
-
-### Activity Location
-- Framework activities: `ConversaCore/TopicFlow/Activities/`
-- App-specific activities: Typically embedded in topic classes
-
-### System Topics
-Built-in topics in `ConversaCore/SystemTopics/`: `FallbackTopic`, `OnErrorTopic`, `EscalateTopic`, etc.
-
-## Common Debugging Patterns
-
-- Enable `DumpCtxActivity` in development for context inspection
-- Use structured logging with topic/activity names
-- Check state machine transitions via `TransitionHistory`
-- Event hooks provide detailed activity lifecycle visibility
-- Topic registry must be configured in service scope to avoid DI conflicts
-
-## Key Dependencies
-
-- **Microsoft.SemanticKernel**: LLM integration (v1.64.0)
-- **ASP.NET Core**: Blazor Server host
-- **System components**: Heavy use of events, dependency injection, async patterns
+---
+For more, see `AddInsuranceTopics.cs`, `Program.cs`, and demo topics in `InsuranceAgent/Topics/Demo/`.

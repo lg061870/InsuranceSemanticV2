@@ -1,10 +1,10 @@
 ﻿using ConversaCore.Cards;
 using ConversaCore.Context;
 using ConversaCore.Events;
+using ConversaCore.Interfaces;
 using ConversaCore.Models;
 using ConversaCore.StateMachine;
 using ConversaCore.TopicFlow;
-using ConversaCore.TopicFlow.Activities;
 using ConversaCore.TopicFlow.Core.Interfaces;
 using ConversaCore.Topics;
 using InsuranceAgent.Cards;
@@ -14,6 +14,7 @@ using System.Reflection;
 using System.Text.Json;
 
 public class InsuranceAgentService {
+
     private readonly TopicRegistry _topicRegistry;
     private readonly IConversationContext _context;
     private readonly TopicWorkflowContext _wfContext;
@@ -21,33 +22,13 @@ public class InsuranceAgentService {
 
     // Activity IDs for the compliance flowchart
     private const string ActivityId_CollectCompliance = "CollectCompliance";
-    private const string ActivityId_TcpaCheck = "TcpaConsentCheck";
-    private const string ActivityId_CcpaCheck = "CcpaAckCheck";
-    private const string ActivityId_CaliforniaCheck = "CaliforniaCheck";
-    private const string ActivityId_CollectCaliforniaInfo = "CollectCaliforniaInfo";
-    private const string ActivityId_ShowHighIntentCard = "ShowHighIntentCard";
-    private const string ActivityId_ShowMediumIntentCard = "ShowMediumIntentCard";
-    private const string ActivityId_ShowLowIntentCard = "ShowLowIntentCard";
-    private const string ActivityId_ShowBlockedCard = "ShowBlockedCard";
-    private const string ActivityId_RouteToNextTopic = "RouteToNextTopic";
     private const string ActivityId_ProcessComplianceData = "ProcessComplianceData";
 
     private ITopic? _activeTopic;
     private string? _activeCardId;
     private const string ActiveCardKey = "ActiveCardId";
-
     private readonly Stack<TopicFlow> _pausedTopics = new Stack<TopicFlow>(); // Track paused topics
-
-    // NEW: Event-driven sub-topic completion tracking
-    private readonly Dictionary<string, PendingSubTopic> _pendingSubTopics = new Dictionary<string, PendingSubTopic>();
-
-    private class PendingSubTopic {
-        public TopicFlow CallingTopic { get; set; } = null!;
-        public TopicFlow SubTopic { get; set; } = null!;
-        public string CallingTopicName { get; set; } = string.Empty;
-        public string SubTopicName { get; set; } = string.Empty;
-        public DateTime StartTime { get; set; }
-    }
+    private readonly Dictionary<string, PendingSubTopic> _pendingSubTopics = new();
 
     // Outbound events → HybridChatService
     public event EventHandler<ActivityMessageEventArgs>? ActivityMessageReady;
@@ -60,6 +41,8 @@ public class InsuranceAgentService {
     public event EventHandler<ConversationResetEventArgs>? ConversationReset;
     public event EventHandler<PromptInputStateChangedEventArgs>? PromptInputStateChanged;
     public event EventHandler<CustomEventTriggeredEventArgs>? CustomEventTriggered;
+    public event EventHandler<AsyncQueryCompletedEventArgs>? AsyncActivityCompleted;
+    public event EventHandler<CardStateChangedEventArgs>? CardStateChanged;
 
     public InsuranceAgentService(
         TopicRegistry topicRegistry,
@@ -72,39 +55,33 @@ public class InsuranceAgentService {
         _logger = logger;
     }
 
+    #region Domain Agent Plumbing
     public async Task ProcessUserMessageAsync(string userMessage, CancellationToken ct = default) {
         var (topic, confidence) = await _topicRegistry.FindBestTopicAsync(userMessage, _context, ct);
 
         #region 🔧 Fallback topic setup
-        // Resolve fallback once for all branches
         var fallbackTopic = _topicRegistry.GetTopic("FallbackTopic") as TopicFlow;
 
-        // If neither a topic match nor a fallback exist → cannot continue
         if (topic == null) {
             if (fallbackTopic == null) {
-                _logger.LogWarning("[InsuranceAgentService] FallbackTopic not found in registry.");
+                LogWarn("0010001");
                 MatchingTopicNotFound?.Invoke(this, new MatchingTopicNotFoundEventArgs(userMessage));
                 return;
             }
 
-            // ✅ Fallback topic is available → inject user message
             fallbackTopic.Context.SetValue("Fallback_UserPrompt", userMessage);
-            _logger.LogInformation("[InsuranceAgentService] Injected Fallback_UserPrompt into FallbackTopic.");
+            LogInfo("0010002");
 
-            // Determine if the current flow is paused
             if (_activeTopic is TopicFlow activeFlow &&
                 activeFlow.GetCurrentActivity() is IPausableActivity waitingActivity &&
                 waitingActivity.IsPaused) {
                 var currentAct = waitingActivity as TopicFlowActivity;
-                _logger.LogInformation("[InsuranceAgentService] Detected paused activity {ActivityId}. Routing message to FallbackTopic.",
-                    currentAct?.Id ?? "(unknown)");
+                LogInfo("0010003");
 
-                // Temporarily suspend current flow
                 _pausedTopics.Push(activeFlow);
                 UnhookTopicEvents(activeFlow);
             }
 
-            // Always switch active topic to fallback
             _activeTopic = fallbackTopic;
             HookTopicEvents(fallbackTopic);
 
@@ -115,7 +92,7 @@ public class InsuranceAgentService {
 
         #region 🚀 Matched topic logic
         if (topic is not TopicFlow flow) {
-            _logger.LogWarning("Resolved topic is not a TopicFlow: {Type}", topic.GetType().Name);
+            LogWarn("0010004", topic.GetType().Name);
             return;
         }
 
@@ -125,518 +102,87 @@ public class InsuranceAgentService {
         _activeTopic = flow;
         HookTopicEvents(flow);
 
-        _logger.LogInformation("Activated topic {TopicName} (confidence {Confidence:P2})", flow.Name, confidence);
+        LogInfo("0010005", flow.Name, confidence);
         await flow.RunAsync(ct);
         #endregion
     }
 
-
-    public async Task HandleCardSubmitAsync(Dictionary<string, object> data, CancellationToken ct) {
-        if (_activeTopic is TopicFlow flow) {
-            var current = flow.GetCurrentActivity();
-
-            if (current is IAdaptiveCardActivity cardAct) {
-                _logger.LogInformation("[InsuranceAgentService] Delivering card input to {ActivityId}", current.Id);
-                cardAct.OnInputCollected(new AdaptiveCardInputCollectedEventArgs(data));
-
-                // Instead of ResumeAsync, just advance the queue
-                await flow.StepAsync(null, ct);
-            }
-            else {
-                _logger.LogWarning("[InsuranceAgentService] Current activity {ActivityId} is not adaptive-card-capable", current?.Id);
-                RaiseMessage("⚠️ This step cannot accept card input.");
-            }
-        }
-        else {
-            RaiseMessage("⚠️ Unable to resume workflow (no active topic).");
-        }
-    }
-
-    /// <summary>
-    /// Handles completion of the FallbackTopic, resuming any paused activity.
-    /// </summary>
-    private async Task HandleFallbackCompletion(TopicFlow fallbackTopic, TopicResult result) {
-        if (_pausedTopics.Count == 0) {
-            _logger.LogInformation("[InsuranceAgentService] FallbackTopic completed but no paused topics to resume.");
-            return;
-        }
-
-        var callingTopic = _pausedTopics.Pop();
-        _logger.LogInformation("[InsuranceAgentService] Resuming paused topic '{Topic}' after fallback answer.", callingTopic.Name);
-
-        // Unhook fallback and rehook the main topic
-        UnhookTopicEvents(fallbackTopic);
-        _activeTopic = callingTopic;
-        HookTopicEvents(callingTopic);
-
-        // ✅ NEW: Reactivate the previously active card before resuming
-        var previousCard = _context.GetValue<string>(ActiveCardKey);
-        if (!string.IsNullOrEmpty(previousCard)) {
-            _logger.LogInformation("[InsuranceAgentService] Reactivating card {CardId} after fallback completion", previousCard);
-            OnCardStateChanged(previousCard, CardState.Active);
-        }
-
-        try {
-            // Resume last paused activity (e.g., AdaptiveCard)
-            var current = callingTopic.GetCurrentActivity() as IPausableActivity;
-            if (current != null) {
-                await current.ResumeAsync("FallbackTopic completed", CancellationToken.None);
-            }
-            else {
-                _logger.LogInformation("[InsuranceAgentService] No pausable activity found, resuming topic normally.");
-                await callingTopic.ResumeAsync("FallbackTopic completed", CancellationToken.None);
-            }
-        } catch (Exception ex) {
-            _logger.LogError(ex, "[InsuranceAgentService] Error resuming topic '{TopicName}' after fallback.", callingTopic.Name);
-        }
-    }
-
-
-    // =====================================
-    //  HOOK EVENTS
-    // =====================================
-    private void HookTopicEvents(TopicFlow flow) {
-        // --- Topic-level ---
-        flow.TopicLifecycleChanged += HandleTopicLifecycleChanged;
-        flow.TopicLifecycleChanged += OnTopicLifecycleChanged; // completion tracking
-        flow.ActivityCreated += OnActivityCreated;
-        flow.ActivityCompleted += HandleActivityCompleted;
-        flow.TopicInserted += HandleTopicInserted;
-
-        // --- Topic-level triggers ---
-        if (flow is ITopicTriggeredActivity topicTrigger) {
-            Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] Subscribing to TopicTriggered for topic '{flow.Name}'");
-            topicTrigger.TopicTriggered += OnTopicTriggered;
-        }
-
-        // --- Activity-level ---
-        foreach (var act in flow.GetAllActivities()) {
-            act.ActivityLifecycleChanged += HandleActivityLifecycleChanged;
-            act.MessageEmitted += HandleMessageEmitted;
-
-            // Adaptive cards
-            if (act is IAdaptiveCardActivity cardAct) {
-                cardAct.CardJsonSent += HandleCardJsonSent;
-                cardAct.ValidationFailed += HandleValidationFailed;
-                cardAct.CardJsonEmitted += HandleCardJsonEmitted;
-                cardAct.CardJsonSending += HandleCardJsonSending;
-                cardAct.CardJsonRendered += HandleCardJsonRendered;
-                cardAct.CardDataReceived += HandleCardDataReceived;
-                cardAct.ModelBound += HandleModelBound;
-            }
-
-            // Topic-triggered
-            if (act is ITopicTriggeredActivity trigger)
-                trigger.TopicTriggered += OnTopicTriggered;
-
-            // Custom event-triggered
-            if (act is ICustomEventTriggeredActivity customTrigger)
-                customTrigger.CustomEventTriggered += OnCustomEventTriggered;
-
-            // Conditional containers
-            if (act is ConditionalActivity<TriggerTopicActivity> conditional) {
-                conditional.TopicTriggered += OnTopicTriggered;
-                conditional.CustomEventTriggered += OnCustomEventTriggered;
-            }
-
-            // Composite containers
-            if (act is CompositeActivity composite) {
-                composite.TopicTriggered += OnTopicTriggered;
-                composite.CustomEventTriggered += OnCustomEventTriggered;
-            }
-        }
-    }
-
-
-    // =====================================
-    //  UNHOOK EVENTS
-    // =====================================
-    private void UnhookTopicEvents(TopicFlow flow) {
-        if (flow == null)
-            return;
-
-        _logger.LogInformation("[InsuranceAgentService] Unhooking events for topic flow: {FlowName}", flow.Name);
-
-        // --- 🔹 Deactivate any card still marked active ---
-        var activeCard = _context.GetValue<string>(ActiveCardKey);
-        if (!string.IsNullOrEmpty(activeCard)) {
-            _logger.LogInformation("[InsuranceAgentService] Deactivating lingering active card {CardId} before unhook", activeCard);
-            OnCardStateChanged(activeCard, CardState.ReadOnly);
-            _wfContext.RemoveValue(ActiveCardKey);
-        }
-
-        // --- existing unhook logic follows ---
-        flow.TopicLifecycleChanged -= HandleTopicLifecycleChanged;
-        flow.TopicLifecycleChanged -= OnTopicLifecycleChanged;
-        flow.ActivityCreated -= OnActivityCreated;
-        flow.ActivityCompleted -= HandleActivityCompleted;
-        flow.TopicInserted -= HandleTopicInserted;
-
-        if (flow is ITopicTriggeredActivity topicTrigger)
-            topicTrigger.TopicTriggered -= OnTopicTriggered;
-
-        foreach (var act in flow.GetAllActivities()) {
-            if (act is IAdaptiveCardActivity cardAct) {
-                cardAct.CardJsonSent -= HandleCardJsonSent;
-                cardAct.ValidationFailed -= HandleValidationFailed;
-                cardAct.CardJsonEmitted -= HandleCardJsonEmitted;
-                cardAct.CardJsonSending -= HandleCardJsonSending;
-                cardAct.CardJsonRendered -= HandleCardJsonRendered;
-                cardAct.CardDataReceived -= HandleCardDataReceived;
-                cardAct.ModelBound -= HandleModelBound;
-            }
-
-            if (act is ITopicTriggeredActivity trigger)
-                trigger.TopicTriggered -= OnTopicTriggered;
-
-            if (act is ICustomEventTriggeredActivity customTrigger)
-                customTrigger.CustomEventTriggered -= OnCustomEventTriggered;
-
-            if (act is ConditionalActivity<TriggerTopicActivity> conditional) {
-                conditional.TopicTriggered -= OnTopicTriggered;
-                conditional.CustomEventTriggered -= OnCustomEventTriggered;
-            }
-
-            if (act is CompositeActivity composite) {
-                composite.TopicTriggered -= OnTopicTriggered;
-                composite.CustomEventTriggered -= OnCustomEventTriggered;
-            }
-        }
-
-        // Reset state trackers
-        _activeCardId = null;
-
-        _logger.LogInformation("[InsuranceAgentService] ✅ Unhooked topic and activity events for {FlowName}", flow.Name);
-    }
-
-
-
-    // =====================================
-    //  HANDLERS
-    // =====================================
-    private async void HandleTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) {
-        _logger.LogInformation("[InsuranceAgentService] TopicLifecycleChanged: {Topic} -> {State}", e.TopicName, e.State);
-
-        // ───────────────────────────────────────────────
-        // 🧭 Always propagate lifecycle changes upward
-        // ───────────────────────────────────────────────
-        TopicLifecycleChanged?.Invoke(this, e);
-
-        // ───────────────────────────────────────────────
-        // 🧩 Handle sub-topic completion → resume parent
-        // ───────────────────────────────────────────────
-        if (e.State == TopicLifecycleState.Completed) {
-            if (_pausedTopics.Count == 0) {
-                _logger.LogDebug("[InsuranceAgentService] Topic '{Topic}' completed, but no paused topics remain.", e.TopicName);
-                return;
-            }
-
-            try {
-                // 🪜 Pop the parent topic (LIFO order)
-                var parentTopic = _pausedTopics.Pop();
-                var completedTopic = sender ?? _activeTopic;
-
-                _logger.LogInformation(
-                    "[InsuranceAgentService] 🧩 Resuming parent topic '{Parent}' after sub-topic '{Completed}' completed.",
-                    parentTopic.Name, e.TopicName);
-
-                // 🧭 Update the active topic reference immediately
-                var previousTopic = _activeTopic;
-                _activeTopic = parentTopic;
-
-                _logger.LogInformation(
-                    "[InsuranceAgentService] 🔄 Active topic updated: {Old} → {New}",
-                    previousTopic?.Name ?? "(null)", parentTopic.Name);
-
-                // ♻️ Re-hook lifecycle + activity events to restore flow monitoring
-                HookTopicEvents(parentTopic);
-
-                // ✅ Restore parent's saved card state if applicable
-                var savedCardId = _context.GetValue<string>($"{parentTopic.Name}_SavedCardId");
-                if (!string.IsNullOrEmpty(savedCardId)) {
-                    _context.SetValue(ActiveCardKey, savedCardId);
-                    _logger.LogInformation(
-                        "[InsuranceAgentService] Restored parent card '{CardId}' after sub-topic '{Completed}' completion.",
-                        savedCardId, e.TopicName);
-
-                    OnCardStateChanged(savedCardId, CardState.Active);
-                }
-                else {
-                    _logger.LogInformation(
-                        "[InsuranceAgentService] No saved card state found for parent topic '{Parent}'.",
-                        parentTopic.Name);
-                }
-
-                // 🧠 Ensure the parent’s internal flow is in sync
-                if (parentTopic is TopicFlow parentFlow) {
-                    _logger.LogDebug(
-                        "[InsuranceAgentService] Parent flow context restored → CurrentActivity='{Activity}' | State='{State}'",
-                        parentFlow.GetCurrentActivity()?.Id ?? "(none)",
-                        parentFlow.State);
-                }
-                else {
-                    _logger.LogWarning(
-                        "[InsuranceAgentService] Parent topic '{Parent}' has no TopicFlow instance.",
-                        parentTopic.Name);
-                }
-
-                // 🚀 Resume the parent topic’s execution loop
-                try {
-                    _logger.LogInformation(
-                        "[InsuranceAgentService] ▶ Resuming execution of parent topic '{Parent}'...",
-                        parentTopic.Name);
-
-                    await parentTopic.RunAsync();
-
-                    _logger.LogInformation(
-                        "[InsuranceAgentService] ✅ Parent topic '{Parent}' successfully resumed execution.",
-                        parentTopic.Name);
-                } catch (Exception resumeEx) {
-                    _logger.LogError(
-                        resumeEx,
-                        "[InsuranceAgentService] ❌ Exception while resuming parent topic '{Parent}'.",
-                        parentTopic.Name);
-                }
-
-                _logger.LogInformation(
-                    "[InsuranceAgentService] 🌿 Resume sequence completed for parent topic '{Parent}'.",
-                    parentTopic.Name);
-            } catch (Exception ex) {
-                _logger.LogError(
-                    ex,
-                    "[InsuranceAgentService] ❌ Unexpected error while resuming paused topic after sub-topic completion.");
-            }
-        }
-    }
-
-
-    private void HandleActivityCompleted(object? sender, ActivityCompletedEventArgs e) {
-        _logger.LogInformation("[InsuranceAgentService] ActivityCompleted -> {ActivityId}", e.ActivityId);
-        ActivityCompleted?.Invoke(this, e);
-    }
-
-    private void HandleTopicInserted(object? sender, TopicInsertedEventArgs e)
-        => TopicInserted?.Invoke(this, e);
-
-    private void HandleActivityLifecycleChanged(object? sender, ActivityLifecycleEventArgs e) {
-        _logger.LogInformation("[InsuranceAgentService] ActivityLifecycleChanged: {ActivityId} -> {State} | Data={Data}",
-            e.ActivityId, e.State, e.Data);
-        ActivityLifecycleChanged?.Invoke(this, e);
-    }
-
-    private void HandleMessageEmitted(object? sender, MessageEmittedEventArgs e) {
-        _logger.LogInformation("[InsuranceAgentService] MessageEmitted from {ActivityId}: {Message}", e.ActivityId, e.Message);
-        ActivityMessageReady?.Invoke(this, new ActivityMessageEventArgs(
-            new ChatMessage {
-                Content = e.Message,
-                IsFromUser = false,
-                Timestamp = DateTime.Now
-            }));
-    }
-
-
-    // --- Adaptive Card handlers ---
-    private void HandleCardJsonSent(object? sender, CardJsonEventArgs e) {
-        _logger.LogInformation("[InsuranceAgentService] CardJsonSent {CardId} (IsRequired={IsRequired})", e.CardId, e.IsRequired);
-
-        // ───────────────────────────────────────────────
-        // 🧩 Preserve parent card before overwrite
-        // ───────────────────────────────────────────────
-        try {
-            // If there is a paused topic (meaning we just entered a sub-topic),
-            // we save the currently active card ID under that parent’s context key
-            if (_pausedTopics.Count > 0) {
-                var parentTopic = _pausedTopics.Peek();
-                var currentActiveCard = _context.GetValue<string>(ActiveCardKey);
-
-                if (!string.IsNullOrEmpty(currentActiveCard) && currentActiveCard != e.CardId) {
-                    _context.SetValue($"{parentTopic.Name}_SavedCardId", currentActiveCard);
-                    _logger.LogInformation(
-                        "[InsuranceAgentService] Preserved parent card {CardId} under paused topic '{TopicName}'",
-                        currentActiveCard, parentTopic.Name);
-                }
-            }
-        } catch (Exception ex) {
-            _logger.LogError(ex, "[InsuranceAgentService] Error while preserving parent card before new card activation");
-        }
-
-        // ───────────────────────────────────────────────
-        // 🔻 Deactivate previous card
-        // ───────────────────────────────────────────────
-        var previousCard = _context.GetValue<string>(ActiveCardKey);
-        if (!string.IsNullOrEmpty(previousCard) && previousCard != e.CardId) {
-            _logger.LogInformation("[InsuranceAgentService] Deactivating previous card {CardId}", previousCard);
-            OnCardStateChanged(previousCard, CardState.ReadOnly);
-        }
-
-        // ───────────────────────────────────────────────
-        // 🔺 Activate this new card
-        // ───────────────────────────────────────────────
-        _context.SetValue(ActiveCardKey, e.CardId);
-        _context.SetValue($"{e.CardId}_IsRequired", e.IsRequired); // Track required flag
-
-        OnCardStateChanged(e.CardId, CardState.Active);
-
-        // ───────────────────────────────────────────────
-        // 📤 Forward to UI (include IsRequired)
-        // ───────────────────────────────────────────────
-
-        _logger.LogInformation($"[InsuranceAgentService] right before triggering ActivityAdaptiveCardReady for {e.CardId}");
-        ActivityAdaptiveCardReady?.Invoke(this,
-            new ActivityAdaptiveCardEventArgs(
-                e.CardJson ?? "{}",
-                e.CardId,
-                e.RenderMode,
-                e.IsRequired));
-
-        // ───────────────────────────────────────────────
-        // 🧱 Handle prompt enable/disable for required cards
-        // ───────────────────────────────────────────────
-        try {
-            if (e.IsRequired) {
-                _logger.LogInformation("[InsuranceAgentService] Disabling user prompt — card {CardId} is required.", e.CardId);
-                PromptInputStateChanged?.Invoke(this, new PromptInputStateChangedEventArgs(false, e.CardId));
-            }
-            else {
-                _logger.LogInformation("[InsuranceAgentService] Enabling user prompt — card {CardId} is not required.", e.CardId);
-                PromptInputStateChanged?.Invoke(this, new PromptInputStateChangedEventArgs(true, e.CardId));
-            }
-        } catch (Exception ex) {
-            _logger.LogError(ex, "[InsuranceAgentService] Error toggling prompt state for card {CardId}", e.CardId);
-        }
-    }
-
-    private void HandleValidationFailed(object? sender, ValidationFailedEventArgs e) {
-        _logger.LogWarning("[InsuranceAgentService] ValidationFailed: {Error}", e.Exception?.Message);
-
-        if (!string.IsNullOrEmpty(_activeCardId))
-            OnCardStateChanged(_activeCardId, CardState.Active);
-    }
-
-    // Internal tracing hooks
-    private void HandleCardJsonEmitted(object? s, EventArgs e) => _logger.LogDebug("CardJsonEmitted (internal)");
-    private void HandleCardJsonSending(object? s, EventArgs e) => _logger.LogDebug("CardJsonSending (internal)");
-    private void HandleCardJsonRendered(object? s, EventArgs e) => _logger.LogDebug("CardJsonRendered (client ack)");
-    private void HandleCardDataReceived(object? s, EventArgs e) => _logger.LogDebug("CardDataReceived (internal)");
-    private void HandleModelBound(object? s, EventArgs e) => _logger.LogDebug("ModelBound (internal)");
-
-    private void OnActivityCreated(object? sender, ActivityCreatedEventArgs e) {
-        _logger.LogInformation("[InsuranceAgentService] ActivityCreated -> {PayloadType}: {Content}",
-            e.Content?.GetType().Name, e.Content);
-
-        switch (e.Content) {
-            default:
-                _logger.LogDebug("Unhandled activity payload type {Type}", e.Content?.GetType().Name);
-                break;
-        }
-    }
-
-    private void RaiseMessage(string content) {
-        ActivityMessageReady?.Invoke(this,
-            new ActivityMessageEventArgs(new ChatMessage {
-                Content = content,
-                IsFromUser = false,
-                Timestamp = DateTime.Now
-            }));
-    }
-
-    /// <summary>
-    /// Adds domain-specific activities to the ConversationStartTopic.
-    /// This ensures proper separation of concerns between system and domain activities.
-    /// </summary>
-    /// <param name="flow">The ConversationStartTopic flow instance</param>
     private void AddDomainActivitiesToStartTopic(TopicFlow flow) {
-        _logger.LogInformation("[InsuranceAgentService] Adding domain-specific activities to ConversationStartTopic");
+        LogInfo("0010006");
 
-        // 👋 Add greeting first
         flow.Add(new GreetingActivity("Greet"));
 
-        // Add compliance trigger
         flow.Add(new TriggerTopicActivity(ActivityId_CollectCompliance, "ComplianceTopic", _logger, waitForCompletion: true));
 
-        // Add a simple activity to process the compliance data before continuing
-        flow.Add(new SimpleActivity(ActivityId_ProcessComplianceData, (ctx, input) => {
+        flow.Add(new SimpleActivity(ActivityId_ProcessComplianceData, (ctx, input) =>
+        {
             _logger.LogInformation("[InsuranceAgentService] Processing compliance data before decision tree");
-            // No additional processing needed, just act as a buffer between topic completion and decision tree
             return Task.FromResult<object?>(null);
         }));
 
-        // Add the complex compliance flowchart
         flow.AddRange(ComplianceFlowActivities() ?? new List<TopicFlowActivity>());
 
-        _logger.LogInformation("[InsuranceAgentService] Domain-specific activities added to ConversationStartTopic");
+        LogInfo("0010007");
     }
 
-
     public async Task StartConversationAsync(ChatSessionState sessionState, CancellationToken ct = default) {
-        // Clear any previous execution state
         _pausedTopics.Clear();
 
         var topic = _topicRegistry.GetTopic("ConversationStart");
 
         if (topic == null) {
-            _logger.LogWarning("ConversationStartTopic not found in registry.");
+            LogWarn("0010008");
             return;
         }
 
         if (topic is TopicFlow flow) {
-            // Make sure we're not duplicating activities
-            // Remove existing activities with the same IDs to be safe
             flow.RemoveActivity(ActivityId_CollectCompliance);
             flow.RemoveActivity("ProcessComplianceData");
             flow.RemoveActivity("TCPAConsentSwitch");
 
-            // Now use the extracted method to add domain-specific activities
             AddDomainActivitiesToStartTopic(flow);
 
-            // Unhook events from previous topic before switching
-            if (_activeTopic is TopicFlow currentActiveTopic) {
+            if (_activeTopic is TopicFlow currentActiveTopic)
                 UnhookTopicEvents(currentActiveTopic);
-            }
 
             _activeTopic = flow;
             HookTopicEvents(flow);
 
-            _logger.LogInformation("ConversationStartTopic activated");
+            LogInfo("0010009");
             await flow.RunAsync(ct);
         }
         else {
-            _logger.LogWarning("ConversationStartTopic is not a TopicFlow: {Type}", topic.GetType().Name);
+            LogWarn("0010004", topic.GetType().Name);
         }
     }
 
     public async Task ResetConversationAsync(CancellationToken ct = default) {
-        _logger.LogInformation("[InsuranceAgentService] Resetting conversation...");
+        LogInfo("0010010");
 
-        // Clear all runtime collections
         _pausedTopics.Clear();
         _pendingSubTopics.Clear();
 
-        // Unhook any active topic events
         if (_activeTopic is TopicFlow currentTopic) {
             UnhookTopicEvents(currentTopic);
-            _logger.LogInformation("[InsuranceAgentService] Unhooked topic events from {TopicName}", currentTopic.Name);
+            LogInfo("0010011", currentTopic.Name);
         }
 
         _activeTopic = null;
 
-        // Reset all contexts
         _context.Reset();
         _wfContext.Clear();
 
-        _logger.LogInformation("[InsuranceAgentService] all context entries were purged");
+        LogInfo("0010012");
 
-        // --- Reset all topics to a clean state ---
         foreach (var topic in _topicRegistry.GetAllTopics()) {
             if (topic is TopicFlow tf) {
-                _logger.LogInformation("[InsuranceAgentService] Resetting topic: {TopicName}", tf.Name);
+                LogInfo("0010013", tf.Name);
                 tf.Reset();
             }
         }
 
-        // --- Reset ConversationStartTopic and compliance flags ---
         if (_topicRegistry.GetTopic("ConversationStart") is TopicFlow conversationStartTopic) {
-            _logger.LogInformation("[InsuranceAgentService] Resetting ConversationStartTopic runtime flags");
+            LogInfo("0010014");
 
             conversationStartTopic.Context.SetValue("ConversationStartTopic.HasRun", false);
             _context.SetValue("ConversationStartTopic.HasRun", false);
@@ -645,10 +191,8 @@ public class InsuranceAgentService {
             _context.SetValue("Global_TopicHistory", new List<string>());
             _context.SetValue("Global_UserInteractionCount", 0);
 
-            // Force the FSM to idle
             ForceTopicStateMachineToIdle(conversationStartTopic, "ConversationStartTopic");
 
-            // --- Also reset ComplianceTopic for a clean restart ---
             if (_topicRegistry.GetTopic("ComplianceTopic") is TopicFlow complianceTopic) {
                 ForceTopicStateMachineToIdle(complianceTopic, "ComplianceTopic");
 
@@ -662,20 +206,17 @@ public class InsuranceAgentService {
                 _context.SetValue("tcpa_consent", false);
                 _context.SetValue("ccpa_acknowledgment", false);
 
-                _logger.LogInformation("[InsuranceAgentService] ComplianceTopic data and flags cleared");
+                LogInfo("0010015");
             }
         }
 
-        _logger.LogInformation("[InsuranceAgentService] ✅ All topics and contexts fully reset");
+        LogInfo("0010016");
 
-        // Fire event for the UI to clear chat content
         ConversationReset?.Invoke(this, new ConversationResetEventArgs());
 
-        // Small delay to allow the UI to visually reset
         await Task.Delay(150, ct);
 
-        // Restart cleanly
-        _logger.LogInformation("[InsuranceAgentService] Restarting conversation after reset...");
+        LogInfo("0010017");
         await StartConversationAsync(new ChatSessionState(), ct);
     }
 
@@ -686,28 +227,578 @@ public class InsuranceAgentService {
         if (fsmField?.GetValue(topic) is ITopicStateMachine<TopicFlow.FlowState> fsm) {
             fsm.ForceState(TopicFlow.FlowState.Idle, $"Forced reset to Idle in {name}");
             fsm.ClearTransitionHistory();
-            _logger.LogInformation("[InsuranceAgentService] {Name} FSM forced to Idle", name);
+            LogInfo("0010018", name);
         }
         else {
-            _logger.LogWarning("[InsuranceAgentService] Could not access FSM for {Name}", name);
+            LogWarn("0010019", name);
         }
     }
 
-    /// <summary>
-    /// Handles the completion of a sub-topic and resumes the calling topic.
-    /// </summary>
-    private async Task HandleSubTopicCompletion(TopicFlow completedSubTopic, TopicResult subTopicResult) {
+    private class PendingSubTopic {
+        public TopicFlow CallingTopic { get; set; } = null!; 
+        public TopicFlow SubTopic { get; set; } = null!; 
+        public string CallingTopicName { get; set; } = string.Empty; 
+        public string SubTopicName { get; set; } = string.Empty; 
+        public DateTime StartTime { get; set; }
+    }
+
+    #endregion
+
+    #region Insurance Domain Activities
+
+    private TopicFlowActivity ToMarketingT1Topic(string id = "ToMarketingT1") {
+        LogInfo("MT1_0001"); // ToMarketingT1Topic invoked
+
+        return new TriggerTopicActivity(
+            id,
+            "MarketingT1Topic",
+            _logger,
+            waitForCompletion: false,
+            conversationContext: _context
+        );
+    }
+
+    private TopicFlowActivity ToMarketingT2Topic(string id = "ToMarketingT2") {
+        LogInfo("MT2_0001"); // ToMarketingT2Topic invoked
+
+        return new TriggerTopicActivity(
+            id,
+            "MarketingT2Topic",
+            _logger,
+            waitForCompletion: false,
+            conversationContext: _context
+        );
+    }
+
+    private TopicFlowActivity AskCaliforniaResidency(string id, TopicWorkflowContext context) {
+        LogInfo("ACR_0001"); // Constructing card activity
+
+        var cardActivity = new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
+            id,
+            context,
+            cardFactory: card => {
+                LogInfo("ACR_0002"); // Card factory invoked
+
+                var result = card.Create(
+                    isResident: true,
+                    zip_code: context.GetValue<string>("zip_code"),
+                    ccpa_acknowledgment: context.GetValue<string?>("ccpa_acknoledgement")
+                );
+
+                if (result is AdaptiveCardModel model) {
+                    LogInfo("ACR_0003"); // Card created successfully
+                }
+                else {
+                    LogWarn("ACR_0004"); // Unexpected type returned
+                }
+
+                return result;
+            });
+
+        LogInfo("ACR_0005"); // Returning AdaptiveCardActivity
+        return cardActivity;
+    }
+
+    private List<TopicFlowActivity>? ComplianceFlowActivities() {
+
+        return new List<TopicFlowActivity> {
+
+        // -------------------------------------------------------
+        // TCPA = YES
+        // -------------------------------------------------------
+        IfCase("TCPA_YES_BRANCH", ctx =>
+            IsYes(ctx, "tcpa_consent"),
+
+            ConditionalActivity<TopicFlowActivity>.If(
+                "HAS_CA_INFO_YES_TCPA",
+                c => IsYes(c, "is_california_resident"),
+
+                // California Resident
+                (id, c) => new CompositeActivity("ASK_CCPA_YES_CA", new List<TopicFlowActivity> {
+
+                    AskCaliforniaResidency("CA_CARD_YES_CA", c),
+
+                    ConditionalActivity<TopicFlowActivity>.If(
+                        "HAS_CCPA_ACK",
+                        cc => IsYes(cc, "ccpa_acknowledgment"),
+
+                        (id2, cc) => ToMarketingT1Topic("AFTER_CCPA_YES"),
+                        (id2, cc) => ToMarketingT2Topic("AFTER_CCPA_NO")
+                    )
+                }),
+
+                // Not California
+                (id, c) => ToMarketingT1Topic("NON_CA_TCPA_YES")
+            )
+        ),
+
+        // -------------------------------------------------------
+        // TCPA = NO
+        // -------------------------------------------------------
+        IfCase("TCPA_NO", ctx =>
+            IsNo(ctx, "tcpa_consent"),
+            new TriggerTopicActivity(
+                "TO_MARKETING_T3_AFTER_TCPA_NO",
+                "MarketingT3Topic",
+                _logger,
+                waitForCompletion: false,
+                conversationContext: _context
+            )
+        )
+    };
+    }
+
+    #endregion
+
+    #region Event Triggers
+
+    private void OnActivityCreated(object? sender, ActivityCreatedEventArgs e) {
+        LogInfo("EVT_AC_0001"); // Activity created
+
+        switch (e.Content) {
+            default:
+                LogTrace("EVT_AC_0002"); // Unhandled payload
+                break;
+        }
+    }
+
+    private async void OnTopicTriggered(object? sender, TopicTriggeredEventArgs e) {
+
+        var senderType = sender?.GetType().Name ?? "Unknown";
+        var senderId = sender is TopicFlowActivity activity
+            ? activity.Id
+            : (sender as TopicFlow)?.Name ?? "Unknown";
+
+        LogInfo("EVT_TT_0001"); // TopicTriggered received
+
+        // Console debug left intact
+        Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] *** EVENT RECEIVED ***");
+        Console.WriteLine($"TopicTriggered event received from sender '{senderId}' ({senderType}) for topic '{e.TopicName}'");
+        Console.WriteLine($"OriginActivityId: {e.OriginActivityId ?? "(null)"}, BranchPath: {e.BranchPath ?? "(none)"}");
+        Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] *** SENDER DETAILS *** Sender type: {sender?.GetType().FullName}, Is TopicFlow: {sender is TopicFlow}, Is Activity: {sender is TopicFlowActivity}");
+
+        // Unsupported sender type
+        if (sender is not ITopicTriggeredActivity trigger) {
+            LogWarn("EVT_TT_0002"); // Unsupported sender
+            return;
+        }
+
+        var waitForCompletion = trigger.WaitForCompletion;
+        LogInfo("EVT_TT_0003"); // Trigger metadata
+
+        var nextTopic = _topicRegistry.GetTopic(e.TopicName);
+
+        if (nextTopic is TopicFlow nextFlow) {
+
+            // Prevent duplicate activation
+            if (_activeTopic != null && _activeTopic.Name == e.TopicName) {
+                LogWarn("EVT_TT_0004");
+                return;
+            }
+
+            // ==============================
+            // WAIT-FOR-COMPLETION
+            // ==============================
+            if (waitForCompletion) {
+
+                if (_activeTopic is TopicFlow currentFlow) {
+
+                    LogInfo("EVT_TT_0005"); // Pausing parent
+
+                    // Save active card
+                    var parentCard = _context.GetValue<string>(ActiveCardKey);
+                    if (!string.IsNullOrEmpty(parentCard)) {
+                        _wfContext.SetValue($"{currentFlow.Name}_SavedCardId", parentCard);
+                        LogInfo("EVT_TT_0006"); // Saved parent card
+                    }
+
+                    // Pause parent
+                    _pausedTopics.Push(currentFlow);
+                    UnhookTopicEvents(currentFlow);
+
+                    // Hook sub-topic events
+                    LogInfo("EVT_TT_0007");
+                    HookTopicEvents(nextFlow);
+
+                    // Register sub-topic
+                    if (!_pendingSubTopics.ContainsKey(nextFlow.Name)) {
+                        _pendingSubTopics[nextFlow.Name] = new PendingSubTopic {
+                            SubTopic = nextFlow,
+                            SubTopicName = nextFlow.Name,
+                            CallingTopicName = currentFlow.Name,
+                            StartTime = DateTime.UtcNow
+                        };
+                    }
+
+                    LogInfo("EVT_TT_0008");
+                }
+            }
+            else {
+                // Legacy mode
+                LogWarn("EVT_TT_0009");
+
+                if (_activeTopic is TopicFlow currentFlow) {
+                    if (_pausedTopics.Count > 0) {
+                        LogInfo("EVT_TT_0010");
+                        _pausedTopics.Clear();
+                    }
+                    UnhookTopicEvents(currentFlow);
+                }
+
+                HookTopicEvents(nextFlow);
+            }
+
+            // ========================================================
+            // swap active topic
+            // ========================================================
+            if (_activeTopic is TopicFlow currentActiveTopic)
+                UnhookTopicEvents(currentActiveTopic);
+
+            _activeTopic = nextFlow;
+            HookTopicEvents(nextFlow);
+
+            // If WaitForCompletion, register it
+            if (waitForCompletion) {
+                var callingTopic = _pausedTopics.Count > 0 ? _pausedTopics.Peek() : null;
+
+                if (callingTopic != null) {
+                    _pendingSubTopics[e.TopicName] = new PendingSubTopic {
+                        CallingTopic = callingTopic,
+                        SubTopic = nextFlow,
+                        CallingTopicName = callingTopic.Name,
+                        SubTopicName = e.TopicName,
+                        StartTime = DateTime.UtcNow
+                    };
+                    LogInfo("EVT_TT_0011");
+                }
+                else {
+                    LogWarn("EVT_TT_0012");
+                }
+            }
+
+            // ========================================================
+            // Run topic
+            // ========================================================
+            var result = await nextFlow.RunAsync();
+
+            LogInfo("EVT_TT_0013");
+
+            // Sub-topic completion handling
+            if (!waitForCompletion) {
+                LogInfo("EVT_TT_0014");
+
+                if (result.IsCompleted && !string.IsNullOrEmpty(result.NextTopicName))
+                    LogInfo("EVT_TT_0015");
+
+            }
+            else if (result.IsCompleted) {
+                LogInfo("EVT_TT_0016");
+                _pendingSubTopics.Remove(e.TopicName);
+                await HandleSubTopicCompletion(nextFlow, result);
+            }
+            else {
+                LogInfo("EVT_TT_0017");
+            }
+        }
+        else {
+            LogWarn("EVT_TT_0018"); // Topic not found
+        }
+    }
+
+    private async void OnCustomEventTriggered(object? sender, CustomEventTriggeredEventArgs e) {
+        LogInfo("EVT_CE_0001");
+
+        CustomEventTriggered?.Invoke(this, e);
+
+        if (e.WaitForResponse && sender is EventTriggerActivity triggerActivity) {
+            await Task.Delay(100);
+
+            var response = new {
+                success = true,
+                message = $"Event '{e.EventName}' processed successfully",
+                timestamp = DateTime.UtcNow,
+                processedBy = "InsuranceAgentService"
+            };
+
+            triggerActivity.HandleUIResponse(e.Context, response);
+        }
+    }
+
+    private async void OnTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) {
+        LogInfo("EVT_LF_0001");
+
+        try {
+
+            // Sub-topic completion via lifecycle
+            if (e.State == TopicLifecycleState.Completed &&
+                _pendingSubTopics.ContainsKey(e.TopicName)) {
+
+                if (_pausedTopics.Count == 0) {
+                    LogTrace("EVT_LF_0002");
+                    return;
+                }
+
+                var pending = _pendingSubTopics[e.TopicName];
+                _pendingSubTopics.Remove(e.TopicName);
+
+                LogInfo("EVT_LF_0003");
+
+                var result = TopicResult.CreateCompleted("Sub-topic completed", pending.SubTopic.Context);
+                await HandleSubTopicCompletion(pending.SubTopic, result);
+                return;
+            }
+
+            // Fallback topic completion
+            if (e.State == TopicLifecycleState.Completed && e.TopicName == "FallbackTopic") {
+                LogInfo("EVT_LF_0004");
+
+                var fallback = _topicRegistry.GetTopic("FallbackTopic") as TopicFlow;
+                if (fallback == null) {
+                    LogWarn("EVT_LF_0005");
+                    return;
+                }
+
+                var fallbackResult = TopicResult.CreateCompleted("Fallback completed", fallback.Context);
+                await HandleFallbackCompletion(fallback, fallbackResult);
+                return;
+            }
+
+            LogTrace("EVT_LF_0006");
+
+        } catch (Exception ex) {
+            LogError("EVT_LF_0007");
+        }
+    }
+
+    private void OnCardStateChanged(string cardId, CardState newState) {
+        LogInfo("EVT_CS_0001");
+        CardStateChanged?.Invoke(this, new CardStateChangedEventArgs(cardId, newState));
+    }
+
+    private void OnMessageReady(string content) {
+        ActivityMessageReady?.Invoke(this,
+            new ActivityMessageEventArgs(new ChatMessage {
+                Content = content,
+                IsFromUser = false,
+                Timestamp = DateTime.Now
+            }));
+    }
+
+    #endregion
+
+    #region Event Handlers
+
+    public async Task HandleCardSubmitAsync(Dictionary<string, object> data, CancellationToken ct) {
+        if (_activeTopic is TopicFlow flow) {
+            var current = flow.GetCurrentActivity();
+
+            if (current is IAdaptiveCardActivity cardAct) {
+
+                LogInfo("EVT_HC_0001"); // Deliver card input
+                cardAct.OnInputCollected(new AdaptiveCardInputCollectedEventArgs(data));
+
+                await flow.StepAsync(null, ct);
+            }
+            else {
+                LogWarn("EVT_HC_0002"); // Not adaptive card activity
+                OnMessageReady("⚠️ This step cannot accept card input.");
+            }
+        }
+        else {
+            OnMessageReady("⚠️ Unable to resume workflow (no active topic).");
+        }
+    }
+    private async Task HandleFallbackCompletion(TopicFlow fallbackTopic, TopicResult result) {
         if (_pausedTopics.Count == 0) {
-            _logger.LogWarning("[InsuranceAgentService] Sub-topic '{SubTopic}' completed but no paused topics to resume",
-                completedSubTopic.Name);
+            LogInfo("EVT_FB_0001");
             return;
         }
 
         var callingTopic = _pausedTopics.Pop();
-        _logger.LogInformation("[InsuranceAgentService] Sub-topic '{SubTopic}' completed, resuming '{CallingTopic}'",
-            completedSubTopic.Name, callingTopic.Name);
+        LogInfo("EVT_FB_0002");
 
-        // Set completion data in context for the calling topic to access
+        UnhookTopicEvents(fallbackTopic);
+        _activeTopic = callingTopic;
+        HookTopicEvents(callingTopic);
+
+        var previousCard = _context.GetValue<string>(ActiveCardKey);
+        if (!string.IsNullOrEmpty(previousCard)) {
+            LogInfo("EVT_FB_0003");
+            OnCardStateChanged(previousCard, CardState.Active);
+        }
+
+        try {
+            var current = callingTopic.GetCurrentActivity() as IPausableActivity;
+            if (current != null) {
+                await current.ResumeAsync("FallbackTopic completed", CancellationToken.None);
+            }
+            else {
+                LogInfo("EVT_FB_0004");
+                await callingTopic.ResumeAsync("FallbackTopic completed", CancellationToken.None);
+            }
+        } catch (Exception ex) {
+            LogError("EVT_FB_0004", ex);
+        }
+    }
+    private void HandleAsyncActivityCompleted(object? sender, AsyncQueryCompletedEventArgs e) {
+
+        LogInfo("EVT_AS_0001");
+
+        if (e.Activity == null) {
+            LogInfo("EVT_AS_0002");
+            AsyncActivityCompleted?.Invoke(this, e);
+            return;
+        }
+
+        var followup = e.Activity;
+
+        if (_activeTopic is not TopicFlow flow) {
+            LogWarn("EVT_AS_0003");
+            AsyncActivityCompleted?.Invoke(this, e);
+            return;
+        }
+
+        LogInfo("EVT_AS_0004");
+
+        HookActivityEvents(followup);
+        flow.InsertNext(followup);
+
+        AsyncActivityCompleted?.Invoke(this, e);
+    }
+    private async void HandleTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) {
+
+        LogInfo("EVT_TH_0001");
+
+        TopicLifecycleChanged?.Invoke(this, e);
+
+        if (e.State == TopicLifecycleState.Completed) {
+
+            if (_pausedTopics.Count == 0) {
+                LogTrace("EVT_TH_0002");
+                return;
+            }
+
+            try {
+                var parentTopic = _pausedTopics.Pop();
+
+                LogInfo("EVT_TH_0003");
+
+                var previousTopic = _activeTopic;
+                _activeTopic = parentTopic;
+
+                LogInfo("EVT_TH_0004");
+
+                HookTopicEvents(parentTopic);
+
+                var savedCardId = _context.GetValue<string>($"{parentTopic.Name}_SavedCardId");
+                if (!string.IsNullOrEmpty(savedCardId)) {
+                    LogInfo("EVT_TH_0005");
+                    _context.SetValue(ActiveCardKey, savedCardId);
+                    OnCardStateChanged(savedCardId, CardState.Active);
+                }
+                else {
+                    LogInfo("EVT_TH_0006");
+                }
+
+                if (parentTopic is TopicFlow parentFlow) {
+                    LogTrace("EVT_TH_0007");
+                }
+
+                LogInfo("EVT_TH_0008");
+                await parentTopic.RunAsync();
+
+                LogInfo("EVT_TH_0009");
+            } catch (Exception ex) {
+                LogError("EVT_TH_0010", ex);
+            }
+        }
+    }
+    private void HandleActivityCompleted(object? sender, ActivityCompletedEventArgs e) {
+        LogInfo("EVT_ACM_0001");
+        ActivityCompleted?.Invoke(this, e);
+    }
+    private void HandleTopicInserted(object? sender, TopicInsertedEventArgs e)
+        => TopicInserted?.Invoke(this, e);
+    private void HandleActivityLifecycleChanged(object? sender, ActivityLifecycleEventArgs e) {
+        LogInfo("EVT_AL_0001");
+        ActivityLifecycleChanged?.Invoke(this, e);
+    }
+    private void HandleMessageEmitted(object? sender, MessageEmittedEventArgs e) {
+        LogInfo("EVT_ME_0001");
+        ActivityMessageReady?.Invoke(this,
+            new ActivityMessageEventArgs(
+                new ChatMessage {
+                    Content = e.Message,
+                    IsFromUser = false,
+                    Timestamp = DateTime.Now
+                }));
+    }
+    private void HandleCardJsonSent(object? sender, CardJsonEventArgs e) {
+
+        LogInfo("EVT_CJS_0001");
+
+        try {
+            if (_pausedTopics.Count > 0) {
+                var parentTopic = _pausedTopics.Peek();
+                var currentActiveCard = _context.GetValue<string>(ActiveCardKey);
+
+                if (!string.IsNullOrEmpty(currentActiveCard) && currentActiveCard != e.CardId) {
+                    _context.SetValue($"{parentTopic.Name}_SavedCardId", currentActiveCard);
+                    LogInfo("EVT_CJS_0002");
+                }
+            }
+        } catch (Exception ex) {
+            LogError("EVT_CJS_0003", ex);
+        }
+
+        var previousCard = _context.GetValue<string>(ActiveCardKey);
+        if (!string.IsNullOrEmpty(previousCard) && previousCard != e.CardId) {
+            LogInfo("EVT_CJS_0004");
+            OnCardStateChanged(previousCard, CardState.ReadOnly);
+        }
+
+        LogInfo("EVT_CJS_0005");
+        _context.SetValue(ActiveCardKey, e.CardId);
+        _context.SetValue($"{e.CardId}_IsRequired", e.IsRequired);
+
+        OnCardStateChanged(e.CardId, CardState.Active);
+
+        LogInfo("EVT_CJS_0006");
+        ActivityAdaptiveCardReady?.Invoke(this,
+            new ActivityAdaptiveCardEventArgs(
+                e.CardJson ?? "{}",
+                e.CardId,
+                e.RenderMode,
+                e.IsRequired));
+
+        try {
+            if (e.IsRequired) {
+                LogInfo("EVT_CJS_0007");
+                PromptInputStateChanged?.Invoke(this, new PromptInputStateChangedEventArgs(false, e.CardId));
+            }
+            else {
+                LogInfo("EVT_CJS_0008");
+                PromptInputStateChanged?.Invoke(this, new PromptInputStateChangedEventArgs(true, e.CardId));
+            }
+        } catch (Exception ex) {
+            LogError("EVT_CJS_0009", ex);
+        }
+    }
+    private void HandleValidationFailed(object? sender, ValidationFailedEventArgs e) {
+        LogWarn("EVT_VF_0001");
+
+        if (!string.IsNullOrEmpty(_activeCardId))
+            OnCardStateChanged(_activeCardId, CardState.Active);
+    }
+    private async Task HandleSubTopicCompletion(TopicFlow completedSubTopic, TopicResult subTopicResult) {
+        if (_pausedTopics.Count == 0) {
+            LogWarn("EVT_ST_0001");
+            return;
+        }
+
+        var callingTopic = _pausedTopics.Pop();
+        LogInfo("EVT_ST_0002");
+
         var completionData = new Dictionary<string, object>();
         if (subTopicResult.wfContext != null) {
             foreach (var key in subTopicResult.wfContext.GetKeys()) {
@@ -721,332 +812,190 @@ public class InsuranceAgentService {
 
         var callInfo = _context.PopTopicCall(completionData);
         if (callInfo != null) {
+            LogInfo("EVT_ST_0003");
             _wfContext.SetValue("ResumeData", callInfo.ResumeData);
-            _logger.LogInformation("[InsuranceAgentService] Call info retrieved: {CallingTopic} -> {SubTopic}",
-                callInfo.CallingTopicName, callInfo.SubTopicName);
         }
 
-        // Unhook old topic and reattach to the one we’re resuming
-        if (_activeTopic is TopicFlow currentActiveTopic) {
+        if (_activeTopic is TopicFlow currentActiveTopic)
             UnhookTopicEvents(currentActiveTopic);
-        }
 
         _activeTopic = callingTopic;
         HookTopicEvents(callingTopic);
 
-        // ✅ NEW: Reactivate previous card before resuming
         var previousCard = _context.GetValue<string>(ActiveCardKey);
         if (!string.IsNullOrEmpty(previousCard)) {
-            _logger.LogInformation("[InsuranceAgentService] Reactivating card {CardId} after sub-topic completion", previousCard);
+            LogInfo("EVT_ST_0004");
             OnCardStateChanged(previousCard, CardState.Active);
         }
 
         try {
-            // Continue execution from where it left off
             await callingTopic.ResumeAsync("Sub-topic completed", CancellationToken.None);
         } catch (Exception ex) {
-            _logger.LogError(ex, "[InsuranceAgentService] Error resuming topic '{TopicName}' after sub-topic completion",
-                callingTopic.Name);
+            LogError("EVT_ST_0005", ex);
         }
     }
+    private void HandleCardJsonEmitted(object? s, EventArgs e) => LogTrace("EVT_DBG_0001");
+    private void HandleCardJsonSending(object? s, EventArgs e) => LogTrace("EVT_DBG_0002");
+    private void HandleCardJsonRendered(object? s, EventArgs e) => LogTrace("EVT_DBG_0003");
+    private void HandleCardDataReceived(object? s, EventArgs e) => LogTrace("EVT_DBG_0004");
+    private void HandleModelBound(object? s, EventArgs e) => LogTrace("EVT_DBG_0005");
 
-    private async void OnTopicTriggered(object? sender, TopicTriggeredEventArgs e) {
-        var senderType = sender?.GetType().Name ?? "Unknown";
-        var senderId = sender is TopicFlowActivity activity
-            ? activity.Id
-            : (sender as TopicFlow)?.Name ?? "Unknown";
+    #endregion
 
-        // ───────────────────────────────────────────────
-        // 🔔 Primary enriched event logging
-        // ───────────────────────────────────────────────
-        _logger.LogInformation(
-            "[InsuranceAgentService.OnTopicTriggered] 🔔 TopicTriggered received → " +
-            "Topic={Topic}, Origin={Origin}, BranchPath={Path}",
-            e.TopicName,
-            e.OriginActivityId ?? "Unknown",
-            e.BranchPath ?? "(none)"
-        );
+    #region Event Wiring
+    private void HookTopicEvents(TopicFlow flow) {
+        // ===== TOPIC-LEVEL EVENTS =====
+        flow.TopicLifecycleChanged += HandleTopicLifecycleChanged;
+        flow.TopicLifecycleChanged += OnTopicLifecycleChanged; // completion tracking
+        flow.ActivityCreated += OnActivityCreated;
+        flow.ActivityCompleted += HandleActivityCompleted;
+        flow.TopicInserted += HandleTopicInserted;
 
-        Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] *** EVENT RECEIVED ***");
-        Console.WriteLine($"TopicTriggered event received from sender '{senderId}' ({senderType}) for topic '{e.TopicName}'");
-        Console.WriteLine($"OriginActivityId: {e.OriginActivityId ?? "(null)"}, BranchPath: {e.BranchPath ?? "(none)"}");
-        Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] *** SENDER DETAILS *** Sender type: {sender?.GetType().FullName}, Is TopicFlow: {sender is TopicFlow}, Is Activity: {sender is TopicFlowActivity}");
+        // 🔥 IMPORTANT: async-completion (correct place)
+        flow.AsyncActivityCompleted += HandleAsyncActivityCompleted;
 
-        // ───────────────────────────────────────────────
-        // 🧩 Extract WaitForCompletion
-        // ───────────────────────────────────────────────
-        if (sender is not ITopicTriggeredActivity trigger) {
-            _logger.LogWarning("[InsuranceAgentService] Topic triggered by unsupported sender type: {SenderType}", sender?.GetType().Name);
-            Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] ERROR: Sender does not implement ITopicTriggeredActivity - ignoring event");
+        // ===== TOPIC-LEVEL TRIGGERS =====
+        if (flow is ITopicTriggeredActivity topicTrigger) {
+            Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] Subscribing to TopicTriggered for topic '{flow.Name}'");
+            topicTrigger.TopicTriggered += OnTopicTriggered;
+        }
+
+        // ===== ACTIVITY-LEVEL EVENTS =====
+        foreach (var act in flow.GetAllActivities()) {
+            HookActivityEvents(act);
+        }
+
+        _logger.LogInformation("[InsuranceAgentService] ✔ Hooked topic '{Topic}' and all activities", flow.Name);
+    }
+    private void UnhookTopicEvents(TopicFlow flow) {
+        if (flow == null)
             return;
+
+        _logger.LogInformation("[InsuranceAgentService] Unhooking events for topic flow: {FlowName}", flow.Name);
+
+        // --- 🔹 Deactivate any card still active ---
+        var activeCard = _context.GetValue<string>(ActiveCardKey);
+        if (!string.IsNullOrEmpty(activeCard)) {
+            _logger.LogInformation("[InsuranceAgentService] Deactivating lingering active card {CardId} before unhook", activeCard);
+            OnCardStateChanged(activeCard, CardState.ReadOnly);
+            _wfContext.RemoveValue(ActiveCardKey);
         }
 
-        var waitForCompletion = trigger.WaitForCompletion;
-        _logger.LogInformation("[InsuranceAgentService] Topic triggered: {TopicName} (WaitForCompletion: {WaitForCompletion})",
-            e.TopicName, waitForCompletion);
-        Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] Processing topic trigger: Topic='{e.TopicName}', WaitForCompletion={waitForCompletion}");
+        // ===== TOPIC-LEVEL EVENTS =====
+        flow.TopicLifecycleChanged -= HandleTopicLifecycleChanged;
+        flow.TopicLifecycleChanged -= OnTopicLifecycleChanged;
+        flow.ActivityCreated -= OnActivityCreated;
+        flow.ActivityCompleted -= HandleActivityCompleted;
+        flow.TopicInserted -= HandleTopicInserted;
 
-        var nextTopic = _topicRegistry.GetTopic(e.TopicName);
-        if (nextTopic is TopicFlow nextFlow) {
-            // ───────────────────────────────────────────────
-            // 🧱 Guard against duplicate topic activation
-            // ───────────────────────────────────────────────
-            if (_activeTopic != null && _activeTopic.Name == e.TopicName) {
-                _logger.LogWarning("[InsuranceAgentService] Topic '{TopicName}' is already active, ignoring duplicate trigger", e.TopicName);
-                Console.WriteLine($"[InsuranceAgentService.OnTopicTriggered] DUPLICATE IGNORED: Topic '{e.TopicName}' is already active");
-                return;
-            }
+        // 🔥 IMPORTANT: async-completion (must match Hook)
+        flow.AsyncActivityCompleted -= HandleAsyncActivityCompleted;
 
-            // ───────────────────────────────────────────────
-            // 🌿 WaitForCompletion → sub-topic mode
-            // 🧱 else → legacy handoff
-            // ───────────────────────────────────────────────
-            if (waitForCompletion) {
-                if (_activeTopic is TopicFlow currentFlow) {
-                    _logger.LogInformation(
-                        "[InsuranceAgentService] Pausing topic '{CurrentTopic}' for sub-topic '{SubTopic}'",
-                        currentFlow.Name, nextFlow.Name);
+        // ===== TOPIC-LEVEL TRIGGERS =====
+        if (flow is ITopicTriggeredActivity topicTrigger)
+            topicTrigger.TopicTriggered -= OnTopicTriggered;
 
-                    // ✅ Preserve parent’s active card before pausing
-                    var parentCard = _context.GetValue<string>(ActiveCardKey);
-                    if (!string.IsNullOrEmpty(parentCard)) {
-                        _wfContext.SetValue($"{currentFlow.Name}_SavedCardId", parentCard);
-                        _logger.LogInformation(
-                            "[InsuranceAgentService] Saved parent card {CardId} for topic '{TopicName}'",
-                            parentCard, currentFlow.Name);
-                    }
-
-                    // ✅ Push the parent to paused stack
-                    _pausedTopics.Push(currentFlow);
-
-                    // ✅ Unhook parent topic events while paused
-                    UnhookTopicEvents(currentFlow);
-
-                    // ✅ Hook events for sub-topic so lifecycle changes bubble up
-                    _logger.LogInformation("[InsuranceAgentService] Hooking events for sub-topic {SubTopic}", nextFlow.Name);
-                    HookTopicEvents(nextFlow);
-
-                    // ✅ Track sub-topic for completion handling
-                    if (!_pendingSubTopics.ContainsKey(nextFlow.Name)) {
-                        _pendingSubTopics[nextFlow.Name] = new PendingSubTopic {
-                            SubTopic = nextFlow,
-                            SubTopicName = nextFlow.Name,
-                            CallingTopicName = currentFlow.Name,
-                            StartTime = DateTime.UtcNow
-                        };
-                    }
-
-                    _logger.LogInformation(
-                        "[InsuranceAgentService] Registered sub-topic '{SubTopic}' under parent '{Parent}' for completion tracking",
-                        nextFlow.Name, currentFlow.Name);
-                }
-            }
-            else {
-                // 🧱 Legacy handoff (non-blocking trigger)
-                _logger.LogWarning(
-                    "[InsuranceAgentService] ⚠ Legacy hand-off mode: transitioning from '{CurrentTopic}' to '{NewTopic}'",
-                    _activeTopic?.Name ?? "(none)", nextFlow.Name);
-
-                if (_activeTopic is TopicFlow currentFlow) {
-                    // Cleanup paused stack if any old topics remain
-                    if (_pausedTopics.Count > 0) {
-                        _logger.LogInformation(
-                            "[InsuranceAgentService] Clearing paused topics before legacy hand-off (stack size={Count})",
-                            _pausedTopics.Count);
-                        _pausedTopics.Clear();
-                    }
-
-                    // Unhook old topic events for clean transition
-                    UnhookTopicEvents(currentFlow);
-                }
-
-                // Directly hook and start the next flow in non-blocking mode
-                HookTopicEvents(nextFlow);
-            }
-
-
-            // ───────────────────────────────────────────────
-            // 🔄 Swap active topic & hook/unhook events
-            // ───────────────────────────────────────────────
-            if (_activeTopic is TopicFlow currentActiveTopic)
-                UnhookTopicEvents(currentActiveTopic);
-
-            _activeTopic = nextFlow;
-            HookTopicEvents(nextFlow);
-
-            // ───────────────────────────────────────────────
-            // 🧭 Register sub-topic tracking
-            // ───────────────────────────────────────────────
-            if (waitForCompletion) {
-                var callingTopic = _pausedTopics.Count > 0 ? _pausedTopics.Peek() : null;
-                if (callingTopic != null) {
-                    _pendingSubTopics[e.TopicName] = new PendingSubTopic {
-                        CallingTopic = callingTopic,
-                        SubTopic = nextFlow,
-                        CallingTopicName = callingTopic.Name,
-                        SubTopicName = e.TopicName,
-                        StartTime = DateTime.UtcNow
-                    };
-
-                    _logger.LogInformation("[InsuranceAgentService] Registered sub-topic '{SubTopic}' for completion tracking", e.TopicName);
-                }
-                else {
-                    _logger.LogWarning("[InsuranceAgentService] WaitForCompletion=true but no calling topic found in paused stack");
-                }
-            }
-
-            // ───────────────────────────────────────────────
-            // 🚀 Run the next topic
-            // ───────────────────────────────────────────────
-            if (e.TopicName == "MarketingT1Topic")
-                Console.WriteLine($"[CRITICAL DEBUG] About to call MarketingTypeOneTopic.RunAsync()");
-
-            var result = await nextFlow.RunAsync();
-
-            if (e.TopicName == "MarketingT1Topic")
-                Console.WriteLine($"[CRITICAL DEBUG] MarketingTypeOneTopic.RunAsync() completed with result: IsCompleted={result.IsCompleted}");
-
-            _logger.LogInformation("[InsuranceAgentService] Topic completed. WaitForCompletion: {WaitForCompletion}, IsCompleted: {IsCompleted}",
-                waitForCompletion, result.IsCompleted);
-
-            // ───────────────────────────────────────────────
-            // 🧩 Completion logic
-            // ───────────────────────────────────────────────
-            if (!waitForCompletion) {
-                _logger.LogInformation("[InsuranceAgentService] Legacy hand-off to {TopicName} completed", e.TopicName);
-
-                if (result.IsCompleted && !string.IsNullOrEmpty(result.NextTopicName)) {
-                    _logger.LogInformation("[InsuranceAgentService] Legacy topic completed with next topic: {NextTopic}", result.NextTopicName);
-                }
-            }
-            else if (waitForCompletion && result.IsCompleted) {
-                _logger.LogInformation("[InsuranceAgentService] Sub-topic completed immediately, calling HandleSubTopicCompletion for {TopicName}", e.TopicName);
-                _pendingSubTopics.Remove(e.TopicName);
-                await HandleSubTopicCompletion(nextFlow, result);
-            }
-            else if (waitForCompletion) {
-                _logger.LogInformation("[InsuranceAgentService] Sub-topic '{SubTopic}' started, waiting for completion event", e.TopicName);
-            }
+        // ===== ACTIVITY-LEVEL EVENTS =====
+        foreach (var act in flow.GetAllActivities()) {
+            UnhookActivityEvents(act);
         }
-        else {
-            _logger.LogWarning("[InsuranceAgentService] Triggered topic {TopicName} not found or not a TopicFlow.", e.TopicName);
-        }
+
+        _activeCardId = null;
+
+        _logger.LogInformation("[InsuranceAgentService] ✅ Unhooked topic and activity events for {FlowName}", flow.Name);
     }
+    private void HookActivityEvents(TopicFlowActivity child) {
+        // --- Lifecycle ---
+        child.ActivityLifecycleChanged += HandleActivityLifecycleChanged;
+        child.MessageEmitted += HandleMessageEmitted;
 
-
-
-    // NEW: Handle custom events from EventTriggerActivity
-    private async void OnCustomEventTriggered(object? sender, CustomEventTriggeredEventArgs e) {
-        var senderType = sender?.GetType().Name ?? "Unknown";
-        var senderId = sender is TopicFlowActivity activity ? activity.Id : "Unknown";
-
-        Console.WriteLine($"[InsuranceAgentService.OnCustomEventTriggered] *** EVENT RECEIVED *** CustomEvent '{e.EventName}' from sender '{senderId}' ({senderType}) with data: {e.EventData}");
-        _logger.LogInformation("[InsuranceAgentService] Custom event triggered: {EventName} from {SenderId}", e.EventName, senderId);
-
-        // Forward the event to HybridChatService
-        CustomEventTriggered?.Invoke(this, e);
-
-        // For blocking events, provide a response
-        if (e.WaitForResponse && sender is EventTriggerActivity triggerActivity) {
-            // Simulate processing time for demo
-            await Task.Delay(100);
-
-            // Provide a generic response - could be enhanced with specific event handling
-            var response = new {
-                success = true,
-                message = $"Event '{e.EventName}' processed successfully",
-                timestamp = DateTime.UtcNow,
-                processedBy = "InsuranceAgentService"
-            };
-
-            Console.WriteLine($"[InsuranceAgentService.OnCustomEventTriggered] Providing response for blocking event: {response}");
-            triggerActivity.HandleUIResponse(e.Context, response);
+        // --- Adaptive cards ---
+        if (child is IAdaptiveCardActivity cardAct) {
+            cardAct.CardJsonSent += HandleCardJsonSent;
+            cardAct.ValidationFailed += HandleValidationFailed;
+            cardAct.CardJsonEmitted += HandleCardJsonEmitted;
+            cardAct.CardJsonSending += HandleCardJsonSending;
+            cardAct.CardJsonRendered += HandleCardJsonRendered;
+            cardAct.CardDataReceived += HandleCardDataReceived;
+            cardAct.ModelBound += HandleModelBound;
         }
-    }
 
-    private async void OnTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) {
-        _logger.LogInformation("[InsuranceAgentService] TopicLifecycleChanged: {TopicName} -> {State}", e.TopicName, e.State);
+        // --- Topic-triggered events ---
+        if (child is ITopicTriggeredActivity topicTrigger)
+            topicTrigger.TopicTriggered += OnTopicTriggered;
 
-        try {
-            // ───────────────────────────────────────────────
-            // 🧩 Handle sub-topic completion
-            // ───────────────────────────────────────────────
-            if (e.State == TopicLifecycleState.Completed && _pendingSubTopics.ContainsKey(e.TopicName)) {
-                // ✅ Guard against duplicate resume:
-                // If the stack handler already popped the parent, skip this duplicate.
-                if (_pausedTopics.Count == 0) {
-                    _logger.LogDebug(
-                        "[InsuranceAgentService] Skipping duplicate OnTopicLifecycleChanged for {TopicName} (already resumed by stack handler).",
-                        e.TopicName);
-                    return;
-                }
+        // --- Custom event-triggered events ---
+        if (child is ICustomEventTriggeredActivity customTrigger)
+            customTrigger.CustomEventTriggered += OnCustomEventTriggered;
 
-                var pendingSubTopic = _pendingSubTopics[e.TopicName];
-                _pendingSubTopics.Remove(e.TopicName);
-
-                _logger.LogInformation(
-                    "[InsuranceAgentService] Sub-topic '{SubTopic}' completed via lifecycle event, resuming '{CallingTopic}'",
-                    e.TopicName, pendingSubTopic.CallingTopicName);
-
-                // Create synthetic result and delegate to unified resumption path
-                var subTopicResult = TopicResult.CreateCompleted("Sub-topic completed", pendingSubTopic.SubTopic.Context);
-                await HandleSubTopicCompletion(pendingSubTopic.SubTopic, subTopicResult);
-                return;
-            }
-
-            // ───────────────────────────────────────────────
-            // 💬 Handle FallbackTopic completion
-            // ───────────────────────────────────────────────
-            if (e.State == TopicLifecycleState.Completed && e.TopicName == "FallbackTopic") {
-                _logger.LogInformation("[InsuranceAgentService] 🧭 FallbackTopic completed — attempting to resume paused topic.");
-
-                var fallbackTopic = _topicRegistry.GetTopic("FallbackTopic") as TopicFlow;
-                if (fallbackTopic == null) {
-                    _logger.LogWarning("[InsuranceAgentService] FallbackTopic not found in registry during completion handling.");
-                    return;
-                }
-
-                var fallbackResult = TopicResult.CreateCompleted("Fallback completed", fallbackTopic.Context);
-                await HandleFallbackCompletion(fallbackTopic, fallbackResult);
-                return;
-            }
-
-            // ───────────────────────────────────────────────
-            // 💤 Other transitions
-            // ───────────────────────────────────────────────
-            _logger.LogDebug("[InsuranceAgentService] Topic '{TopicName}' transitioned to {State} (no action taken)",
-                e.TopicName, e.State);
-        } catch (Exception ex) {
-            _logger.LogError(ex,
-                "[InsuranceAgentService] Error processing TopicLifecycleChanged for topic '{TopicName}'",
-                e.TopicName);
+        // --- Conditional containers ---
+        if (child is ConditionalActivity<TriggerTopicActivity> conditional) {
+            conditional.TopicTriggered += OnTopicTriggered;
+            conditional.CustomEventTriggered += OnCustomEventTriggered;
         }
-    }
 
-    public event EventHandler<CardStateChangedEventArgs>? CardStateChanged;
-
-    /// <summary>
-    /// Helper to raise a UI event when an Adaptive Card changes its active/readonly state.
-    /// </summary>
-    private void OnCardStateChanged(string cardId, CardState newState) {
-        _logger.LogInformation("[InsuranceAgentService] Card {CardId} state changed -> {State}", cardId, newState);
-        CardStateChanged?.Invoke(this, new CardStateChangedEventArgs(cardId, newState));
-    }
-
-    /// <summary>
-    /// Event args for card state changes (sent to the chat UI).
-    /// </summary>
-    public class CardStateChangedEventArgs : EventArgs {
-        public string CardId { get; }
-        public CardState State { get; }
-
-        public CardStateChangedEventArgs(string cardId, CardState state) {
-            CardId = cardId;
-            State = state;
+        // --- Composite containers ---
+        if (child is CompositeActivity composite) {
+            composite.TopicTriggered += OnTopicTriggered;
+            composite.CustomEventTriggered += OnCustomEventTriggered;
         }
-    }
 
-    // ---- BOOL→STRING helpers for readability
+        _logger.LogInformation(
+            "[InsuranceAgentService] ✔ Hooked runtime activity '{Id}' ({Type})",
+            child.Id, child.GetType().Name);
+    }
+    private void UnhookActivityEvents(TopicFlowActivity child) {
+        // --- Lifecycle ---
+        child.ActivityLifecycleChanged -= HandleActivityLifecycleChanged;
+        child.MessageEmitted -= HandleMessageEmitted;
+
+        // --- Adaptive cards ---
+        if (child is IAdaptiveCardActivity cardAct) {
+            cardAct.CardJsonSent -= HandleCardJsonSent;
+            cardAct.ValidationFailed -= HandleValidationFailed;
+            cardAct.CardJsonEmitted -= HandleCardJsonEmitted;
+            cardAct.CardJsonSending -= HandleCardJsonSending;
+            cardAct.CardJsonRendered -= HandleCardJsonRendered;
+            cardAct.CardDataReceived -= HandleCardDataReceived;
+            cardAct.ModelBound -= HandleModelBound;
+        }
+
+        // --- Topic-triggered events ---
+        if (child is ITopicTriggeredActivity topicTrigger)
+            topicTrigger.TopicTriggered -= OnTopicTriggered;
+
+        // --- Custom-triggered events ---
+        if (child is ICustomEventTriggeredActivity customTrigger)
+            customTrigger.CustomEventTriggered -= OnCustomEventTriggered;
+
+        // --- Conditional containers ---
+        if (child is ConditionalActivity<TriggerTopicActivity> conditional) {
+            conditional.TopicTriggered -= OnTopicTriggered;
+            conditional.CustomEventTriggered -= OnCustomEventTriggered;
+        }
+
+        // --- Composite containers ---
+        if (child is CompositeActivity composite) {
+            composite.TopicTriggered -= OnTopicTriggered;
+            composite.CustomEventTriggered -= OnCustomEventTriggered;
+        }
+
+        _logger.LogInformation(
+            "[InsuranceAgentService] ✔ Unhooked runtime activity '{Id}' ({Type})",
+            child.Id, child.GetType().Name);
+    }
+    #endregion
+
+    #region Conditional Activity Helpers
+    private TopicFlowActivity IfCase(string id, Func<TopicWorkflowContext, bool> condition, TopicFlowActivity activity) {
+        return ConditionalActivity<TopicFlowActivity>.If(
+            id,
+            condition,
+            (yesId, ctx) => activity,
+            (noId, ctx) => Skip(id));
+    }
+    private static TopicFlowActivity Skip(string id)
+        => new SimpleActivity($"{id}_SKIP", (c, d) => Task.FromResult<object?>(null));
     private static bool IsYes(TopicWorkflowContext ctx, string key) {
         var value = ctx.GetValue<object?>(key);
 
@@ -1077,147 +1026,210 @@ public class InsuranceAgentService {
             _ => false
         };
     }
-
     private static bool IsNo(TopicWorkflowContext ctx, string key) {
         var value = ctx.GetValue<object?>(key);
-
         return value switch {
             // Already a boolean
             bool b => !b,
-
             // Normalize strings
             string s => s.Trim().ToLowerInvariant() switch {
                 "no" or "n" or "false" or "0" => true,
                 _ => false
             },
-
             // Null or unrecognized type
             _ => false
         };
     }
-
     private static bool IsUnknown(TopicWorkflowContext ctx, string key)
         => ctx.GetValue<bool?>(key) is null;
+    #endregion
 
-    // ---- Simple factory for "no-op" skip branch
-    private TopicFlowActivity IfCase(string id, Func<TopicWorkflowContext, bool> condition, TopicFlowActivity activity) {
-        return ConditionalActivity<TopicFlowActivity>.If(
-            id,
-            condition,
-            (yesId, ctx) => activity,
-            (noId, ctx) => Skip(id));
+    #region Logging Helpers
+    private string ResolveLogMessage(string codeOrMessage, params object[] args) {
+        if (_logMessages.TryGetValue(codeOrMessage, out var template))
+            return string.Format(template, args);
+
+        return string.Format(codeOrMessage, args);
+    }
+    private void LogInfo(string codeOrMessage, params object[] args)
+        => _logger.LogInformation(ResolveLogMessage(codeOrMessage, args));
+    private void LogWarn(string codeOrMessage, params object[] args)
+        => _logger.LogWarning(ResolveLogMessage(codeOrMessage, args));
+    private void LogError(string codeOrMessage, params object[] args)
+        => _logger.LogError(ResolveLogMessage(codeOrMessage, args));
+    private void LogTrace(string codeOrMessage, params object[] args) {
+#if DEBUG
+        _logger.LogDebug(ResolveLogMessage(codeOrMessage, args));
+#endif
     }
 
-    private static TopicFlowActivity Skip(string id)
-        => new SimpleActivity($"{id}_SKIP", (c, d) => Task.FromResult<object?>(null));
+    private readonly Dictionary<string, string> _logMessages = new()
+{
+    { "0010001", "[InsuranceAgentService] FallbackTopic not found in registry." },
+    { "0010002", "[InsuranceAgentService] Injected Fallback_UserPrompt into FallbackTopic." },
+    { "0010003", "[InsuranceAgentService] Detected paused activity. Routing message to FallbackTopic." },
+    { "0010004", "Resolved topic is not a TopicFlow." },
+    { "0010005", "Activated topic {0} (confidence {1:P2})" },
+    { "0010006", "[InsuranceAgentService] Adding domain-specific activities to ConversationStartTopic" },
+    { "0010007", "[InsuranceAgentService] Domain-specific activities added to ConversationStartTopic" },
+    { "0010008", "ConversationStartTopic not found in registry." },
+    { "0010009", "ConversationStartTopic activated" },
+    { "0010010", "[InsuranceAgentService] Resetting conversation..." },
+    { "0010011", "[InsuranceAgentService] Unhooked topic events from {0}" },
+    { "0010012", "[InsuranceAgentService] all context entries were purged" },
+    { "0010013", "[InsuranceAgentService] Resetting topic: {0}" },
+    { "0010014", "[InsuranceAgentService] Resetting ConversationStartTopic runtime flags" },
+    { "0010015", "[InsuranceAgentService] ComplianceTopic data and flags cleared" },
+    { "0010016", "[InsuranceAgentService] ✅ All topics and contexts fully reset" },
+    { "0010017", "[InsuranceAgentService] Restarting conversation after reset..." },
+    { "0010018", "[InsuranceAgentService] {0} FSM forced to Idle" },
+    { "0010019", "[InsuranceAgentService] Could not access FSM for {0}" },
+    { "MT1_0001", "[DEBUG] ToMarketingT1Topic invoked → triggering T1" },
+    { "MT2_0001", "[DEBUG] ToMarketingT2Topic invoked → triggering T2" },
+    { "ACR_0001", "[AskCaliforniaResidency] Constructing card activity" },
+    { "ACR_0002", "[AskCaliforniaResidency] Card factory invoked" },
+    { "ACR_0003", "[AskCaliforniaResidency] Card created OK" },
+    { "ACR_0004", "[AskCaliforniaResidency] Unexpected card return type" },
+    { "ACR_0005", "[AskCaliforniaResidency] Returning AdaptiveCardActivity" },
+        // ============================================================
+    // ACTIVITY CREATED
+    // ============================================================
+    { "EVT_AC_0001", "[InsuranceAgentService] ActivityCreated" },
+    { "EVT_AC_0002", "[InsuranceAgentService] Unhandled activity payload type" },
 
-    private TopicFlowActivity ToMarketingT1Topic(string id = "ToMarketingT1") {
-        _logger?.LogInformation($"[DEBUG] ToMarketingT1Topic invoked → id={id}, triggering 'MarketingT1Topic' (waitForCompletion=false)");
+    // ============================================================
+    // TOPIC TRIGGERED
+    // ============================================================
+    { "EVT_TT_0001", "[InsuranceAgentService] TopicTriggered received" },
+    { "EVT_TT_0002", "[InsuranceAgentService] Topic triggered by unsupported sender type" },
+    { "EVT_TT_0003", "[InsuranceAgentService] TopicTriggered metadata processed" },
+    { "EVT_TT_0004", "[InsuranceAgentService] Duplicate topic trigger ignored (topic already active)" },
+    { "EVT_TT_0005", "[InsuranceAgentService] Pausing parent topic for subtopic execution" },
+    { "EVT_TT_0006", "[InsuranceAgentService] Saved parent active card before entering sub-topic" },
+    { "EVT_TT_0007", "[InsuranceAgentService] Hooking sub-topic events" },
+    { "EVT_TT_0008", "[InsuranceAgentService] Sub-topic registered for completion tracking" },
+    { "EVT_TT_0009", "[InsuranceAgentService] Legacy non-blocking topic handoff" },
+    { "EVT_TT_0010", "[InsuranceAgentService] Clearing paused topics prior to legacy handoff" },
+    { "EVT_TT_0011", "[InsuranceAgentService] Sub-topic registered (WaitForCompletion=true)" },
+    { "EVT_TT_0012", "[InsuranceAgentService] WaitForCompletion=true but no parent topic found on stack" },
+    { "EVT_TT_0013", "[InsuranceAgentService] Topic execution completed" },
+    { "EVT_TT_0014", "[InsuranceAgentService] Legacy topic handoff completed" },
+    { "EVT_TT_0015", "[InsuranceAgentService] Legacy topic provided next topic to execute" },
+    { "EVT_TT_0016", "[InsuranceAgentService] Sub-topic finished immediately; resuming parent topic" },
+    { "EVT_TT_0017", "[InsuranceAgentService] Sub-topic started; waiting for completion" },
+    { "EVT_TT_0018", "[InsuranceAgentService] Topic triggered but not found in registry" },
 
-        return new TriggerTopicActivity(
-            id,
-            "MarketingT1Topic",
-            _logger,
-            waitForCompletion: false,
-            conversationContext: _context
-        );
-    }
+    // ============================================================
+    // CUSTOM EVENT TRIGGERED
+    // ============================================================
+    { "EVT_CE_0001", "[InsuranceAgentService] Custom event triggered" },
+
+    // ============================================================
+    // TOPIC LIFECYCLE
+    // ============================================================
+    { "EVT_LF_0001", "[InsuranceAgentService] TopicLifecycleChanged event received" },
+    { "EVT_LF_0002", "[InsuranceAgentService] Duplicate lifecycle completion ignored (parent already resumed)" },
+    { "EVT_LF_0003", "[InsuranceAgentService] Sub-topic completed via lifecycle; resuming parent" },
+    { "EVT_LF_0004", "[InsuranceAgentService] FallbackTopic completed — attempting to resume active topic" },
+    { "EVT_LF_0005", "[InsuranceAgentService] FallbackTopic not found in registry during lifecycle event" },
+    { "EVT_LF_0006", "[InsuranceAgentService] Topic lifecycle transition ignored (not actionable)" },
+    { "EVT_LF_0007", "[InsuranceAgentService] Error processing TopicLifecycleChanged" },
+
+    // ============================================================
+    // CARD EVENTS
+    // ============================================================
+    { "EVT_CS_0001", "[InsuranceAgentService] Card state changed" },
+    
+    // ============================================================
+    // CARD SUBMIT HANDLER
+    // ============================================================
+    { "EVT_HC_0001", "[InsuranceAgentService] Delivering card input to activity" },
+    { "EVT_HC_0002", "[InsuranceAgentService] Current activity is not adaptive-card-capable" },
+
+    // ============================================================
+    // FALLBACK COMPLETION HANDLER
+    // ============================================================
+    { "EVT_FB_0001", "[InsuranceAgentService] FallbackTopic completed but no paused topics to resume." },
+    { "EVT_FB_0002", "[InsuranceAgentService] Resuming paused topic after fallback answer." },
+    { "EVT_FB_0003", "[InsuranceAgentService] Reactivating previously active card after fallback completion" },
+    { "EVT_FB_0004", "[InsuranceAgentService] No pausable activity found; resuming topic normally." },
+
+    // ============================================================
+    // ASYNC ACTIVITY COMPLETED
+    // ============================================================
+    { "EVT_AS_0001", "[InsuranceAgentService] AsyncActivityCompleted received" },
+    { "EVT_AS_0002", "[InsuranceAgentService] AsyncActivityCompleted: No follow-up activity returned" },
+    { "EVT_AS_0003", "[InsuranceAgentService] Cannot InsertNext for async follow-up — no active TopicFlow." },
+    { "EVT_AS_0004", "[InsuranceAgentService] Inserting async follow-up activity into topic" },
+
+    // ============================================================
+    // TOPIC LIFECYCLE (LOCAL HANDLER VARIATION)
+    // ============================================================
+    { "EVT_TH_0001", "[InsuranceAgentService] TopicLifecycleChanged received" },
+    { "EVT_TH_0002", "[InsuranceAgentService] Topic completed but no paused topics remain." },
+    { "EVT_TH_0003", "[InsuranceAgentService] Resuming parent topic after sub-topic completed." },
+    { "EVT_TH_0004", "[InsuranceAgentService] Active topic updated" },
+    { "EVT_TH_0005", "[InsuranceAgentService] Restoring saved parent card after sub-topic completion." },
+    { "EVT_TH_0006", "[InsuranceAgentService] No saved card state found for parent topic." },
+    { "EVT_TH_0007", "[InsuranceAgentService] Parent flow state restored." },
+    { "EVT_TH_0008", "[InsuranceAgentService] Parent topic resumed." },
+    { "EVT_TH_0009", "[InsuranceAgentService] Resume sequence completed for parent topic." },
+    { "EVT_TH_0010", "[InsuranceAgentService] Error while resuming paused topic after sub-topic completed." },
+
+    // ============================================================
+    // ACTIVITY COMPLETED
+    // ============================================================
+    { "EVT_ACM_0001", "[InsuranceAgentService] ActivityCompleted" },
+
+    // ============================================================
+    // ACTIVITY LIFECYCLE
+    // ============================================================
+    { "EVT_AL_0001", "[InsuranceAgentService] ActivityLifecycleChanged" },
+
+    // ============================================================
+    // MESSAGE EMITTED
+    // ============================================================
+    { "EVT_ME_0001", "[InsuranceAgentService] MessageEmitted" },
+
+    // ============================================================
+    // CARD JSON SENT
+    // ============================================================
+    { "EVT_CJS_0001", "[InsuranceAgentService] CardJsonSent" },
+    { "EVT_CJS_0002", "[InsuranceAgentService] Preserved parent card under paused topic" },
+    { "EVT_CJS_0003", "[InsuranceAgentService] Error preserving parent card before new card activation" },
+    { "EVT_CJS_0004", "[InsuranceAgentService] Deactivating previous card" },
+    { "EVT_CJS_0005", "[InsuranceAgentService] Activating new card" },
+    { "EVT_CJS_0006", "[InsuranceAgentService] Preparing to trigger ActivityAdaptiveCardReady" },
+    { "EVT_CJS_0007", "[InsuranceAgentService] Disabling prompt for required card" },
+    { "EVT_CJS_0008", "[InsuranceAgentService] Enabling prompt (card not required)" },
+    { "EVT_CJS_0009", "[InsuranceAgentService] Error toggling prompt state for required/non-required card" },
+
+    // ============================================================
+    // VALIDATION FAILED
+    // ============================================================
+    { "EVT_VF_0001", "[InsuranceAgentService] ValidationFailed" },
+
+    // ============================================================
+    // SUBTOPIC COMPLETION
+    // ============================================================
+    { "EVT_ST_0001", "[InsuranceAgentService] Sub-topic completed but no paused topics to resume" },
+    { "EVT_ST_0002", "[InsuranceAgentService] Sub-topic completed, resuming calling topic" },
+    { "EVT_ST_0003", "[InsuranceAgentService] Call info retrieved (CallingTopic -> SubTopic)" },
+    { "EVT_ST_0004", "[InsuranceAgentService] Reactivating previous card after sub-topic completion" },
+    { "EVT_ST_0005", "[InsuranceAgentService] Error resuming topic after sub-topic completion" },
+
+    // ============================================================
+    // INTERNAL DEBUG EVENTS
+    // ============================================================
+    { "EVT_DBG_0001", "CardJsonEmitted (internal)" },
+    { "EVT_DBG_0002", "CardJsonSending (internal)" },
+    { "EVT_DBG_0003", "CardJsonRendered (client ack)" },
+    { "EVT_DBG_0004", "CardDataReceived (internal)" },
+    { "EVT_DBG_0005", "ModelBound (internal)" }
 
 
-    private TopicFlowActivity ToMarketingT2Topic(string id = "ToMarketingT2") {
-        _logger?.LogInformation($"[DEBUG] ToMarketingT2Topic invoked → id={id}, triggering 'MarketingT2Topic' (waitForCompletion=false)");
+};
 
-        return new TriggerTopicActivity(
-            id,
-            "MarketingT2Topic",
-            _logger,
-            waitForCompletion: false,
-            conversationContext: _context
-        );
-    }
-
-    private TopicFlowActivity AskCaliforniaResidency(string id, TopicWorkflowContext context) {
-        _logger.LogInformation("[AskCaliforniaResidency] 🔧 Constructing card activity with ID='{Id}'", id);
-
-        var cardActivity = new AdaptiveCardActivity<CaliforniaResidentCard, CaliforniaResidentModel>(
-            id,
-            context,  // ✅ Use the passed-in context, not the outer _wfContext
-            cardFactory: card => {
-                _logger.LogInformation("[AskCaliforniaResidency] 🧩 Card factory invoked for ID='{Id}'", id);
-
-                var result = card.Create(isResident: true, zip_code: context.GetValue<string>("zip_code"), ccpa_acknowledgment: context.GetValue<string?>("ccpa_acknoledgement"));
-
-                // Safe cast to AdaptiveCardModel if available
-                if (result is AdaptiveCardModel model) {
-                    _logger.LogInformation(
-                        "[AskCaliforniaResidency] ✅ Card created (BodyCount={BodyCount}, Actions={ActionsCount})",
-                        model.Body?.Count ?? 0,
-                        model.Actions?.Count ?? 0);
-                }
-                else {
-                    _logger.LogWarning(
-                        "[AskCaliforniaResidency] ⚠️ Card factory returned unexpected type: {Type}",
-                        result?.GetType().Name ?? "null");
-                }
-
-                return result;
-            });
-
-        _logger.LogInformation("[AskCaliforniaResidency] 🚀 Returning AdaptiveCardActivity '{Id}' to flow engine", id);
-
-        return cardActivity;
-    }
-
-    private List<TopicFlowActivity>? ComplianceFlowActivities() {
-        return new List<TopicFlowActivity> {
-// ───────────────────────────────────────────────
-// ✅ TCPA = YES
-// ───────────────────────────────────────────────
-        IfCase("TCPA_YES_BRANCH", ctx =>
-            IsYes(ctx, "tcpa_consent"),
-            ConditionalActivity<TopicFlowActivity>.If(
-                "HAS_CA_INFO_YES_TCPA",
-                c => IsYes(c, "is_california_resident"),
-
-                // ────────── California Resident ──────────
-                (id, c) => new CompositeActivity("ASK_CCPA_YES_CA", new List<TopicFlowActivity> {
-                    AskCaliforniaResidency("CA_CARD_YES_CA", c), // ask for CCPA consent
-
-                    // ✅ FIXED CONDITIONAL
-                    ConditionalActivity<TopicFlowActivity>.If(
-                        "HAS_CCPA_ACK",
-                        cc =>
-                        {
-                            return IsYes(cc, "ccpa_acknowledgment");
-                        },
-                        // TRUE → Full marketing (T1)
-                        (id2, cc) => ToMarketingT1Topic("AFTER_CCPA_YES"),
-                        // FALSE → Limited informational (T2)
-                        (id2, cc) => ToMarketingT2Topic("AFTER_CCPA_NO")
-                    )
-                }),
-
-                // ────────── Non-California ──────────
-                (id, c) => ToMarketingT1Topic("NON_CA_TCPA_YES")
-            )
-        ),
-
-
-        // ───────────────────────────────────────────────
-        // 🚫 TCPA = NO
-        // ───────────────────────────────────────────────
-        IfCase("TCPA_NO", ctx =>
-            IsNo(ctx, "tcpa_consent"),
-            new TriggerTopicActivity(
-                "TO_MARKETING_T3_AFTER_TCPA_NO",
-                "MarketingT3Topic",                                 // restricted informational path
-                _logger,
-                waitForCompletion: false,
-                conversationContext: _context
-            )
-        )
-    };
-    }
-
+    #endregion
 }
 

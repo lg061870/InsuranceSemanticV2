@@ -1,17 +1,10 @@
 ﻿using ConversaCore.Context;
 using ConversaCore.Events;
+using ConversaCore.Interfaces;
 using ConversaCore.Models;
-using ConversaCore.Services;
 using ConversaCore.Topics;
 using InsuranceAgent.Models;
-using InsuranceAgent.Topics.BeneficiaryInfoTopic;
-using InsuranceAgent.Topics.EmploymentTopic;
-using InsuranceAgent.Topics.HealthInfoTopic;
-using InsuranceAgent.Topics.ContactInfoTopic;
-using InsuranceAgent.Topics.CoverageIntentTopic;
-using InsuranceAgent.Topics.LeadDetailsTopic;
-using InsuranceAgent.Topics.DependentsTopic;
-using InsuranceAgent.Topics.LifeGoalsTopic;
+using InsuranceAgent.Topics;
 
 namespace InsuranceAgent.Services;
 
@@ -23,6 +16,16 @@ namespace InsuranceAgent.Services;
 /// Provides a normalized event-driven interface for the ChatWindow.
 /// </summary>
 public class HybridChatService {
+    public event Action<ChatSessionState, ITopic>? OnConversationStart;
+    public event EventHandler<ConversationResetEventArgs>? OnConversationReset;
+    public event EventHandler<PromptInputStateChangedEventArgs>? PromptInputStateChanged;
+    public event EventHandler<HybridBotMessageEventArgs>? HybridBotMessageReady;
+    public event EventHandler<HybridAdaptiveCardEventArgs>? HybridAdaptiveCardReady;
+    public event EventHandler<HybridTypingIndicatorEventArgs>? HybridTypingIndicatorChanged;
+    public event EventHandler<HybridSuggestionsEventArgs>? HybridSuggestionsUpdated;
+    public event EventHandler<HybridChatEventArgs>? HybridChatEventRaised;
+    public event EventHandler<HybridCardStateChangedEventArgs>? HybridCardStateChanged;
+
     private readonly ILogger<HybridChatService> _logger;
     private readonly InsuranceAgentService _agentService;
     private readonly ISemanticKernelService _semanticKernelService;
@@ -31,10 +34,6 @@ public class HybridChatService {
 
     public IConversationContext Context => _context;
     public ConversaCore.TopicFlow.TopicWorkflowContext WorkflowContext { get; }
-
-    // === Lifecycle ===
-    public event Action<ChatSessionState, ITopic>? OnConversationStart;
-    public event EventHandler<ConversationResetEventArgs>? OnConversationReset;
 
     public HybridChatService(
         ILogger<HybridChatService> logger,
@@ -50,34 +49,40 @@ public class HybridChatService {
 
         WorkflowContext = new ConversaCore.TopicFlow.TopicWorkflowContext();
 
-        // ===== Subscribe to InsuranceAgent events =====
+        #region Subscribe to Insurance Agent Events
         _agentService.ActivityMessageReady += (s, e) => {
             _logger.LogInformation("[HybridChatService] Forwarding ActivityMessageReady -> HybridBotMessageReady: {Content}", e.Message.Content);
             OnHybridBotMessageReady(e.Message);
         };
-
         _agentService.ActivityAdaptiveCardReady += (s, e) =>
-    OnHybridAdaptiveCardReady(e.CardJson, e.CardId, e.RenderMode);
-
+            OnHybridAdaptiveCardReady(e.CardJson, e.CardId, e.RenderMode);
         _agentService.ActivityCompleted += (s, e) =>
             OnHybridChatEventRaised(new ChatEvent { Type = "ActivityCompleted", Payload = e.Context });
-
         _agentService.TopicLifecycleChanged += (s, e) =>
             OnHybridChatEventRaised(new ChatEvent { Type = "TopicLifecycleChanged", Payload = e });
         _agentService.ActivityLifecycleChanged += (s, e) =>
             OnHybridChatEventRaised(new ChatEvent { Type = "ActivityLifecycleChanged", Payload = e });
         _agentService.TopicInserted += (s, e) =>
             OnHybridChatEventRaised(new ChatEvent { Type = "TopicInserted", Payload = e });
-
         _agentService.ConversationReset += (s, e) => {
             _logger.LogInformation("[HybridChatService] Forwarding ConversationReset event to UI");
             OnConversationReset?.Invoke(this, e);
         };
-
         _agentService.MatchingTopicNotFound += async (s, e) => {
             _logger.LogInformation("No topic could process '{Message}', escalating to Semantic Kernel", e.UserMessage);
             await _semanticKernelService.ProcessMessageAsync(e.UserMessage, new ChatSessionState());
         };
+        _agentService.CardStateChanged += (s, e) =>
+        {
+            _logger.LogInformation("[HybridChatService] Forwarding CardStateChanged -> HybridCardStateChanged ({CardId}, {State})", e.CardId, e.State);
+            HybridCardStateChanged?.Invoke(this, new HybridCardStateChangedEventArgs(e.CardId, e.State));
+        };
+        _agentService.PromptInputStateChanged += (s, e) =>
+        {
+            _logger.LogInformation($"[HybridChatService] Forwarding PromptInputStateChanged (Enabled={e.IsEnabled}, CardId={e.CardId})");
+            PromptInputStateChanged?.Invoke(this, e);
+        };
+        #endregion
 
         // ===== Subscribe to SemanticKernel events =====
         _semanticKernelService.SemanticMessageReady += (s, e) => OnHybridBotMessageReady(e.Message);
@@ -125,16 +130,7 @@ public class HybridChatService {
         _context.SetModel(new LeadDetailsModel());
         _context.SetModel(new DependentsModel());
         _context.SetModel(new LifeGoalsModel());
-        
-        // === Initialize Business Domain Models (non-BaseCardModel types) ===  
-        // These are stored as regular values since they don't inherit from BaseCardModel
-        _context.SetValue("BusinessModels_InsuranceContext", new InsuranceContextModel());
-        _context.SetValue("BusinessModels_Compliance", new ComplianceModel());
-        _context.SetValue("BusinessModels_FinancialInfo", new FinancialInfoModel());
-        _context.SetValue("BusinessModels_FamilyAndDependents", new FamilyAndDependentsModel());
-        _context.SetValue("BusinessModels_LifeGoal", new LifeGoalModel());
-        _context.SetValue("BusinessModels_PlanningIntent", new PlanningIntentModel());
-        
+               
         // === Application Configuration (Static Rules) ===
         var appConfig = new {
             InsuranceType = "Term Life",
@@ -158,15 +154,15 @@ public class HybridChatService {
         _context.SetValue("ApplicationConfiguration", appConfig);
         
         // === Individual Configuration Values (for backward compatibility) ===
-        _context.SetValue("InsuranceType", appConfig.InsuranceType);
-        _context.SetValue("ApplicationStage", appConfig.ApplicationStage);
-        _context.SetValue("ComplianceCheckRequired", appConfig.ComplianceCheckRequired);
-        _context.SetValue("RequiresHealthScreening", appConfig.RequiresHealthScreening);
-        _context.SetValue("RequiredTopics", appConfig.RequiredTopics);
-        _context.SetValue("MinimumAge", appConfig.ValidationRules.MinimumAge);
-        _context.SetValue("MaximumAge", appConfig.ValidationRules.MaximumAge);
-        _context.SetValue("MinimumCoverage", appConfig.ValidationRules.MinimumCoverage);
-        _context.SetValue("MaximumCoverage", appConfig.ValidationRules.MaximumCoverage);
+        //_context.SetValue("InsuranceType", appConfig.InsuranceType);
+        //_context.SetValue("ApplicationStage", appConfig.ApplicationStage);
+        //_context.SetValue("ComplianceCheckRequired", appConfig.ComplianceCheckRequired);
+        //_context.SetValue("RequiresHealthScreening", appConfig.RequiresHealthScreening);
+        //_context.SetValue("RequiredTopics", appConfig.RequiredTopics);
+        //_context.SetValue("MinimumAge", appConfig.ValidationRules.MinimumAge);
+        //_context.SetValue("MaximumAge", appConfig.ValidationRules.MaximumAge);
+        //_context.SetValue("MinimumCoverage", appConfig.ValidationRules.MinimumCoverage);
+        //_context.SetValue("MaximumCoverage", appConfig.ValidationRules.MaximumCoverage);
         
         // === Session Tracking ===
         _context.SetValue("SessionStartTime", DateTime.UtcNow);
@@ -260,29 +256,23 @@ public class HybridChatService {
         _context.SetValue("Messages", messages);
     }
 
-    // === Hybrid → ChatWindow Events ===
-    public event EventHandler<HybridBotMessageEventArgs>? HybridBotMessageReady;
-    public event EventHandler<HybridAdaptiveCardEventArgs>? HybridAdaptiveCardReady;
-    public event EventHandler<HybridTypingIndicatorEventArgs>? HybridTypingIndicatorChanged;
-    public event EventHandler<HybridSuggestionsEventArgs>? HybridSuggestionsUpdated;
-    public event EventHandler<HybridChatEventArgs>? HybridChatEventRaised;
 
-    // === Raise methods ===
+
+
+    #region Event Triggers
+    // These events notify the Hybrid ChatWindow (UI layer)
     protected virtual void OnHybridBotMessageReady(ChatMessage message) {
         _logger.LogInformation("[HybridChatService] OnHybridBotMessageReady fired: {Content}", message.Content);
         HybridBotMessageReady?.Invoke(this, new HybridBotMessageEventArgs(message));
     }
-
     protected virtual void OnHybridAdaptiveCardReady(string cardJson, string cardId, RenderMode mode)
      => HybridAdaptiveCardReady?.Invoke(this,
          new HybridAdaptiveCardEventArgs(cardJson, cardId, mode));
-
     protected virtual void OnHybridTypingIndicatorChanged(bool isTyping)
         => HybridTypingIndicatorChanged?.Invoke(this, new HybridTypingIndicatorEventArgs(isTyping));
-
     protected virtual void OnHybridSuggestionsUpdated(IEnumerable<string> suggestions)
         => HybridSuggestionsUpdated?.Invoke(this, new HybridSuggestionsEventArgs(suggestions));
-
     protected virtual void OnHybridChatEventRaised(ChatEvent chatEvent)
         => HybridChatEventRaised?.Invoke(this, new HybridChatEventArgs(chatEvent));
+    #endregion
 }

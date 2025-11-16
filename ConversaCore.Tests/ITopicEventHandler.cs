@@ -1,10 +1,10 @@
-using ConversaCore.Events;
-using System.Threading.Tasks;
+//using ConversaCore.Events;
+//using System.Threading.Tasks;
 
-namespace ConversaCore.Tests
-{
-    public interface ITopicEventHandler
-    {
-        Task HandleAsync(TopicEvent topicEvent);
-    }
-}
+//namespace ConversaCore.Tests
+//{
+//    public interface ITopicEventHandler
+//    {
+//        Task HandleAsync(TopicEvent topicEvent);
+//    }
+//}

@@ -1,4 +1,4 @@
-namespace ConversaCore.Cards;
+﻿using ConversaCore.Cards;
 
 public class CardElement {
     public required string Type { get; set; }
@@ -17,5 +17,14 @@ public class CardElement {
     public List<CardChoice>? Choices { get; set; }
     public List<CardElement>? Items { get; set; }
     public List<CardElement>? Columns { get; set; }
-    public bool Separator { get; set; } = false; // If true, adds a separator before this element
+    public bool Separator { get; set; } = false;
+
+    // 🆕 Added adaptive input support fields
+    public string? Placeholder { get; set; }       // For text input hints
+    public bool? IsRequired { get; set; }          // For marking required fields
+    public string? Regex { get; set; }             // For validation hints (not evaluated client-side)
+    
+    // 🆕 TagSelect specific properties
+    public bool? AllowCustom { get; set; }         // For TagSelect: allow custom text input
+    public string? CustomPlaceholder { get; set; } // For TagSelect: placeholder for custom input
 }

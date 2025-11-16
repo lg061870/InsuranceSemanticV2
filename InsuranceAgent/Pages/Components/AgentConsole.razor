@@ -71,33 +71,62 @@
                                         </div>
                                     </div>
 
-                                    <div class="space-y-2">
-                                        <h3 class="text-xl font-bold text-gray-800">AI is analyzing your profile...</h3>
-                                        <p class="text-gray-600">Finding the best insurance products tailored to your needs</p>
+                                    <div class="space-y-2 text-center">
+                                        <h3 class="text-xl font-bold text-gray-800">@progressMessage</h3>
+                                        <p class="text-gray-600">@progressStage</p>
                                     </div>
 
                                     <div class="w-64 bg-gray-200 rounded-full h-2">
-                                        <div class="bg-primary h-2 rounded-full animate-pulse" style="width: 65%"></div>
+                                        <div class="bg-primary h-2 rounded-full transition-all duration-700"
+                                             style="width:@($"{progressPercent}%")"></div>
                                     </div>
 
                                     <div class="space-y-3 text-left w-full max-w-sm">
                                         <div class="flex items-center space-x-3">
-                                            <i class="fa-solid fa-check-circle text-accent"></i>
-                                            <span class="text-sm text-gray-700">Profile data collected</span>
+                                            <i class="fa-solid @(stageProfileCollected ? "fa-check-circle text-accent" : "fa-circle text-gray-300")"></i>
+                                            <span class="text-sm @(stageProfileCollected ? "text-gray-700" : "text-gray-400")">
+                                                Profile data collected
+                                            </span>
                                         </div>
+
                                         <div class="flex items-center space-x-3">
-                                            <i class="fa-solid fa-check-circle text-accent"></i>
-                                            <span class="text-sm text-gray-700">Risk assessment completed</span>
+                                            <i class="fa-solid @(stageRiskDone ? "fa-check-circle text-accent" : "fa-circle text-gray-300")"></i>
+                                            <span class="text-sm @(stageRiskDone ? "text-gray-700" : "text-gray-400")">
+                                                Risk assessment completed
+                                            </span>
                                         </div>
+
                                         <div class="flex items-center space-x-3">
-                                            <div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                                            <span class="text-sm text-gray-700">Matching products...</span>
+                                            @if (stageMatching) {
+                                                <div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                            }
+                                            else if (progressPercent >= 60) {
+                                                <i class="fa-solid fa-check-circle text-accent"></i>
+                                            }
+                                            else {
+                                                <i class="fa-regular fa-circle text-gray-300"></i>
+                                            }
+                                            <span class="text-sm @(progressPercent >= 60 ? "text-gray-700" : "text-gray-400")">
+                                                Matching products...
+                                            </span>
                                         </div>
+
                                         <div class="flex items-center space-x-3">
-                                            <i class="fa-regular fa-circle text-gray-300"></i>
-                                            <span class="text-sm text-gray-400">Calculating premiums</span>
+                                            @if (stageCalculating) {
+                                                <div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                            }
+                                            else if (isComplete) {
+                                                <i class="fa-solid fa-check-circle text-accent"></i>
+                                            }
+                                            else {
+                                                <i class="fa-regular fa-circle text-gray-300"></i>
+                                            }
+                                            <span class="text-sm @(isComplete ? "text-gray-700" : "text-gray-400")">
+                                                Calculating premiums
+                                            </span>
                                         </div>
                                     </div>
+
 
                                     <div class="text-xs text-gray-500 bg-gray-50 px-4 py-2 rounded-full">
                                         <i class="fa-regular fa-clock mr-1"></i>
@@ -529,14 +558,32 @@
                 </div>
 
             }
+        
         </div>
     </div>
 </div>
 
 @code {
+
+    // --- Progress State ---
+    private int progressPercent = 0;
+    private string progressStage = "Starting analysis";
+    private string progressMessage = "AI is analyzing your profile...";
+    private bool stageProfileCollected = false;
+    private bool stageRiskDone = false;
+    private bool stageMatching = false;
+    private bool stageCalculating = false;
+    private bool isComplete = false;
+
     private enum Tab { Products, Compliance, Agent }
     private Tab activeTab = Tab.Products;
     private bool showMessage = false;
+    // Dynamic progress state (bound to event-driven updates)
+    private bool isAnalyzing = true;
+    private bool isMatching = false;
+    private bool isCalculating = false;
+
+
 
     private void SelectTab(Tab tab) {
         activeTab = tab;
@@ -552,6 +599,28 @@
     private void ConnectNow() {
         showMessage = true;
     }
+
+    // --- Called when backend sends progress updates ---
+    public void UpdateProgress(int percent, string stage, string message) {
+        progressPercent = percent;
+        progressStage = stage;
+        progressMessage = message;
+
+        // Derive stage flags for labeled icons
+        stageProfileCollected = percent >= 10;
+        stageRiskDone = percent >= 30;
+        stageMatching = percent >= 50 && percent < 80;
+        stageCalculating = percent >= 80 && percent < 100;
+        isComplete = percent >= 100;
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    // Optional convenience for backend events
+    public void MarkComplete() {
+        UpdateProgress(100, "Complete", "Product matching complete!");
+    }
+
 }
 
 

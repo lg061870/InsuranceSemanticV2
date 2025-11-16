@@ -310,6 +310,148 @@
 }
 
 /* =========================
+   Tag Select (Single-Select Chips)
+   ========================= */
+.ac-input-container.ac-tagSelect {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.ac-tagSelect-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ac-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border: 1px solid #d4edda;
+    border-radius: 16px;
+    background-color: #e7f5e8;
+    color: #2d5a3d;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+.ac-tag-chip:hover {
+    border-color: #28a745;
+    background-color: #d1ecf1;
+    color: #155724;
+    transform: translateY(-0.5px);
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.15);
+}
+
+.ac-tag-chip.selected {
+    border-color: #28a745;
+    background-color: #28a745;
+    color: white;
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.25);
+}
+
+.ac-tag-chip.selected:hover {
+    background-color: #1e7e34;
+    border-color: #1e7e34;
+}
+
+.ac-tag-chip:active {
+    transform: translateY(0);
+}
+
+/* Hide chips beyond the limit */
+.ac-tag-chip.hidden {
+    display: none;
+}
+
+/* Show more button */
+.ac-show-more-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border: 1px dashed #6c757d;
+    border-radius: 16px;
+    background-color: transparent;
+    color: #6c757d;
+    font-size: 14px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    white-space: nowrap;
+    line-height: 1.2;
+    margin-left: 6px;
+}
+
+.ac-show-more-btn:hover {
+    border-color: #28a745;
+    color: #28a745;
+    background-color: #f8f9fa;
+}
+
+/* Custom text input for tag selects (like "Other" option) */
+.ac-tagSelect-custom {
+    width: 100%;
+    padding: 12px 16px;
+    margin-top: 8px;
+    border: 1.5px solid #d2d2d2;
+    border-radius: 12px;
+    font-size: 15px;
+    background-color: #fafafa;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.ac-tagSelect-custom:focus {
+    outline: none;
+    border-color: #0078d4;
+    background-color: #fff;
+    box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
+}
+
+.ac-tagSelect-custom::placeholder {
+    color: #666;
+    font-style: italic;
+}
+
+/* Error states for tag selects */
+.ac-input-container.ac-tagSelect[data-field-error="true"] .ac-tag-chip {
+    border-color: #d93025;
+}
+
+.ac-input-container.ac-tagSelect[data-field-error="true"] .ac-tagSelect-custom {
+    border-color: #d93025;
+}
+
+/* Mobile responsiveness for chips */
+@media (max-width: 768px) {
+    .ac-tag-chip {
+        font-size: 14px;
+        padding: 5px 12px;
+    }
+    
+    .ac-tagSelect-chips {
+        gap: 4px;
+    }
+    
+    .ac-show-more-btn {
+        font-size: 13px;
+        padding: 5px 10px;
+    }
+    
+    .ac-tagSelect-custom {
+        padding: 10px 14px;
+        font-size: 14px;
+    }
+}
+
+/* =========================
    Required Field & Error Styling
    ========================= */
 

@@ -1,10 +1,7 @@
 using ConversaCore.Models;
 using ConversaCore.TopicFlow;
-using ConversaCore.TopicFlow.Activities;
-using InsuranceAgent.Topics.CoverageIntentTopic;
-using Microsoft.Extensions.Logging;
 
-namespace InsuranceAgent.Topics.CoverageIntentTopic
+namespace InsuranceAgent.Topics
 {
     /// <summary>
     /// Topic for collecting coverage intent and preferences.

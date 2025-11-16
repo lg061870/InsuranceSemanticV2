@@ -5,7 +5,7 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 
-namespace ConversaCore.TopicFlow.Activities;
+namespace ConversaCore.TopicFlow;
 
 /// <summary>
 /// Generic decision activity that uses AI to analyze input data against rules/context and produce structured output.

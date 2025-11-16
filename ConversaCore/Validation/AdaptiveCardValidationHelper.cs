@@ -1,7 +1,9 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using Microsoft.Extensions.Logging;
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Reflection;
 
 public static class AdaptiveCardValidationHelper {
     /// <summary>
@@ -191,31 +193,61 @@ public static class AdaptiveCardValidationHelper {
             // Preserve user input and disable all input elements
             if (element.TryGetValue("id", out var idObj)) {
                 var id = idObj?.ToString();
-                if (!string.IsNullOrEmpty(id) && userInputData.ContainsKey(id)) {
-                    var inputType = element.TryGetValue("type", out var typeObj) ? typeObj?.ToString() : "";
-                    var userValue = userInputData[id];
-                    
-                    switch (inputType) {
-                        case "Input.Text":
-                        case "Input.Number":
-                        case "Input.Date":
-                            element["value"] = userValue?.ToString() ?? "";
-                            element["isEnabled"] = false; // Disable input
-                            break;
-                        case "Input.ChoiceSet":
-                            if (userValue != null) {
-                                element["value"] = userValue.ToString() ?? "";
-                            }
-                            element["isEnabled"] = false; // Disable choice set
-                            break;
-                        case "Input.Toggle":
-                            if (userValue is bool boolValue) {
-                                element["value"] = boolValue;
-                            } else if (bool.TryParse(userValue?.ToString(), out var parsedBool)) {
-                                element["value"] = parsedBool;
-                            }
-                            element["isEnabled"] = false; // Disable toggle
-                            break;
+                if (!string.IsNullOrEmpty(id)) {
+                    // Check if this element has user input data
+                    if (userInputData.ContainsKey(id)) {
+                        var inputType = element.TryGetValue("type", out var typeObj) ? typeObj?.ToString() : "";
+                        var userValue = userInputData[id];
+
+                        switch (inputType) {
+                            case "Input.Text":
+                            case "Input.Number":
+                            case "Input.Date":
+                            case "Input.TagSelect": // ✅ support tag/select inputs (custom)
+                                element["value"] = userValue?.ToString() ?? string.Empty;
+                                element["isEnabled"] = false; // disable standard text-like inputs
+                                break;
+
+                            case "Input.ChoiceSet":
+                                if (userValue != null)
+                                    element["value"] = userValue.ToString() ?? string.Empty;
+                                element["isEnabled"] = false; // disable choice set
+                                break;
+
+                            case "Input.Toggle":
+                                if (userValue is bool boolValue) {
+                                    element["value"] = boolValue;
+                                }
+                                else if (bool.TryParse(userValue?.ToString(), out var parsedBool)) {
+                                    element["value"] = parsedBool;
+                                }
+                                else {
+                                    // fallback to false for malformed values
+                                    element["value"] = false;
+                                }
+                                element["isEnabled"] = false; // disable toggle
+                                break;
+
+                            default:
+                                // 🔹 Unknown input types: preserve existing value if present, just disable them
+                                if (element.ContainsKey("value")) {
+                                    // Keep current value so card doesn’t blank out
+                                    element["isEnabled"] = false;
+                                }
+                                break;
+                        }
+                    }
+                    else {
+                        // Element not in user input data - handle toggles that were not selected
+                        var inputType = element.TryGetValue("type", out var typeObj) ? typeObj?.ToString() : "";
+                        if (inputType == "Input.Toggle") {
+                            // For unselected toggles, ensure they show as unchecked
+                            element["value"] = false;
+                            element["isEnabled"] = false;
+                        } else {
+                            // For other input types, just disable them with current value
+                            element["isEnabled"] = false;
+                        }
                     }
                 }
             }
@@ -260,4 +292,41 @@ public static class AdaptiveCardValidationHelper {
         root["body"] = newBody;
         return JsonSerializer.Serialize(root);
     }
+
+    /// <summary>
+    /// Injects a `_metadata` object with `activityId` and `isRequired` into an Adaptive Card JSON string.
+    /// </summary>
+    /// <summary>
+    /// Injects a `_metadata` object with `activityId` and `isRequired` into an Adaptive Card JSON string.
+    /// </summary>
+    public static string InjectMetadata(string cardJson, string activityId, bool isRequired, ILogger? logger = null) {
+        try {
+            using var document = JsonDocument.Parse(cardJson);
+            var root = document.RootElement.Clone();
+
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(stream)) {
+                writer.WriteStartObject();
+
+                // ✅ Copy all existing top-level properties
+                foreach (var property in root.EnumerateObject())
+                    property.WriteTo(writer);
+
+                // ✅ Add metadata section
+                writer.WritePropertyName("_metadata");
+                writer.WriteStartObject();
+                writer.WriteString("activityId", activityId);
+                writer.WriteBoolean("isRequired", isRequired);
+                writer.WriteEndObject();
+
+                writer.WriteEndObject();
+            }
+
+            return Encoding.UTF8.GetString(stream.ToArray());
+        } catch (Exception ex) {
+            logger?.LogError(ex, "[{ActivityId}] Failed to inject metadata into card JSON.", activityId);
+            return cardJson; // fallback to original if parsing fails
+        }
+    }
+
 }

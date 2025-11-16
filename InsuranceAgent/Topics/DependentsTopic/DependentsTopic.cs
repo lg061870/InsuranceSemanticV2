@@ -1,10 +1,7 @@
 using ConversaCore.Models;
 using ConversaCore.TopicFlow;
-using ConversaCore.TopicFlow.Activities;
-using InsuranceAgent.Topics.DependentsTopic;
-using Microsoft.Extensions.Logging;
 
-namespace InsuranceAgent.Topics.DependentsTopic
+namespace InsuranceAgent.Topics
 {
     /// <summary>
     /// Topic for collecting financial dependents information.

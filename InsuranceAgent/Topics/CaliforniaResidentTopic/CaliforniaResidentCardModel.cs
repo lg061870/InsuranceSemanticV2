@@ -1,40 +1,46 @@
-using System;
 using System.ComponentModel.DataAnnotations;
-using ConversaCore.Validation;
+using System.Text.Json.Serialization;
 using ConversaCore.Cards;
-using System.Collections.Generic;
 
-namespace InsuranceAgent.Topics.CaliforniaResidentTopic;
-
+namespace InsuranceAgent.Topics; 
+/// <summary>
+/// Model representing ZIP code collection and CCPA acknowledgment for California residents.
+/// </summary>
 public class CaliforniaResidentModel : BaseCardModel {
-    [RequiredChoice(ErrorMessage = "You must confirm whether you are a California resident.")]
-    public bool? IsCaliforniaResident { get; set; }
-
-    [RequiredIf("IsCaliforniaResident", true, ErrorMessage = "ZIP Code is required for CA residents.")]
-    [CaliforniaZipValidation] // handles both format + range if not blank
+    [Required(ErrorMessage = "ZIP code is required.")]
+    [RegularExpression(@"^\d{5}$", ErrorMessage = "ZIP code must be 5 digits.")]
+    [JsonPropertyName("zip_code")]
     public string? ZipCode { get; set; }
-  
+
+    [JsonPropertyName("ccpa_acknowledgment")]
+    public string? CcpaAcknowledged { get; set; }
+
     /// <summary>
-    /// Determines if the model contains a valid California ZIP code.
+    /// True if the CCPA acknowledgment is affirmative ("yes").
     /// </summary>
-    /// <returns>True if the model contains a valid California ZIP code, false otherwise.</returns>
-    public bool HasValidCaliforniaZip() {
-        // If not a resident, we don't need to validate
-        if (IsCaliforniaResident != true) {
-            return false;
-        }
+    public bool? HasCcpaAcknowledgment => CcpaAcknowledged switch {
+        "yes" => true,
+        "no" => false,
+        _ => null
+    };
 
-        // ZIP must be present for a CA resident
-        if (string.IsNullOrWhiteSpace(ZipCode)) {
-            return false;
-        }
+    /// <summary>
+    /// Returns true if the ZIP is a valid California ZIP (90001�96162).
+    /// </summary>
+    public bool IsCaliforniaZip() {
+        if (string.IsNullOrWhiteSpace(ZipCode)) return false;
+        return int.TryParse(ZipCode, out var zip) && zip >= 90001 && zip <= 96162;
+    }
 
-        // ZIP must be numeric and 5 digits
-        if (!int.TryParse(ZipCode, out var zip) || ZipCode.Length != 5) {
-            return false;
-        }
+    public bool IsValid(out List<string> errors) {
+        errors = new List<string>();
 
-        // ZIP must be in California range (90001-96162)
-        return zip >= 90001 && zip <= 96162;
+        if (string.IsNullOrWhiteSpace(ZipCode) || !IsCaliforniaZip())
+            errors.Add("A valid California ZIP code is required.");
+
+        if (HasCcpaAcknowledgment != true)
+            errors.Add("You must acknowledge the CCPA privacy notice.");
+
+        return errors.Count == 0;
     }
 }

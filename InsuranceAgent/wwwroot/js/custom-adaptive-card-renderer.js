@@ -54,6 +54,26 @@
                 formData[id] = input.checked ? on : off;
             });
 
+            // TagSelect: custom chips input groups
+            host.querySelectorAll(".ac-tagSelect-group").forEach((group) => {
+                const id = group.getAttribute("data-tag-select-id");
+                if (!id) return;
+                
+                // Check if a chip is selected
+                const selectedChip = group.querySelector(".ac-tag-chip.selected");
+                if (selectedChip) {
+                    formData[id] = selectedChip.getAttribute("data-value");
+                } else {
+                    // Check if custom text input has value
+                    const customInput = group.querySelector(".ac-tagSelect-custom");
+                    if (customInput && customInput.value.trim()) {
+                        formData[id] = customInput.value.trim();
+                    } else {
+                        formData[id] = "";
+                    }
+                }
+            });
+
             // ChoiceSet expanded: radio (single) or checkbox (multi) groups
             host.querySelectorAll("[data-ac-group]").forEach((input) => {
                 const groupId = input.getAttribute("data-ac-group");
@@ -83,6 +103,27 @@
         render(cardJson, container, onSubmit) {
             if (!cardJson || !container) return;
             container.innerHTML = "";
+
+            // ✅ Read metadata for required flag
+            let isRequiredCard = false;
+            let activityId = null;
+
+            if (cardJson._metadata) {
+                activityId = cardJson._metadata.activityId || null;
+                isRequiredCard = cardJson._metadata.isRequired === true;
+            }
+
+            // ✅ Add CSS hook for required cards
+            if (isRequiredCard) {
+                container.classList.add("ac-required-card");
+
+                // Add a subtle banner or visual indicator
+                const banner = document.createElement("div");
+                banner.className = "ac-required-banner";
+                banner.textContent = "⚠ This form must be completed before continuing";
+                container.appendChild(banner);
+            }
+
             
             // Store validation errors for processing
             const validationErrors = cardJson.validationErrors || {};
@@ -140,6 +181,7 @@
                 case "Input.Date": return this.renderInputDate(element);
                 case "Input.ChoiceSet": return this.renderChoiceSet(element);
                 case "Input.Toggle": return this.renderInputToggle(element);
+                case "Input.TagSelect": return this.renderTagSelect(element);
                 default:
                     // Fallback support if provided
                     if (element.fallback) {
@@ -344,7 +386,14 @@
 
             const on = valueOn ?? "true";
             const off = valueOff ?? "false";
-            const initial = (value ?? off) === on;
+
+            const normalizeBool = v => {
+                if (v == null) return false; // handles null/undefined cleanly
+                const s = String(v).trim().toLowerCase();
+                return s === "true" || s === "1";
+            };
+
+            const initial = normalizeBool(value ?? off);
 
             const input = el("input", "ac-input ac-toggle", {
                 type: "checkbox",
@@ -366,6 +415,118 @@
 
             wrap.appendChild(input);
             wrap.appendChild(label);
+            return wrap;
+        },
+
+        // TagSelect: Single-select chips with optional custom input
+        renderTagSelect(element) {
+            const { id, choices, value, allowCustom, customPlaceholder } = element;
+            const shouldAllowCustom = allowCustom === true;
+            const placeholder = customPlaceholder || "Or enter other...";
+            const maxVisible = 3; // Show only 3 chips initially
+            
+            const wrap = el("div", "ac-input-container ac-tagSelect");
+            const group = el("div", "ac-tagSelect-group");
+            group.setAttribute("data-tag-select-id", id || "");
+            
+            // Chips container
+            const chipsContainer = el("div", "ac-tagSelect-chips");
+            
+            // Create chips for predefined choices
+            if (Array.isArray(choices)) {
+                choices.forEach((choice, index) => {
+                    const chip = el("div", "ac-tag-chip");
+                    chip.textContent = choice.title || choice.value;
+                    chip.setAttribute("data-value", choice.value);
+                    
+                    // Hide chips beyond the limit
+                    if (index >= maxVisible) {
+                        chip.classList.add("hidden");
+                    }
+                    
+                    // Set initial selection
+                    if (choice.value === value) {
+                        chip.classList.add("selected");
+                    }
+                    
+                    // Click handler for single selection
+                    chip.addEventListener("click", () => {
+                        // Deselect all other chips in this group
+                        group.querySelectorAll(".ac-tag-chip").forEach(c => c.classList.remove("selected"));
+                        // Select this chip
+                        chip.classList.add("selected");
+                        
+                        // Clear custom input if allowCustom
+                        if (shouldAllowCustom) {
+                            const customInput = group.querySelector(".ac-tagSelect-custom");
+                            if (customInput) {
+                                customInput.value = "";
+                            }
+                        }
+                    });
+                    
+                    chipsContainer.appendChild(chip);
+                });
+                
+                // Add "Show More" button if there are hidden chips
+                if (choices.length > maxVisible) {
+                    const showMoreBtn = el("div", "ac-show-more-btn");
+                    const hiddenCount = choices.length - maxVisible;
+                    showMoreBtn.textContent = `+${hiddenCount} more`;
+                    
+                    let isExpanded = false;
+                    
+                    showMoreBtn.addEventListener("click", () => {
+                        const hiddenChips = chipsContainer.querySelectorAll(".ac-tag-chip.hidden");
+                        
+                        if (!isExpanded) {
+                            // Show all chips
+                            hiddenChips.forEach(chip => chip.classList.remove("hidden"));
+                            showMoreBtn.textContent = "Show less";
+                            isExpanded = true;
+                        } else {
+                            // Hide extra chips again
+                            const allChips = chipsContainer.querySelectorAll(".ac-tag-chip");
+                            allChips.forEach((chip, index) => {
+                                if (index >= maxVisible) {
+                                    chip.classList.add("hidden");
+                                }
+                            });
+                            showMoreBtn.textContent = `+${hiddenCount} more`;
+                            isExpanded = false;
+                        }
+                    });
+                    
+                    chipsContainer.appendChild(showMoreBtn);
+                }
+            }
+            
+            group.appendChild(chipsContainer);
+            
+            // Add custom text input if allowCustom
+            if (shouldAllowCustom) {
+                const customInput = el("input", "ac-tagSelect-custom", {
+                    type: "text",
+                    placeholder: placeholder
+                });
+                
+                // If current value is not in choices, put it in custom input
+                const hasMatchingChoice = choices && choices.some(choice => choice.value === value);
+                if (value && !hasMatchingChoice) {
+                    customInput.value = value;
+                }
+                
+                // Clear chips when typing in custom input
+                customInput.addEventListener("input", () => {
+                    if (customInput.value.trim()) {
+                        group.querySelectorAll(".ac-tag-chip").forEach(c => c.classList.remove("selected"));
+                    }
+                });
+                
+                group.appendChild(customInput);
+            }
+            
+            wrap.appendChild(group);
             return wrap;
         },
 

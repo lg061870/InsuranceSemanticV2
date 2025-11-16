@@ -1,12 +1,12 @@
 ﻿using InsuranceAgent.Models;
 using InsuranceAgent.Configuration;
-using ConversaCore.Services;
 using ConversaCore.Models;
 using ConversaCore.Events;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using ConversaCore.Interfaces;
 
 namespace InsuranceAgent.Services;
 

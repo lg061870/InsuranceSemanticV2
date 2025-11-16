@@ -1,51 +1,64 @@
-using ConversaCore.Cards;
+﻿using ConversaCore.Cards;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
-namespace InsuranceAgent.Topics.ComplianceTopic
-{
-    /// <summary>
-    /// Model for compliance and consent data collection.
-    /// Maps to the ComplianceCard input fields.
-    /// </summary>
-    public class ComplianceModel : BaseCardModel
-    {
-        [JsonPropertyName("tcpac_consent")]
-        public string? TcpaConsent { get; set; }
+namespace InsuranceAgent.Topics; 
+/// <summary>
+/// Model representing compliance and consent data for the user.
+/// Includes TCPA consent and ZIP code validation logic.
+/// </summary>
+public class ComplianceModel : BaseCardModel {
+    // -----------------------------
+    // ✅ TCPA CONSENT HANDLING
+    // -----------------------------
+    private bool? _hasTcpaConsent;
 
-        [JsonPropertyName("ccpa_acknowledged")]
-        public string? CcpaAcknowledged { get; set; }
-
-        // Computed properties for easier business logic
-        // Yes = true, No = false, Don't want to answer/null = null
-        public bool? HasTcpaConsent => TcpaConsent switch
-        {
-            "yes" => true,
-            "no" => false,
-            _ => null  // "prefer_not_to_answer" or null
+    [JsonPropertyName("tcpa_consent")]
+    [Required(ErrorMessage = "TCPA consent is required.")]
+    public string? TcpaConsent {
+        get => HasTcpaConsent switch {
+            true => "yes",
+            false => "no",
+            _ => null
         };
-
-        public bool? HasCcpaAcknowledgment => CcpaAcknowledged switch
-        {
-            "yes" => true,
-            "no" => false,
-            _ => null  // "prefer_not_to_answer" or null
-        };
-
-        // Validation method - now allowing "don't want to answer" responses
-        public bool IsValid(out List<string> errors)
-        {
-            errors = new List<string>();
-
-            // Optional: You can add business logic here if certain responses are required
-            // For now, all responses (yes/no/prefer not to answer) are considered valid
-            
-            return errors.Count == 0;
-        }
-
-        public override string ToString()
-        {
-            return $"Compliance: TCPA={TcpaConsent}, CCPA={CcpaAcknowledged}";
+        set {
+            _hasTcpaConsent = value?.ToLower() switch {
+                "yes" or "y" or "true" => true,
+                "no" or "n" or "false" => false,
+                _ => null
+            };
         }
     }
+
+    [JsonIgnore]
+    public bool? HasTcpaConsent {
+        get => _hasTcpaConsent;
+        private set => _hasTcpaConsent = value;
+    }
+
+    // -----------------------------
+    // ✅ ZIP CODE HANDLING
+    // -----------------------------
+    [JsonPropertyName("zip_code")]
+    [Required(ErrorMessage = "ZIP Code is required.")]
+    [RegularExpression(@"^\d{5}$", ErrorMessage = "Please enter a valid 5-digit ZIP Code.")]
+    public string? ZipCode { get; set; }
+
+    /// <summary>
+    /// Determines if the ZIP code belongs to California.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsCaliforniaZip {
+        get {
+            if (string.IsNullOrWhiteSpace(ZipCode)) return false;
+            if (!int.TryParse(ZipCode, out var zip)) return false;
+            return zip >= 90001 && zip <= 96162;
+        }
+    }
+
+    // -----------------------------
+    // ✅ UTILITY
+    // -----------------------------
+    public override string ToString()
+        => $"Compliance: TCPA={TcpaConsent}, ZIP={ZipCode}, IsCA={IsCaliforniaZip}";
 }

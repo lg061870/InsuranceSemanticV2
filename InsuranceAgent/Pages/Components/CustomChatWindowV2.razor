@@ -1,11 +1,12 @@
-@using ConversaCore.Events
-@using ConversaCore.Services
-@using ConversaCore.Models
-@using ConversaCore.TopicFlow
-@using InsuranceAgent.Services
-@using InsuranceAgent.Models
-@using System.Text.Json
 @using System.Collections.Generic
+@using System.Text.Json
+@using ConversaCore.Events
+@using ConversaCore.Interfaces
+@using ConversaCore.Models
+@using ConversaCore.Services
+@using ConversaCore.TopicFlow
+@using InsuranceAgent.Models
+@using InsuranceAgent.Services
 
 @implements IDisposable
 
@@ -67,12 +68,15 @@
 
                         @if (message.IsAdaptiveCard && !string.IsNullOrEmpty(message.AdaptiveCardJson)) {
                             <!-- Adaptive Card -->
-                            <div class="adaptive-card-container">
+                            <div class="adaptive-card-container @(message.IsActive ? "" : "readonly")">
                                 <AdaptiveCardRenderer CardJson="@message.AdaptiveCardJson"
                                                       CardContainerId="@($"card-{message.Timestamp.Ticks}")"
+                                                      Disabled="@(!message.IsActive)"
                                                       OnSubmit="OnAdaptiveCardSubmit"
                                                       OnAction="HandleCardAction" />
+
                             </div>
+
                             <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
                         }
                         else {
@@ -101,33 +105,40 @@
     </div>
 
     <!-- Suggestion chips -->
-    <div class="chat-suggestions">
+    <div class="chat-suggestions @( !IsPromptEnabled ? "disabled" : "" )">
         @foreach (var suggestion in CurrentSuggestions) {
-            <div class="suggestion-chip" @onclick="() => UseSuggestion(suggestion)">
+            <div class="suggestion-chip"
+                 @onclick="() => UseSuggestion(suggestion)"
+                 disabled="@(!IsPromptEnabled)">
                 @suggestion
             </div>
         }
     </div>
 
     <!-- Message input -->
-    <div class="message-input-container">
+    <div class="message-input-container" title="@(!IsPromptEnabled ? "Please complete the required card above before continuing." : null)">
         <textarea @bind="CurrentMessage"
                   @bind:event="oninput"
                   @onkeydown="HandleKeyDown"
-                  placeholder="Type your message..."
-                  disabled="@IsProcessing"
-                  class="message-input"
+                  placeholder="@(!IsPromptEnabled
+                                      ? "Please complete the required card above before continuing..."
+                                      : "Type your message...")"
+                  disabled="@(!IsPromptEnabled || IsProcessing)"
+                  class="message-input @( !IsPromptEnabled ? "disabled" : "" )"
                   rows="1"
                   @ref="messageInputRef"></textarea>
-        <button class="send-button" @onclick="SendMessage" disabled="@(IsProcessing || string.IsNullOrWhiteSpace(CurrentMessage))">
+
+        <button class="send-button"
+                @onclick="SendMessage"
+                disabled="@(!IsPromptEnabled || IsProcessing || string.IsNullOrWhiteSpace(CurrentMessage))">
             <i class="fa-solid fa-paper-plane"></i>
         </button>
     </div>
+
 </div>
 
 <!-- Reset Confirmation Dialog -->
-@if (showResetConfirmation)
-{
+@if (showResetConfirmation) {
     <div class="modal-overlay" @onclick="HideResetConfirmation">
         <div class="modal-dialog" @onclick:stopPropagation="true">
             <div class="modal-header">
@@ -147,9 +158,9 @@
                 <p class="text-warning">This action cannot be undone.</p>
             </div>
             <div class="modal-footer">
-             <button id="reset-cancel-btn" type="button" class="btn btn-secondary" @onclick="HideResetConfirmation">Cancel</button>
-             <button id="reset-test-btn" type="button" class="btn btn-warning" @onclick="TestResetButton">Test Button</button>
-             <button id="reset-confirm-btn" type="button" class="btn btn-danger" @onclick="ConfirmReset">Reset Conversation</button>
+                <button id="reset-cancel-btn" type="button" class="btn btn-secondary" @onclick="HideResetConfirmation">Cancel</button>
+                <button id="reset-test-btn" type="button" class="btn btn-warning" @onclick="TestResetButton">Test Button</button>
+                <button id="reset-confirm-btn" type="button" class="btn btn-danger" @onclick="ConfirmReset">Reset Conversation</button>
             </div>
         </div>
     </div>
@@ -173,6 +184,7 @@
     private ChatMessage? messageBeingEdited = null;
     private bool _conversationStarted = false;
     private bool showResetConfirmation = false;
+    private bool IsPromptEnabled { get; set; } = true;
 
     private ElementReference messagesContainerRef;
     private ElementReference messageInputRef;
@@ -183,20 +195,20 @@
         "repeat demo"
     };
 
-    public TopicWorkflowContext WorkflowContext { get; set; } = default!;
+    // public TopicWorkflowContextV2 WorkflowContext { get; set; } = default!;
 
     protected override async Task OnAfterRenderAsync(bool firstRender) {
         if (firstRender && !_conversationStarted) {
             // Subscribe Service → ChatWindow FIRST
-                ChatService.HybridBotMessageReady += (s, e) => {
-                    Logger?.LogInformation($"[ChatWindow] Received HybridBotMessageReady: {e.Message.Content}");
-                    InvokeAsync(() => {
-                        Messages.Add(e.Message);
-                        StateHasChanged();
-                    });
+            ChatService.HybridBotMessageReady += (s, e) => {
+                Logger?.LogInformation($"[ChatWindow] Received HybridBotMessageReady: {e.Message.Content}");
+                InvokeAsync(() => {
+                    Messages.Add(e.Message);
+                    StateHasChanged();
+                });
 
-                    BotMessageRendered?.Invoke(this, new ChatWindowBotMessageEventArgs(e.Message.Content));
-                };
+                BotMessageRendered?.Invoke(this, new ChatWindowBotMessageEventArgs(e.Message.Content));
+            };
 
             ChatService.HybridAdaptiveCardReady += (s, e) => {
                 Logger?.LogInformation($"[ChatWindow] HybridAdaptiveCardReady: CardId={e.CardId}, RenderMode={e.RenderMode}");
@@ -261,7 +273,45 @@
                     StateHasChanged();
                     Logger?.LogInformation("[ChatWindow] StateHasChanged completed");
                 });
+
             };
+
+            ChatService.HybridCardStateChanged += (s, e) => {
+                Logger?.LogInformation($"[ChatWindow] Card state changed: {e.CardId} -> {e.State}");
+                InvokeAsync(async () => {
+                    var index = Messages.FindIndex(m => m.IsAdaptiveCard && m.CardId == e.CardId);
+                    if (index != -1) {
+                        var card = Messages[index];
+                        bool newIsActive = e.State == CardState.Active;
+
+                        if (card.IsActive != newIsActive) {
+                            Logger?.LogInformation($"[ChatWindow] Updating card {e.CardId} active={newIsActive}");
+                            card.IsActive = newIsActive;
+
+                            // Force Blazor to detect the list mutation
+                            Messages[index] = card;
+                            StateHasChanged();
+
+                            // ✅ Scroll logic: if card became active → scroll to bottom
+                            if (newIsActive) {
+                                Logger?.LogInformation($"[ChatWindow] Scrolling to bottom after activating {e.CardId}");
+                                await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+                            }
+                        }
+                    }
+                });
+            };
+
+
+            ChatService.PromptInputStateChanged += (s, e) => {
+                Logger?.LogInformation($"[ChatWindow] Prompt state changed: Enabled={e.IsEnabled} (CardId={e.CardId})");
+                InvokeAsync(() => {
+                    IsPromptEnabled = e.IsEnabled;
+                    StateHasChanged();
+                });
+            };
+
+
 
             // Subscribe ChatWindow → Service
             UserMessageEntered += ChatService.HandleUserMessage;
@@ -276,6 +326,15 @@
             _conversationStarted = true;
         }
     }
+
+    private async void ScrollToCard(string cardId) {
+        try {
+            await JSRuntime.InvokeVoidAsync("scrollToCardElement", cardId);
+        } catch (Exception ex) {
+            Logger?.LogError(ex, "[ChatWindow] ScrollToCard failed for {CardId}", cardId);
+        }
+    }
+
 
     public void Dispose() {
         ChatService.OnConversationStart -= HandleConversationStart;
@@ -357,29 +416,28 @@
         Logger?.LogInformation($"[ChatWindow] ConfirmReset: showResetConfirmation={showResetConfirmation}");
         showResetConfirmation = false;
         StateHasChanged();
-        
+
         try {
             Logger?.LogInformation("[ChatWindow] Calling ChatService.ResetConversationAsync()");
-            
+
             // Ensure all existing messages are cleared first before the reset
             // This prevents UI glitches where old messages appear momentarily
             Messages.Clear();
             StateHasChanged();
-            
+
             // Small delay to ensure UI updates before backend reset
             await Task.Delay(100);
-            
+
             // Now call the reset
             await ChatService.ResetConversationAsync();
-            
+
             Logger?.LogInformation("[ChatWindow] ResetConversationAsync completed");
-            
+
             // Force another state update to ensure everything is refreshed
             StateHasChanged();
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             Logger?.LogError(ex, "[ChatWindow] Error resetting conversation");
-            
+
             // Add an error message for the user
             Messages.Add(new ChatMessage {
                 Content = "⚠️ There was an error resetting the conversation. Please try again.",
@@ -482,11 +540,11 @@
         border-bottom: 1px solid #e9ecef;
     }
 
-    .modal-header h3 {
-        margin: 0;
-        font-size: 1.25rem;
-        font-weight: 600;
-    }
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
 
     .modal-close {
         background: none;
@@ -502,26 +560,26 @@
         justify-content: center;
     }
 
-    .modal-close:hover {
-        color: #dc3545;
-    }
+        .modal-close:hover {
+            color: #dc3545;
+        }
 
     .modal-body {
         padding: 1.5rem;
     }
 
-    .modal-body p {
-        margin-bottom: 1rem;
-    }
+        .modal-body p {
+            margin-bottom: 1rem;
+        }
 
-    .modal-body ul {
-        margin-bottom: 1rem;
-        padding-left: 1.5rem;
-    }
+        .modal-body ul {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }
 
-    .modal-body li {
-        margin-bottom: 0.5rem;
-    }
+        .modal-body li {
+            margin-bottom: 0.5rem;
+        }
 
     .text-warning {
         color: #fd7e14;
@@ -551,10 +609,10 @@
         color: white;
     }
 
-    .btn-secondary:hover {
-        background-color: #5a6268;
-        border-color: #545b62;
-    }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+            border-color: #545b62;
+        }
 
     .btn-danger {
         background-color: #dc3545;
@@ -562,8 +620,133 @@
         color: white;
     }
 
-    .btn-danger:hover {
-        background-color: #c82333;
-        border-color: #bd2130;
+        .btn-danger:hover {
+            background-color: #c82333;
+            border-color: #bd2130;
+        }
+
+    .adaptive-card-container.readonly {
+        opacity: 0.5;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
     }
+
+    .message-input.disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        background-color: #f4f4f4;
+        color: #999;
+    }
+
+    .message-input-container[title] {
+        position: relative;
+    }
+
+        .message-input-container[title]::after {
+            content: attr(title);
+            display: none;
+            position: absolute;
+            bottom: 120%;
+            left: 10px;
+            background: #333;
+            color: #fff;
+            font-size: 0.75rem;
+            padding: 6px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        .message-input-container[title]:hover::after {
+            display: block;
+            opacity: 1;
+        }
+
+    /* === Required Card Styling === */
+    .ac-required-card {
+        position: relative;
+        border: 2px solid #ffb84d;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #fffdf8 0%, #fffaf2 100%);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        padding: 16px 18px 20px 18px;
+        margin: 12px 0;
+        transition: box-shadow 0.2s ease;
+    }
+
+        .ac-required-card:hover {
+            box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+        }
+
+    /* === Required Card Styling (minimal + red dashed) === */
+    .ac-required-card {
+        position: relative;
+        border: 2px dashed #d93025; /* red dashed border */
+        border-radius: 10px;
+        background: transparent; /* no fill color */
+        padding: 16px 18px 20px 18px;
+        margin: 14px 0;
+    }
+
+    /* === Banner Header === */
+    .ac-required-banner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fdecea; /* soft red-tinted background */
+        color: #b71c1c; /* darker red for text */
+        border: 1px solid #f5c6cb; /* subtle matching border */
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 14px;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+    }
+
+        /* Optional: small emoji prefix */
+        .ac-required-banner::before {
+            content: "⚠️";
+            margin-right: 6px;
+        }
+
+    /* === Required Field Markers === */
+    .ac-required-field label .ac-required-indicator {
+        color: #d93025;
+        font-weight: bold;
+    }
+
+    /* === Inputs inside required cards === */
+    .ac-required-card .ac-input-container input,
+    .ac-required-card .ac-input-container select,
+    .ac-required-card .ac-input-container textarea {
+        border: 1px solid #f1a6a0;
+        transition: border-color 0.2s ease;
+    }
+
+        .ac-required-card .ac-input-container input:focus,
+        .ac-required-card .ac-input-container select:focus,
+        .ac-required-card .ac-input-container textarea:focus {
+            border-color: #d93025;
+            outline: none;
+        }
+
+    /* === Submit Button inside required cards === */
+    .ac-required-card .ac-pushButton {
+        background: linear-gradient(180deg, #0078d7 0%, #005fa3 100%);
+        border: none;
+        color: white;
+        font-weight: 600;
+        border-radius: 6px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        transition: background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+        .ac-required-card .ac-pushButton:hover {
+            background: linear-gradient(180deg, #008fee 0%, #006cc2 100%);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+
 </style>

@@ -1,9 +1,10 @@
-﻿using Microsoft.Extensions.Logging;
-using ConversaCore.Topics;         // for ITopic, TopicResult
+﻿using ConversaCore.Core;
+using ConversaCore.Events;   // for TopicStateMachine<TState>
+using ConversaCore.Interfaces;
 using ConversaCore.Models;         // for TopicWorkflowContext, ActivityResult
 using ConversaCore.StateMachine;
-using ConversaCore.Events;   // for TopicStateMachine<TState>
-using ConversaCore.Core;
+using ConversaCore.Topics;         // for ITopic, TopicResult
+using Microsoft.Extensions.Logging;
 
 namespace ConversaCore.TopicFlow;
 
@@ -21,228 +22,162 @@ public abstract class TopicFlow : ITopic, ITerminable {
     /// Flag indicating whether this topic has been terminated.
     /// </summary>
     private bool _isTerminated = false;
-    
+
+    /// <summary>
+    /// Gets whether this topic has been terminated.
+    /// </summary>
     /// <summary>
     /// Gets whether this topic has been terminated.
     /// </summary>
     public bool IsTerminated => _isTerminated;
-    
+
     /// <summary>
     /// Terminates the topic and all its activities, releasing resources and unsubscribing from events.
-    /// This implementation complies with the ITerminable interface.
     /// </summary>
-    public virtual void Terminate()
-    {
-        if (_isTerminated) return; // Already terminated
-        
-        _logger.LogInformation("[TopicFlow] Terminating topic {Name} (CurrentState={State})", Name, State);
-        
-        // Cancel any ongoing operations if we're in a running or waiting state
-        if (State == FlowState.Running || State == FlowState.WaitingForInput)
-        {
-            _logger.LogDebug("[TopicFlow] Canceling ongoing operations for topic {Name}", Name);
+    public virtual void Terminate() {
+        if (_isTerminated) return;
+
+        _logger.LogInformation("[TopicFlow:{Name}] Terminating (CurrentState={State})", Name, State);
+
+        // Cancel running state
+        if (State == FlowState.Running || State == FlowState.WaitingForInput) {
+            _logger.LogDebug("[TopicFlow:{Name}] Canceling ongoing operations", Name);
             _isRunning = false;
-            
-            try
-            {
-                // Force transition to a terminal state for proper cleanup
+
+            try {
                 _fsm.ForceState(FlowState.Failed, "Terminated while active");
                 OnTopicLifecycleChanged(TopicLifecycleState.Failed, "Topic terminated");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[TopicFlow] Exception during state transition in termination for topic {Name}", Name);
+            } catch (Exception ex) {
+                _logger.LogWarning(ex, "[TopicFlow:{Name}] Exception during state transition in termination", Name);
             }
         }
-        
-        // Terminate all activities - priority on the current activity if one exists
-        if (_currentActivityId != null && _activities.TryGetValue(_currentActivityId, out var currentActivity))
-        {
-            if (currentActivity is ITerminable terminableCurrentActivity)
-            {
-                _logger.LogDebug("[TopicFlow] Terminating current activity {ActivityId}", currentActivity.Id);
-                try
-                {
-                    terminableCurrentActivity.Terminate();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[TopicFlow] Exception terminating current activity {ActivityId}", currentActivity.Id);
-                }
+
+        // Terminate current activity first
+        if (_currentActivityId != null && _activities.TryGetValue(_currentActivityId, out var current)) {
+            if (current is ITerminable t) {
+                _logger.LogDebug("[TopicFlow:{Name}] Terminating current activity {ActivityId}", Name, current.Id);
+                TryTerminateActivitySafely(t, current.Id);
             }
         }
-        
-        // Now terminate all other activities
-        foreach (var activity in _activities.Values)
-        {
-            // Skip the current activity since we already terminated it
+
+        // Terminate the rest
+        foreach (var activity in _activities.Values.ToList()) {
             if (activity.Id == _currentActivityId) continue;
-            
-            if (activity is ITerminable terminable)
-            {
-                _logger.LogDebug("[TopicFlow] Terminating activity {ActivityId}", activity.Id);
-                try
-                {
-                    terminable.Terminate();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[TopicFlow] Exception terminating activity {ActivityId}", activity.Id);
-                }
+            if (activity is ITerminable t) {
+                _logger.LogDebug("[TopicFlow:{Name}] Terminating activity {ActivityId}", Name, activity.Id);
+                TryTerminateActivitySafely(t, activity.Id);
             }
         }
-        
-        // Clear collections
+
+        // Clear data structures
         ClearActivities();
-        
-        // Unregister all event handlers
+
+        // Unregister events
         TopicLifecycleChanged = null;
         ActivityCreated = null;
         ActivityCompleted = null;
         TopicInserted = null;
         ActivityLifecycleChanged = null;
-        
-        // Reset state machine and state flags
-        try
-        {
-            _fsm.Reset(FlowState.Idle);
+        CustomEventTriggered = null;
+        AsyncActivityCompleted = null;
+
+        // Reset FSM
+        try {
+            _fsm.ForceState(FlowState.Failed, "Terminated");
+        } catch (Exception ex) {
+            _logger.LogWarning(ex, "[TopicFlow:{Name}] Exception resetting FSM on termination", Name);
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[TopicFlow] Exception resetting state machine for topic {Name}", Name);
-        }
-        
+
         _currentActivityId = null;
         _isRunning = false;
-        
-        // Mark as terminated
         _isTerminated = true;
-        
-        _logger.LogInformation("[TopicFlow] Topic {Name} terminated successfully", Name);
+
+        _logger.LogInformation("[TopicFlow:{Name}] Terminated successfully", Name);
     }
-    
+
     /// <summary>
-    /// Asynchronously terminates the topic and all its activities, releasing resources and unsubscribing from events.
-    /// This implementation handles proper cleanup of async operations.
+    /// Helper for safe termination of individual activities.
     /// </summary>
-    /// <param name="cancellationToken">Optional cancellation token to cancel the termination process.</param>
-    public virtual async Task TerminateAsync(CancellationToken cancellationToken = default)
-    {
-        if (_isTerminated) return; // Already terminated
-        
-        _logger.LogInformation("[TopicFlow] Asynchronously terminating topic {Name}", Name);
-        
-        // First perform synchronous termination for most resources
-        Terminate();
-        
-        // Handle async cleanup specifically for activities that might need it
-        if (_activities.Count > 0)
-        {
-            var terminationTasks = new List<Task>();
-            
-            foreach (var activity in _activities.Values)
-            {
-                if (activity is ITerminable terminable && !terminable.IsTerminated)
-                {
-                    terminationTasks.Add(terminable.TerminateAsync(cancellationToken));
-                }
-            }
-            
-            if (terminationTasks.Count > 0)
-            {
-                _logger.LogDebug("[TopicFlow] Waiting for {Count} activities to terminate asynchronously", terminationTasks.Count);
-                
-                try
-                {
-                    // Use WhenAll with a timeout to prevent hanging
-                    var completedTask = await Task.WhenAny(
-                        Task.WhenAll(terminationTasks),
-                        Task.Delay(TimeSpan.FromSeconds(5), cancellationToken)
-                    );
-                    
-                    if (completedTask.IsCompleted && !completedTask.IsCanceled && !completedTask.IsFaulted)
-                    {
-                        _logger.LogDebug("[TopicFlow] All activities terminated asynchronously");
-                    }
-                    else
-                    {
-                        _logger.LogWarning("[TopicFlow] Timed out waiting for activities to terminate asynchronously");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "[TopicFlow] Exception during async termination of activities");
-                }
+    private void TryTerminateActivitySafely(ITerminable terminable, string id) {
+        try {
+            terminable.Terminate();
+        } catch (Exception ex) {
+            _logger.LogWarning(ex, "[TopicFlow:{Name}] Exception terminating activity {ActivityId}", Name, id);
+        }
+    }
+
+    /// <summary>
+    /// Asynchronously terminates the topic and all its activities.
+    /// </summary>
+    public virtual async Task TerminateAsync(CancellationToken cancellationToken = default) {
+        if (_isTerminated) return;
+
+        _logger.LogInformation("[TopicFlow:{Name}] Asynchronously terminating", Name);
+
+        Terminate(); // perform sync cleanup
+
+        var terminables = _activities.Values.OfType<ITerminable>()
+            .Where(a => !a.IsTerminated)
+            .ToList();
+
+        if (terminables.Count > 0) {
+            _logger.LogDebug("[TopicFlow:{Name}] Waiting for {Count} async terminations", Name, terminables.Count);
+
+            var allTasks = Task.WhenAll(terminables.Select(t => t.TerminateAsync(cancellationToken)));
+
+            try {
+                var finished = await Task.WhenAny(allTasks, Task.Delay(TimeSpan.FromSeconds(5), cancellationToken));
+
+                if (finished == allTasks)
+                    _logger.LogDebug("[TopicFlow:{Name}] All async terminations completed", Name);
+                else
+                    _logger.LogWarning("[TopicFlow:{Name}] Timeout waiting for async terminations", Name);
+            } catch (Exception ex) {
+                _logger.LogError(ex, "[TopicFlow:{Name}] Exception during async termination", Name);
             }
         }
-        
-        _logger.LogInformation("[TopicFlow] Topic {Name} terminated asynchronously", Name);
+
+        _logger.LogInformation("[TopicFlow:{Name}] Async termination completed", Name);
     }
-    
+
     /// <summary>
-    /// Resets the topic flow. Clears all activities, resets FSM, and calls InitializeActivities to rebuild.
-    /// Override InitializeActivities in derived classes to rebuild activity pipeline.
+    /// Resets the topic flow and rebuilds the FSM/activities.
     /// </summary>
-    public virtual void Reset()
-    {
-        _logger.LogInformation("[TopicFlow] Reset called for {Name} (CurrentState={State})", Name, State);
-        
-        // If terminated, we can't reset properly
-        if (_isTerminated)
-        {
-            _logger.LogWarning("[TopicFlow] Cannot reset topic {Name} because it has been terminated. Create a new instance instead.", Name);
+    public virtual void Reset() {
+        _logger.LogInformation("[TopicFlow:{Name}] Reset called (CurrentState={State})", Name, State);
+
+        if (_isTerminated) {
+            _logger.LogWarning("[TopicFlow:{Name}] Cannot reset terminated topic. Recreate instead.", Name);
             return;
         }
-        
-        try
-        {
-            // Reset all activities to Idle before clearing
-            foreach (var activity in _activities.Values)
-            {
-                _logger.LogInformation("[TopicFlow] Resetting activity {ActivityId} from state {CurrentState}", activity.Id, activity.CurrentState);
-                try
-                {
-                    activity.Reset();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[TopicFlow] Exception while resetting activity {ActivityId}", activity.Id);
-                    // Continue with other activities even if one fails
-                }
+
+        foreach (var act in _activities.Values.ToList()) {
+            try {
+                _logger.LogDebug("[TopicFlow:{Name}] Resetting {ActivityId} ({State})", Name, act.Id, act.CurrentState);
+                act.Reset();
+            } catch (Exception ex) {
+                _logger.LogWarning(ex, "[TopicFlow:{Name}] Exception resetting {ActivityId}", Name, act.Id);
             }
-            
-            // Clear collections after resetting activities
-            ClearActivities();
-            
-            // Reset FSM state - force it back to Idle regardless of current state
-            try
-            {
-                _fsm.Reset(FlowState.Idle);
-                _fsm.ClearTransitionHistory();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[TopicFlow] Exception while resetting state machine for {Name}", Name);
-                // Try to force a clean state even if the normal reset fails
-                _fsm.ForceState(FlowState.Idle, "Forced reset after error");
-            }
-            
-            // Reset runtime state
-            _currentActivityId = null;
-            _isRunning = false;
-            
-            _logger.LogInformation("[TopicFlow] Reset completed for {Name}, FSM state={CurrentState}", Name, _fsm.CurrentState);
-            
-            // Notify about the reset via lifecycle event
-            OnTopicLifecycleChanged(TopicLifecycleState.Created);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[TopicFlow] Failed to reset topic {Name}", Name);
-            throw;
+
+        ClearActivities();
+
+        try {
+            _fsm.Reset(FlowState.Idle);
+            _fsm.ClearTransitionHistory();
+        } catch (Exception ex) {
+            _logger.LogWarning(ex, "[TopicFlow:{Name}] FSM reset failed — forcing Idle", Name);
+            _fsm.ForceState(FlowState.Idle, "Forced reset after error");
         }
+
+        _currentActivityId = null;
+        _isRunning = false;
+        _isTerminated = false; // ✅ Allow reuse after reset
+
+        _logger.LogInformation("[TopicFlow:{Name}] Reset complete (FSM={State})", Name, _fsm.CurrentState);
+        OnTopicLifecycleChanged(TopicLifecycleState.Created);
     }
-    
+
     /// <summary>
     /// Clears all activities and the activity queue. For use in derived classes.
     /// </summary>
@@ -261,7 +196,7 @@ public abstract class TopicFlow : ITopic, ITerminable {
     }
 
     private readonly Dictionary<string, TopicFlowActivity> _activities = new();
-    private readonly Queue<string> _activityQueue = new();
+    private Queue<string> _activityQueue = new();
     private readonly TopicWorkflowContext _context;
     private readonly ILogger _logger;
     private readonly TopicStateMachine<FlowState> _fsm;
@@ -274,6 +209,8 @@ public abstract class TopicFlow : ITopic, ITerminable {
     public event EventHandler<ActivityCompletedEventArgs>? ActivityCompleted;
     public event EventHandler<TopicInsertedEventArgs>? TopicInserted;
     public event EventHandler<ActivityLifecycleEventArgs>? ActivityLifecycleChanged;
+    public event EventHandler<CustomEventTriggeredEventArgs>? CustomEventTriggered;
+    public event EventHandler<AsyncQueryCompletedEventArgs>? AsyncActivityCompleted;
 
     public TopicFlow(TopicWorkflowContext context, ILogger logger, string name = "TopicFlow") {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -300,44 +237,105 @@ public abstract class TopicFlow : ITopic, ITerminable {
     // ================================
     // Add / Remove
     // ================================
+
     public TopicFlow Add(TopicFlowActivity activity) {
-        if (activity == null) throw new ArgumentNullException(nameof(activity));
+        if (activity == null)
+            throw new ArgumentNullException(nameof(activity));
+
         if (_activities.ContainsKey(activity.Id))
-            throw new InvalidOperationException($"Activity '{activity.Id}' already exists in this flow. Each activity Id must be unique.");
+            throw new InvalidOperationException(
+                $"Activity '{activity.Id}' already exists in this flow.");
+
         if (_isTerminated)
-            throw new InvalidOperationException($"Cannot add activity '{activity.Id}' to terminated topic '{Name}'.");
-            
+            throw new InvalidOperationException(
+                $"Cannot add activity '{activity.Id}' to terminated topic '{Name}'.");
+
         _activities[activity.Id] = activity;
         _activityQueue.Enqueue(activity.Id);
 
-        // Use weak event pattern to avoid potential memory leaks
-        activity.ActivityLifecycleChanged += (s, e) => {
-            // Check if the topic is still active before propagating events
+        _logger.LogInformation("[TopicFlow:{Topic}] Added activity {ActivityId} to queue",
+                               Name, activity.Id);
+
+        // Basic lifecycle forwarding
+        activity.ActivityLifecycleChanged += (s, e) =>
+        {
             if (!_isTerminated)
                 ActivityLifecycleChanged?.Invoke(this, e);
         };
 
-        activity.ActivityCompleted += async (s, e) => {
-            // Check if the topic is still active before handling completion
-            if (!_isTerminated) {
-                _logger.LogInformation("[TopicFlow] Activity {ActivityId} completed", e.ActivityId);
-                if (State == FlowState.WaitingForInput)
-                    await _fsm.TryTransitionAsync(FlowState.Running, "Input collected");
-            }
+        // Completion logic for synchronous activities
+        activity.ActivityCompleted += async (s, e) =>
+        {
+            if (_isTerminated) return;
+
+            _logger.LogInformation(
+                "[TopicFlow:{Topic}] Activity {ActivityId} completed",
+                Name, e.ActivityId);
+
+            if (State == FlowState.WaitingForInput)
+                await _fsm.TryTransitionAsync(
+                    FlowState.Running,
+                    "Input collected");
         };
 
-        _logger.LogInformation("Added activity {ActivityId} to flow queue", activity.Id);
+        // ============================================================
+        // CORRECT ASYNC-COMPLETION FORWARDING
+        // ============================================================
+        if (activity is IAsyncNotifiableActivity asyncActivity) {
+            asyncActivity.AsyncCompleted += (s, args) =>
+            {
+                if (_isTerminated) return;
+
+                AsyncActivityCompleted?.Invoke(this, args);
+            };
+        }
+
         return this;
     }
 
     public TopicFlow AddRange(IEnumerable<TopicFlowActivity> activities) {
-        if (activities == null) throw new ArgumentNullException(nameof(activities));
-        
-        foreach (var activity in activities) {
+        foreach (var activity in activities)
             Add(activity);
-        }
-        
+
         return this;
+    }
+
+    /// <summary>
+    /// Inserts a new activity immediately after the currently running activity,
+    /// preserving the original queue order.
+    /// </summary>
+    public void InsertNext(TopicFlowActivity activity) {
+        if (activity == null)
+            throw new ArgumentNullException(nameof(activity));
+
+        if (_isTerminated)
+            throw new InvalidOperationException("Cannot insert into a terminated topic flow.");
+
+        // Register activity in dictionary
+        _activities[activity.Id] = activity;
+
+        // Rebuild queue with the new activity inserted right after current activity
+        var newQueue = new Queue<string>();
+
+        bool inserted = false;
+
+        while (_activityQueue.Count > 0) {
+            var id = _activityQueue.Dequeue();
+            newQueue.Enqueue(id);
+
+            // Insert AFTER current activity
+            if (id == _currentActivityId && !inserted) {
+                newQueue.Enqueue(activity.Id);
+                inserted = true;
+            }
+        }
+
+        // Replace original queue
+        _activityQueue = newQueue;
+
+        _logger?.LogInformation(
+            "[TopicFlow:{Topic}] InsertNext → Activity '{ActivityId}' inserted after '{CurrentId}'.",
+            Name, activity.Id, _currentActivityId);
     }
 
     public bool RemoveActivity(string activityId) {
@@ -369,8 +367,8 @@ public abstract class TopicFlow : ITopic, ITerminable {
     // ================================
     // ITopic
     // ================================
-    public virtual Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default) =>
-        Task.FromResult(1.0f);
+    public virtual Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default)
+        => Task.FromResult(0.0f);
 
     public virtual async Task<TopicResult> ProcessMessageAsync(string message, CancellationToken cancellationToken = default) {
         if (State == FlowState.WaitingForInput)
@@ -411,31 +409,29 @@ public abstract class TopicFlow : ITopic, ITerminable {
     }
 
     public virtual async Task<TopicResult> StepAsync(object? input, CancellationToken ct) {
+        // 🧭 Instrumentation start
+        void LogQueueState(string phase)
+            => _logger.LogInformation("[Flow.Trace] {Phase} | Count={Count} | Current={CurrentId} | Queue=[{Queue}]",
+                phase, _activityQueue.Count, _currentActivityId ?? "<null>", string.Join(", ", _activityQueue.ToArray()));
+
+        LogQueueState("StepAsync Begin");
+        // 🧭 End instrumentation setup
+
         if (!_isRunning) {
-            // This might happen after a reset, so let's handle it gracefully
             _logger.LogWarning("StepAsync called but _isRunning=false. Attempting to recover.");
             _isRunning = true;
         }
 
         if (State != FlowState.Running && State != FlowState.Starting && State != FlowState.Idle) {
             _logger.LogWarning("StepAsync invoked but flow state={State}. Attempting to transition to Running.", State);
-            
-            // Try to recover by transitioning to Running if we're in Completed state after reset
+
             if (State == FlowState.Completed) {
                 _logger.LogInformation("[TopicFlow] Recovering flow from Completed state in StepAsync");
-                
-                // Directly force the state to Running using our new method
-                // This bypasses transition rules that might prevent recovery
                 _fsm.ForceState(FlowState.Running, "Forced recovery in StepAsync from Completed state");
-                
-                // Make sure we're truly running
                 _isRunning = true;
-                
-                // Notify lifecycle event for better tracking
                 OnTopicLifecycleChanged(TopicLifecycleState.Running);
-                
-                _logger.LogInformation("[TopicFlow] Successfully recovered flow from Completed state using ForceState");
-            } else {
+            }
+            else {
                 return TopicResult.CreateResponse($"Cannot step flow while in state {State}.", _context, requiresInput: true);
             }
         }
@@ -465,10 +461,11 @@ public abstract class TopicFlow : ITopic, ITerminable {
             }
 
             _logger.LogInformation("Executing activity {ActivityId}", activity.Id);
+            LogQueueState("Before RunAsync");
 
             ActivityResult ar;
             try {
-                ar = await activity.RunAsync(_context, input);
+                ar = await activity.RunAsync(_context, input, ct);
             } catch (Exception ex) {
                 _logger.LogError(ex, "Activity {ActivityId} threw.", activity.Id);
                 await _fsm.TryTransitionAsync(FlowState.Failed, ex.Message);
@@ -484,44 +481,44 @@ public abstract class TopicFlow : ITopic, ITerminable {
             if (!string.IsNullOrEmpty(ar.Message))
                 OnActivityCreated(activity.Id, ar.Message);
 
-
+            // 🕒 Handle waiting
             if (ar.IsWaiting) {
+                LogQueueState("WaitingForInput Triggered");
                 await _fsm.TryTransitionAsync(FlowState.WaitingForInput, "Activity requested input");
                 OnTopicLifecycleChanged(TopicLifecycleState.WaitingForUserInput, ar);
                 return TopicResult.CreateResponse(ar.Message ?? "Waiting for user input…", _context, requiresInput: true);
             }
 
-            // NEW: Handle sub-topic waiting - pause this topic and signal orchestrator
+            // 🧩 Handle sub-topic wait
             if (ar.IsWaitingForSubTopic) {
-                _logger.LogInformation("Activity {ActivityId} is waiting for sub-topic '{SubTopic}' to complete", activity.Id, ar.SubTopicName);
-                
-                // DON'T dequeue the activity - we need to resume from here
-                // DON'T mark activity as completed - it's still waiting
-                
+                _logger.LogInformation("Activity {ActivityId} is waiting for sub-topic '{SubTopic}'", activity.Id, ar.SubTopicName);
                 await _fsm.TryTransitionAsync(FlowState.WaitingForInput, "Activity waiting for sub-topic");
                 OnTopicLifecycleChanged(TopicLifecycleState.WaitingForSubTopic, ar);
-                
-                // Return special result that signals orchestrator to start sub-topic
                 return TopicResult.CreateSubTopicTrigger(ar.SubTopicName!, ar.Message, _context);
             }
 
-            // NEW: Handle activity end - complete the topic immediately
+            // 🏁 Handle activity end
             if (ar.IsEnd) {
                 _logger.LogInformation("Activity {ActivityId} signaled end of topic", activity.Id);
-                
                 OnActivityCompleted(activity.Id);
-                
                 await _fsm.TryTransitionAsync(FlowState.Completed, "Activity signaled end");
                 OnTopicLifecycleChanged(TopicLifecycleState.Completed, ar);
                 return TopicResult.CreateCompleted(ar.Message ?? string.Empty, _context);
             }
 
-            OnActivityCompleted(activity.Id);
-
-            _activityQueue.Dequeue();
-            _currentActivityId = _activityQueue.Count > 0 ? _activityQueue.Peek() : null;
+            // ✅ Only dequeue when not waiting
+            if (!ar.IsWaiting && !ar.IsWaitingForSubTopic) {
+                OnActivityCompleted(activity.Id);
+                _activityQueue.Dequeue();
+                _currentActivityId = _activityQueue.Count > 0 ? _activityQueue.Peek() : null;
+                LogQueueState("After Dequeue");
+            }
 
             if (_currentActivityId == null) {
+                var waiting = _activities.Values.FirstOrDefault(a => a.CurrentState == ActivityState.WaitingForUserInput);
+                if (waiting != null)
+                    _logger.LogWarning("[Flow.Warn] Queue exhausted but found waiting activity: {WaitingId}", waiting.Id);
+
                 await _fsm.TryTransitionAsync(FlowState.Completed, "Queue exhausted");
                 OnTopicLifecycleChanged(TopicLifecycleState.Completed, ar);
                 return TopicResult.CreateCompleted(string.Empty, _context);
@@ -530,10 +527,14 @@ public abstract class TopicFlow : ITopic, ITerminable {
             _logger.LogInformation("Dequeued next activity: {ActivityId}", _currentActivityId);
         }
 
+        _logger.LogWarning("[Flow.Trace] Final queue dump: {Dump}",
+            string.Join(", ", _activities.Select(a => $"{a.Value.Id}:{a.Value.CurrentState}")));
+
         await _fsm.TryTransitionAsync(FlowState.Completed, "Queue exhausted (safety)");
         OnTopicLifecycleChanged(TopicLifecycleState.Completed);
         return TopicResult.CreateCompleted(string.Empty, _context);
     }
+
 
     public TopicFlowActivity? GetCurrentActivity() {
         if (_currentActivityId != null && _activities.TryGetValue(_currentActivityId, out var act))

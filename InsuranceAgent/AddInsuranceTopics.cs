@@ -1,220 +1,183 @@
+﻿using ConversaCore.Context;
+using ConversaCore.TopicFlow;
+using ConversaCore.Topics;
+using InsuranceAgent.Repositories;
 using InsuranceAgent.Topics;
-using InsuranceAgent.Topics.ComplianceTopic;
-using InsuranceAgent.Topics.ContactHealthTopic;
-using InsuranceAgent.Topics.ContactInfoTopic;
-using InsuranceAgent.Topics.CoverageIntentTopic;
-using InsuranceAgent.Topics.EmploymentTopic;
-using InsuranceAgent.Topics.DependentsTopic;
-using InsuranceAgent.Topics.HealthInfoTopic;
-using InsuranceAgent.Topics.InsuranceContextTopic;
-using InsuranceAgent.Topics.LeadDetailsTopic;
-using InsuranceAgent.Topics.LifeGoalsTopic;
-using InsuranceAgent.Topics.BasicNavigationTopic;
-using InsuranceAgent.Topics.RadioButtonDemoTopic;
-using InsuranceAgent.Topics.MarketingTypeTopics;
+using InsuranceAgent.Topics.BeneficiaryRepeatDemo;
 using InsuranceAgent.Topics.Demo;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
-using ConversaCore;
 
-namespace InsuranceAgent.Topics {
-    public static class InsuranceTopicsExtensions {
-        public static IServiceCollection AddInsuranceTopics(this IServiceCollection services) {
-            // Register loggers for custom topics
-            services.AddScoped<ILogger<BeneficiaryInfoDemoTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<BeneficiaryInfoDemoTopic>());
-            services.AddScoped<ILogger<CaliforniaResidentDemoTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<CaliforniaResidentDemoTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.BeneficiaryRepeatDemo.BeneficiaryRepeatDemoTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.BeneficiaryRepeatDemo.BeneficiaryRepeatDemoTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.BeneficiaryRepeatDemo.BeneficiaryUserDrivenTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.BeneficiaryRepeatDemo.BeneficiaryUserDrivenTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.ComplianceTopic.ComplianceTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.ComplianceTopic.ComplianceTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.ContactHealthTopic.ContactHealthTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.ContactHealthTopic.ContactHealthTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.ContactInfoTopic.ContactInfoTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.ContactInfoTopic.ContactInfoTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.CoverageIntentTopic.CoverageIntentTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.CoverageIntentTopic.CoverageIntentTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.EmploymentTopic.EmploymentTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.EmploymentTopic.EmploymentTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.DependentsTopic.DependentsTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.DependentsTopic.DependentsTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.HealthInfoTopic.HealthInfoTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.HealthInfoTopic.HealthInfoTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.InsuranceContextTopic.InsuranceContextTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.InsuranceContextTopic.InsuranceContextTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.LeadDetailsTopic.LeadDetailsTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.LeadDetailsTopic.LeadDetailsTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.LifeGoalsTopic.LifeGoalsTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.LifeGoalsTopic.LifeGoalsTopic>());
-            services.AddScoped<ILogger<HandDownDemoTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<HandDownDemoTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.BasicNavigationTopic.BasicNavigationTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.BasicNavigationTopic.BasicNavigationTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.RadioButtonDemoTopic.RadioButtonDemoTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.RadioButtonDemoTopic.RadioButtonDemoTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic>());
-            services.AddScoped<ILogger<InsuranceAgent.Topics.Demo.SemanticActivitiesDemoTopic>>(sp =>
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<InsuranceAgent.Topics.Demo.SemanticActivitiesDemoTopic>());
+namespace InsuranceAgent.Extensions;
 
-            // Register BeneficiaryInfoDemoTopic with all required dependencies
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new BeneficiaryInfoDemoTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<BeneficiaryInfoDemoTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>(),
-                    sp.GetRequiredService<ILoggerFactory>()
-                ));
+public static class InsuranceTopicRegistrationExtensions {
+    public static IServiceCollection AddInsuranceTopics(this IServiceCollection services) {
+        // ─────────────────────────────
+        // 🔹 Register Loggers for Each Topic
+        // ─────────────────────────────
+        void AddLogger<T>(IServiceCollection svc) where T : class
+            => svc.AddScoped(_ => _.GetRequiredService<ILoggerFactory>().CreateLogger<T>());
 
-            // Register CaliforniaResidentDemoTopic with IConversationContext for TriggerTopicActivity
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new CaliforniaResidentDemoTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<CaliforniaResidentDemoTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        AddLogger<BeneficiaryInfoDemoTopic>(services);
+        AddLogger<CaliforniaResidentTopic>(services);
+        AddLogger<BeneficiaryRepeatDemoTopic>(services);
+        AddLogger<BeneficiaryUserDrivenTopic>(services);
+        AddLogger<ComplianceTopic>(services);
+        AddLogger<ContactHealthTopic>(services);
+        AddLogger<ContactInfoTopic>(services);
+        AddLogger<CoverageIntentTopic>(services);
+        AddLogger<EmploymentTopic>(services);
+        AddLogger<DependentsTopic>(services);
+        AddLogger<HealthInfoTopic>(services);
+        AddLogger<InsuranceContextTopic>(services);
+        AddLogger<LeadDetailsTopic>(services);
+        AddLogger<LifeGoalsTopic>(services);
+        AddLogger<HandDownDemoTopic>(services);
+        AddLogger<RadioButtonDemoTopic>(services);
+        AddLogger<MarketingT1Topic>(services);
+        AddLogger<SemanticActivitiesDemoTopic>(services);
+        AddLogger<EventTriggerDemoTopic>(services);
 
-            // Register BeneficiaryRepeatDemoTopic with RepeatActivity support
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.BeneficiaryRepeatDemo.BeneficiaryRepeatDemoTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.BeneficiaryRepeatDemo.BeneficiaryRepeatDemoTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        // ─────────────────────────────
+        // 🔹 Register Core Topics
+        // ─────────────────────────────
 
-            // Register BeneficiaryUserDrivenTopic with continuation cards
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.BeneficiaryRepeatDemo.BeneficiaryUserDrivenTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.BeneficiaryRepeatDemo.BeneficiaryUserDrivenTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new BeneficiaryInfoDemoTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<BeneficiaryInfoDemoTopic>>(),
+                sp.GetRequiredService<IConversationContext>(),
+                sp.GetRequiredService<ILoggerFactory>()
+            ));
 
-            // Register ComplianceTopic with TCPA/CCPA consent collection
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.ComplianceTopic.ComplianceTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.ComplianceTopic.ComplianceTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new CaliforniaResidentTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<CaliforniaResidentTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register ContactHealthTopic with contact and health details collection
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.ContactHealthTopic.ContactHealthTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.ContactHealthTopic.ContactHealthTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new BeneficiaryRepeatDemoTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<BeneficiaryRepeatDemoTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register ContactInfoTopic with contact information and preferences collection
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.ContactInfoTopic.ContactInfoTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.ContactInfoTopic.ContactInfoTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new BeneficiaryUserDrivenTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<BeneficiaryUserDrivenTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register CoverageIntentTopic with coverage preferences and intent collection
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.CoverageIntentTopic.CoverageIntentTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.CoverageIntentTopic.CoverageIntentTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new ComplianceTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<ComplianceTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register EmploymentTopic with employment status and income collection
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.EmploymentTopic.EmploymentTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.EmploymentTopic.EmploymentTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new ContactHealthTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<ContactHealthTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register DependentsTopic with family and dependents information collection
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.DependentsTopic.DependentsTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.DependentsTopic.DependentsTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new ContactInfoTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<ContactInfoTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register HealthInfoTopic with health and medical information collection
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.HealthInfoTopic.HealthInfoTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.HealthInfoTopic.HealthInfoTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new CoverageIntentTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<CoverageIntentTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register InsuranceContextTopic with insurance needs and financial information collection
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.InsuranceContextTopic.InsuranceContextTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.InsuranceContextTopic.InsuranceContextTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new EmploymentTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<EmploymentTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register LeadDetailsTopic with lead management and sales tracking information collection
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.LeadDetailsTopic.LeadDetailsTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.LeadDetailsTopic.LeadDetailsTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new DependentsTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<DependentsTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register LifeGoalsTopic with life insurance goals and intentions collection
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.LifeGoalsTopic.LifeGoalsTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.LifeGoalsTopic.LifeGoalsTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new HealthInfoTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<HealthInfoTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register HandDownDemoTopic for testing hand-down/regain control mechanism
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new HandDownDemoTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<HandDownDemoTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
-                
-            // Register BasicNavigationTopic for menu and navigation options
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.BasicNavigationTopic.BasicNavigationTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.BasicNavigationTopic.BasicNavigationTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
-                
-            // Register RadioButtonDemoTopic for demonstrating radio button validation
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.RadioButtonDemoTopic.RadioButtonDemoTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.RadioButtonDemoTopic.RadioButtonDemoTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
-                
-            // Register MarketingTypeOneTopic for full marketing path (T1)
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.MarketingTypeTopics.MarketingTypeOneTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new InsuranceContextTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<InsuranceContextTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            // Register SemanticActivitiesDemoTopic for AI-powered insurance analysis demonstration
-            services.AddScoped<ConversaCore.Topics.ITopic>(sp =>
-                new InsuranceAgent.Topics.Demo.SemanticActivitiesDemoTopic(
-                    sp.GetRequiredService<ConversaCore.TopicFlow.TopicWorkflowContext>(),
-                    sp.GetRequiredService<ILogger<InsuranceAgent.Topics.Demo.SemanticActivitiesDemoTopic>>(),
-                    sp.GetRequiredService<ConversaCore.Context.IConversationContext>(),
-                    sp.GetRequiredService<Kernel>()
-                ));
+        services.AddScoped<ITopic>(sp =>
+            new LeadDetailsTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<LeadDetailsTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
 
-            return services;
-        }
+        services.AddScoped<ITopic>(sp =>
+            new LifeGoalsTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<LifeGoalsTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
+
+        services.AddScoped<ITopic>(sp =>
+            new HandDownDemoTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<HandDownDemoTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
+
+        services.AddScoped<ITopic>(sp =>
+            new RadioButtonDemoTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<RadioButtonDemoTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
+
+        services.AddScoped<ITopic>(sp =>
+            new MarketingT1Topic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<MarketingT1Topic>>(),
+                sp.GetRequiredService<IConversationContext>(),
+                sp.GetRequiredService<Kernel>(),
+                sp.GetRequiredService<InsuranceRuleRepository>()
+            ));
+
+        services.AddScoped<ITopic>(sp =>
+            new SemanticActivitiesDemoTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<SemanticActivitiesDemoTopic>>(),
+                sp.GetRequiredService<IConversationContext>(),
+                sp.GetRequiredService<Kernel>()
+            ));
+
+        services.AddScoped<ITopic>(sp =>
+            new EventTriggerDemoTopic(
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<EventTriggerDemoTopic>>(),
+                sp.GetRequiredService<IConversationContext>()
+            ));
+
+        return services;
     }
 }

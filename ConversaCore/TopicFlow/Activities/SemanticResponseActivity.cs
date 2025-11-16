@@ -1,202 +1,228 @@
-using ConversaCore.TopicFlow.Activities;
+﻿using ConversaCore.Interfaces;
+using ConversaCore.TopicFlow.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
+using System.Text;
+using System.Text.Json;
 
-namespace ConversaCore.TopicFlow.Activities;
+namespace ConversaCore.TopicFlow;
 
 /// <summary>
-/// Semantic activity for contextual conversation redirection.
-/// Takes off-topic user input and provides a clever response that guides the conversation back to the intended topic.
+/// SemanticResponseActivity intelligently combines developer and user prompts,
+/// uses vector retrieval, and can skip LLM calls when high-confidence data is found.
+/// Supports lambda-based prompt factories and response handlers for dynamic flows.
 /// </summary>
-public class SemanticResponseActivity : SemanticActivity
-{
-    public string RedirectionInstruction { get; set; } = string.Empty;
-    public string? ConversationContext { get; set; }
-    public string? CurrentTopicFocus { get; set; }
+public class SemanticResponseActivity : SemanticActivity {
+    private readonly IVectorDatabaseService? _vectorDb;
+    private readonly string _collectionName;
 
-    public SemanticResponseActivity(string activityId, Kernel kernel, ILogger logger) 
-        : base(activityId, kernel, logger)
-    {
-        Temperature = 0.8f; // Higher temperature for more creative, natural responses
-        RequireJsonOutput = false; // Natural language response
-        ModelId = "gpt-4o-mini"; // Fast model for quick responses
+    // 💡 New dynamic factories
+    private Func<TopicWorkflowContext, string>? _promptFactory;
+    private Func<TopicWorkflowContext, string, Task>? _responseHandler;
+
+    public string DeveloperPrompt { get; set; } = string.Empty;
+    public string? UserPrompt { get; set; }
+    public string UserPromptContextKey { get; set; } = "Fallback_UserPrompt";
+    public double SkipLLMThreshold { get; set; } = 0.9;
+
+    private List<DocumentSearchResult>? _cachedResults;
+
+    public SemanticResponseActivity(
+        string id,
+        Kernel kernel,
+        ILogger logger,
+        IVectorDatabaseService? vectorDb = null,
+        string collectionName = "default_documents")
+        : base(id, kernel, logger) {
+        _vectorDb = vectorDb;
+        _collectionName = collectionName;
     }
 
-    protected override async Task<string> BuildSystemPromptAsync(TopicWorkflowContext context, object? input)
-    {
+    // ------------------------------------------------------------------------
+    // 🧩 Fluent Builders
+    // ------------------------------------------------------------------------
+    public SemanticResponseActivity WithDeveloperPrompt(string prompt) {
+        DeveloperPrompt = prompt;
+        return this;
+    }
+
+    public SemanticResponseActivity WithSkipLLMThreshold(double threshold) {
+        SkipLLMThreshold = Math.Clamp(threshold, 0.0, 1.0);
+        return this;
+    }
+
+    public SemanticResponseActivity WithUserPrompt(string? prompt) {
+        UserPrompt = prompt;
+        return this;
+    }
+
+    public SemanticResponseActivity WithPromptFactory(Func<TopicWorkflowContext, string> factory) {
+        _promptFactory = factory;
+        return this;
+    }
+
+    public SemanticResponseActivity WithResponseHandler(Func<TopicWorkflowContext, string, Task> handler) {
+        _responseHandler = handler;
+        return this;
+    }
+
+    // ------------------------------------------------------------------------
+    // PROMPT BUILDERS
+    // ------------------------------------------------------------------------
+    protected override async Task<string> BuildSystemPromptAsync(TopicWorkflowContext context, object? input) {
         await Task.CompletedTask;
+        return $@"
+You are an expert assistant.
+Follow the developer's instructions exactly as written.
 
-        var systemPrompt = @"You are a skilled conversation guide for an insurance chatbot. Your role is to acknowledge what the user said and then cleverly redirect the conversation back to insurance topics in a natural, helpful way.
+## Developer Instructions
+{DeveloperPrompt}
 
-## Your Objectives
-1. **Acknowledge**: Show that you heard and understood what the user said
-2. **Bridge**: Create a natural connection between their topic and insurance
-3. **Redirect**: Guide them back to insurance discussion without being pushy or dismissive
-4. **Maintain Rapport**: Keep the conversation friendly and engaging
-
-## Style Guidelines
-- Be conversational and natural
-- Show empathy and understanding
-- Use appropriate humor when suitable
-- Make connections that feel genuine, not forced
-- Keep responses concise but warm
-
-## Response Pattern
-1. Brief acknowledgment of their input
-2. Creative bridge or connection to insurance
-3. Gentle redirect with a question or suggestion
-
-## Examples of Good Redirects
-User: ""The sun is always shining""
-Response: ""That's a wonderfully optimistic outlook! Speaking of sunshine, life insurance can provide that same kind of bright security for your family's future. Have you thought about what kind of coverage might give you that peace of mind?""
-
-User: ""I love pizza""
-Response: ""Pizza is amazing! You know, just like pizza protects you from hunger, insurance protects you from life's unexpected challenges. What aspects of protection are most important to you right now?""
-
-## What NOT to Do
-- Don't ignore what they said
-- Don't be robotic or scripted
-- Don't make the connection feel forced
-- Don't be pushy or sales-y
-- Don't dismiss their interests";
-
-        if (!string.IsNullOrEmpty(RedirectionInstruction))
-        {
-            systemPrompt += $@"
-
-## Specific Redirection Instruction
-{RedirectionInstruction}";
-        }
-
-        if (!string.IsNullOrEmpty(CurrentTopicFocus))
-        {
-            systemPrompt += $@"
-
-## Current Topic Focus
-The conversation should be guided toward: {CurrentTopicFocus}";
-        }
-
-        return systemPrompt;
+Use available evidence and prior context where possible.
+If no relevant evidence exists, reason based on your own knowledge.
+";
     }
 
-    protected override async Task<string> BuildUserPromptAsync(TopicWorkflowContext context, object? input)
-    {
-        await Task.CompletedTask;
+    protected override async Task<string> BuildUserPromptAsync(TopicWorkflowContext context, object? input) {
+        // 🧩 Priority: dynamic factory → explicit → input → context
+        var userText =
+            _promptFactory?.Invoke(context) ??
+            UserPrompt ??
+            input?.ToString() ??
+            context.GetValue<string>(UserPromptContextKey) ??
+            string.Empty;
 
-        var userInput = input?.ToString() ?? "I'm not sure what to say.";
+        var builder = new StringBuilder();
 
-        var userPrompt = $@"The user just said: ""{userInput}""
+        // 🔍 Retrieve vector evidence
+        if (_vectorDb != null && !string.IsNullOrWhiteSpace(userText)) {
+            _cachedResults = await _vectorDb.SearchAsync(
+                _collectionName, userText, limit: 5, minRelevanceScore: 0.7);
 
-Please provide a natural, friendly response that acknowledges what they said and skillfully redirects the conversation back to insurance topics.";
-
-        // Add conversation context if available
-        if (!string.IsNullOrEmpty(ConversationContext))
-        {
-            userPrompt += $@"
-
-## Previous Conversation Context
-{ConversationContext}
-
-Consider this context when crafting your response to maintain conversation continuity.";
+            if (_cachedResults.Count > 0) {
+                builder.AppendLine("## Retrieved Evidence");
+                foreach (var result in _cachedResults)
+                    builder.AppendLine($"- {result.Content.Trim()}");
+                builder.AppendLine();
+            }
         }
 
-        // Check if there's additional context from the workflow
-        var contextualInfo = ExtractContextualInfo(context);
-        if (!string.IsNullOrEmpty(contextualInfo))
-        {
-            userPrompt += $@"
-
-## Additional Context
-{contextualInfo}";
+        // Include prior context
+        if (context.TryGetValue($"{Id}_PreviousOutput", out var prev)) {
+            builder.AppendLine("## Prior Activity Output");
+            builder.AppendLine(prev?.ToString());
+            builder.AppendLine();
         }
 
-        userPrompt += @"
+        builder.AppendLine("## User Input / Query");
+        builder.AppendLine(userText);
+        builder.AppendLine("Respond according to the developer's instructions.");
 
-Remember to:
-- Acknowledge their input genuinely
-- Create a natural bridge to insurance
-- Ask an engaging follow-up question
-- Keep the tone conversational and helpful";
-
-        return userPrompt;
+        return builder.ToString();
     }
 
-    private string ExtractContextualInfo(TopicWorkflowContext context)
-    {
-        var contextInfo = new List<string>();
-
-        // Look for user profile information
-        if (context.ContainsKey("UserProfile"))
-        {
-            contextInfo.Add("User profile information is available for personalization");
+    // ------------------------------------------------------------------------
+    // CORE EXECUTION OVERRIDE with LLM avoidance heuristic
+    // ------------------------------------------------------------------------
+    protected override async Task<ActivityResult> RunActivity(
+        TopicWorkflowContext context,
+        object? input = null,
+        CancellationToken cancellationToken = default) {
+        // 🧩 Refresh evidence if not previously cached
+        if (_cachedResults == null && _vectorDb != null) {
+            var userPrompt = context.GetValue<string>(UserPromptContextKey);
+            if (!string.IsNullOrWhiteSpace(userPrompt)) {
+                _cachedResults = await _vectorDb.SearchAsync(
+                    _collectionName,
+                    userPrompt,
+                    limit: 5,
+                    minRelevanceScore: 0.7,
+                    cancellationToken);
+            }
         }
 
-        // Look for previous insurance decisions
-        if (context.ContainsKey("InsuranceDecision"))
-        {
-            contextInfo.Add("Previous insurance analysis results are available");
+        // 🧮 Skip LLM if high-confidence retrieval is available
+        if (_cachedResults is { Count: > 0 }) {
+            double avgScore = _cachedResults.Average(r => r.RelevanceScore);
+
+            if (avgScore >= SkipLLMThreshold) {
+                var formatted = TryFormatRetrievedEvidence(_cachedResults, DeveloperPrompt);
+
+                _semanticLogger.LogInformation(
+                    "[{ActivityId}] Skipping LLM (avgScore={Score:F2}) – using retrieval-only synthesis",
+                    Id, avgScore);
+
+                context.SetValue($"{Id}_WasLLMSkipped", true);
+                context.SetValue($"{Id}_RetrievedEvidence", _cachedResults);
+
+                // Persist output to context
+                await StoreResultsInContextAsync(context, formatted);
+
+                // 🔁 Trigger response handler if configured
+                if (_responseHandler != null) {
+                    try {
+                        await _responseHandler(context, formatted);
+                    } catch (Exception ex) {
+                        _semanticLogger.LogError(ex, "[{ActivityId}] Response handler threw exception during retrieval-only path", Id);
+                    }
+                }
+
+                // Continue workflow with both raw and typed payloads
+                return ActivityResult.Continue(formatted, formatted);
+            }
         }
 
-        // Look for collected user information
-        if (context.ContainsKey("UserAge"))
-        {
-            contextInfo.Add($"User age: {context.GetValue<string>("UserAge")}");
+        // ⚙️ Default path: LLM inference
+        context.SetValue($"{Id}_WasLLMSkipped", false);
+
+        ActivityResult result;
+        try {
+            result = await base.RunActivity(context, input, cancellationToken);
+        } catch (OperationCanceledException) {
+            _semanticLogger.LogWarning("[{ActivityId}] LLM call cancelled.", Id);
+            return ActivityResult.Cancelled("Semantic LLM inference cancelled.");
         }
 
-        if (context.ContainsKey("UserLocation"))
-        {
-            contextInfo.Add($"User location: {context.GetValue<string>("UserLocation")}");
+        // 💬 Invoke response handler for post-processing
+        if (_responseHandler != null && result.ModelContext is string text) {
+            try {
+                await _responseHandler(context, text);
+            } catch (Exception ex) {
+                _semanticLogger.LogError(ex, "[{ActivityId}] Response handler threw exception during LLM path", Id);
+            }
         }
 
-        // Look for current workflow state
-        if (context.ContainsKey("CurrentWorkflowStep"))
-        {
-            contextInfo.Add($"Current workflow step: {context.GetValue<string>("CurrentWorkflowStep")}");
-        }
-
-        return contextInfo.Count > 0 ? string.Join("; ", contextInfo) : string.Empty;
+        return result ?? ActivityResult.Continue();
     }
 
-    protected override async Task StoreResultsInContextAsync(TopicWorkflowContext context, string response)
-    {
-        // Store the base result
-        await base.StoreResultsInContextAsync(context, response);
+    // ------------------------------------------------------------------------
+    // UTIL: Format retrieved evidence when skipping LLM
+    // ------------------------------------------------------------------------
+    private static string TryFormatRetrievedEvidence(List<DocumentSearchResult> results, string developerPrompt) {
+        var normalized = developerPrompt.ToLowerInvariant();
+        bool wantsJson = normalized.Contains("json");
+        bool wantsCsv = normalized.Contains("csv");
 
-        // Store as the last redirection response for potential follow-up
-        context.SetValue("LastRedirectionResponse", response);
-        context.SetValue("LastRedirectionTimestamp", DateTime.UtcNow);
+        if (wantsJson) {
+            var json = results.Select(r => new {
+                id = r.Id,
+                text = r.Content,
+                score = Math.Round(r.RelevanceScore, 3)
+            });
+            return JsonSerializer.Serialize(json, new JsonSerializerOptions { WriteIndented = true });
+        }
 
-        // Track redirection patterns for conversation flow optimization
-        var redirectionCount = context.GetValue<int>("RedirectionCount");
-        context.SetValue("RedirectionCount", redirectionCount + 1);
+        if (wantsCsv) {
+            var sb = new StringBuilder("id,score,content\n");
+            foreach (var r in results)
+                sb.AppendLine($"\"{r.Id}\",{r.RelevanceScore:F2},\"{r.Content.Replace("\"", "\"\"")}\"");
+            return sb.ToString();
+        }
 
-        _semanticLogger.LogDebug("Stored semantic response. Total redirections in this conversation: {RedirectionCount}", redirectionCount + 1);
-    }
+        var plain = new StringBuilder("Top Retrieved Evidence:\n");
+        foreach (var r in results)
+            plain.AppendLine($"- ({r.RelevanceScore:F2}) {r.Content}");
 
-    /// <summary>
-    /// Set conversation context for more personalized redirections
-    /// </summary>
-    public SemanticResponseActivity WithContext(string conversationContext)
-    {
-        ConversationContext = conversationContext;
-        return this;
-    }
-
-    /// <summary>
-    /// Set the specific topic focus for targeted redirections
-    /// </summary>
-    public SemanticResponseActivity WithFocus(string topicFocus)
-    {
-        CurrentTopicFocus = topicFocus;
-        return this;
-    }
-
-    /// <summary>
-    /// Set a specific redirection instruction
-    /// </summary>
-    public SemanticResponseActivity WithInstruction(string instruction)
-    {
-        RedirectionInstruction = instruction;
-        return this;
+        return plain.ToString();
     }
 }

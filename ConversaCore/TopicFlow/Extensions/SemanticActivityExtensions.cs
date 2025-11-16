@@ -54,18 +54,18 @@ public static class SemanticActivityExtensions
         string activityId,
         Kernel kernel,
         ILogger logger,
-        string redirectionInstruction,
+        string developerInstruction,
         float temperature = 0.8f) // Higher temp for more creative responses
     {
         var activity = new SemanticResponseActivity(activityId, kernel, logger)
-        {
-            RedirectionInstruction = redirectionInstruction,
-            Temperature = temperature
-        };
-        
+            .WithDeveloperPrompt(developerInstruction);
+
+        activity.Temperature = temperature;
+
         topic.Add(activity);
         return topic;
     }
+
 
     /// <summary>
     /// Add a semantic response activity with fluent configuration.
@@ -124,4 +124,23 @@ public static class SemanticActivityExtensions
         // TODO: Implement DocumentAnalysisActivity when vector search integration is ready
         throw new NotImplementedException("DocumentAnalysisActivity will be implemented in the next phase");
     }
+
+    public static TopicFlow AddSemanticResponse(
+        this TopicFlow topic,
+        string activityId,
+        Kernel kernel,
+        ILogger logger,
+        string developerPrompt,
+        string userPrompt,
+        float temperature = 0.8f) {
+        var activity = new SemanticResponseActivity(activityId, kernel, logger)
+            .WithDeveloperPrompt(developerPrompt)
+            .WithUserPrompt(userPrompt);
+
+        activity.Temperature = temperature;
+
+        topic.Add(activity);
+        return topic;
+    }
+
 }

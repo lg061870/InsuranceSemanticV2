@@ -1,3 +1,4 @@
+using ConversaCore.Interfaces;
 using ConversaCore.Topics;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;

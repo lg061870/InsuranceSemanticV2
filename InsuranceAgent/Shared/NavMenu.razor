@@ -1,6 +1,29 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">InsuranceAgent</a>
+﻿@using System.Text.Json
+@using System.Net.Http.Headers
+@inject IConfiguration Configuration
+@implements IDisposable
+
+<div class="top-row ps-3 navbar navbar-dark bg-dark">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center">
+            <a class="navbar-brand" href="">InsuranceAgent</a>
+        </div>
+
+        <!-- 🟢 OpenAI Health Indicator -->
+        <div>
+            @if (checkingHealth) {
+                <span class="badge bg-secondary">⏳ Checking...</span>
+            }
+            else if (isOpenAiHealthy) {
+                <span class="badge bg-success">
+                    🟢 OpenAI OK (@remainingBalance:F2)
+                </span>
+            }
+            else {
+                <span class="badge bg-danger">🔴 OpenAI Offline</span>
+            }
+        </div>
+
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
@@ -44,11 +67,74 @@
 
 @code {
     private bool collapseNavMenu = true;
+    private bool isOpenAiHealthy = false;
+    private bool checkingHealth = true;
+    private decimal remainingBalance = 0m;
+    private readonly HttpClient http = new();
+    private Timer? healthTimer;
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
-    private void ToggleNavMenu()
-    {
-        collapseNavMenu = !collapseNavMenu;
+    private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
+
+    protected override async Task OnInitializedAsync() {
+        await CheckOpenAiHealthAsync();
+
+        // ♻️ Schedule auto-refresh every 10 minutes
+        healthTimer = new Timer(async _ => {
+            await InvokeAsync(async () => {
+                await CheckOpenAiHealthAsync();
+            });
+        }, null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
+    }
+
+    private async Task CheckOpenAiHealthAsync() {
+        checkingHealth = true;
+        try {
+            var apiKey = Configuration["OpenAI:ApiKey"]
+                ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+
+            if (string.IsNullOrWhiteSpace(apiKey)) {
+                isOpenAiHealthy = false;
+                remainingBalance = 0;
+                return;
+            }
+
+            http.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", apiKey);
+
+            // 1️⃣ Connectivity check
+            var modelResponse = await http.GetAsync("https://api.openai.com/v1/models");
+            if (!modelResponse.IsSuccessStatusCode) {
+                isOpenAiHealthy = false;
+                remainingBalance = 0;
+                return;
+            }
+
+            // 2️⃣ Free balance check
+            var balanceResponse = await http.GetAsync("https://api.openai.com/v1/dashboard/billing/credit_grants");
+            if (balanceResponse.IsSuccessStatusCode) {
+                var json = await balanceResponse.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+
+                if (doc.RootElement.TryGetProperty("total_available", out var balanceProp))
+                    remainingBalance = balanceProp.GetDecimal();
+
+                isOpenAiHealthy = true;
+            }
+            else {
+                isOpenAiHealthy = true; // reachable but billing hidden
+            }
+        } catch {
+            isOpenAiHealthy = false;
+        } finally {
+            checkingHealth = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() {
+        healthTimer?.Dispose();
+        http?.Dispose();
     }
 }

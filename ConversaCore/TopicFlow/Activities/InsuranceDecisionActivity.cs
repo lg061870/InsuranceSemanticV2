@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using System.Text.Json;
 
-namespace ConversaCore.TopicFlow.Activities;
+namespace ConversaCore.TopicFlow;
 
 /// <summary>
 /// Specialized semantic activity for insurance eligibility decision making.
@@ -169,7 +169,7 @@ Please provide your analysis in the required JSON format with detailed reasoning
         }
     }
 
-    protected override async Task StoreResultsInContextAsync(TopicWorkflowContext context, string response)
+    protected async Task StoreResultsInContextAsync(TopicWorkflowContext context, string response)
     {
         // Store the base result
         await base.StoreResultsInContextAsync(context, response);

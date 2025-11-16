@@ -1,9 +1,6 @@
 using ConversaCore.TopicFlow;
 using ConversaCore.TopicFlow.Activities;
-using ConversaCore.Topics;
-using Microsoft.Extensions.Logging;
 using InsuranceAgent.Cards;
-using InsuranceAgent.Topics.BeneficiaryInfoTopic;
 
 namespace InsuranceAgent.Topics.BeneficiaryRepeatDemo
 {

@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using ConversaCore.Context;
 
-namespace ConversaCore.TopicFlow.Activities
+namespace ConversaCore.TopicFlow
 {
     /// <summary>
     /// An activity that signals the completion of a topic and handles

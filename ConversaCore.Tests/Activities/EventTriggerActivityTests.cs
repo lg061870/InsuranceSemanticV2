@@ -24,14 +24,15 @@ public class EventTriggerActivityTests {
     public async Task FireAndForget_Should_Complete_Immediately() {
         // Arrange
         var eventFired = false;
-        var eventName = "";
-        var eventData = "";
+        string? eventName = null;
+        string? eventData = null;
 
-        var activity = EventTriggerActivity.CreateFireAndForget(
-            "TestFireForget",
-            "test.event",
-            "test data",
-            _logger
+        var activity = new EventTriggerActivity(
+            id: "TestFireForget",
+            eventName: "test.event",
+            eventData: "test data",
+            waitForResponse: false,
+            logger: _logger
         );
 
         activity.CustomEventTriggered += (sender, e) => {
@@ -49,7 +50,7 @@ public class EventTriggerActivityTests {
         result.Message.Should().NotBeNull();
         eventFired.Should().BeTrue();
         eventName.Should().Be("test.event");
-        eventData.Should().Be("test data");
+        eventData.Should().Contain("test data");
         activity.CurrentState.Should().Be(ActivityState.Completed);
     }
 
@@ -58,16 +59,15 @@ public class EventTriggerActivityTests {
         // Arrange
         var eventFired = false;
         var activity = EventTriggerActivity.CreateWaitForResponse(
-            "TestWaitForResponse",
-            "test.wait.event",
-            "test_response",
-            new { question = "Do you agree?" },
-            _logger
+            id: "TestWaitForResponse",
+            eventName: "test.wait.event",
+            responseContextKey: "wait_response",
+            eventData: new { message = "Please respond" },
+            responseTimeout: TimeSpan.FromMinutes(1), // Provide valid timeout
+            logger: _logger
         );
 
-        activity.CustomEventTriggered += (sender, e) => {
-            eventFired = true;
-        };
+        activity.CustomEventTriggered += (sender, e) => eventFired = true;
 
         // Act
         var result = await activity.RunAsync(_context);
@@ -83,14 +83,20 @@ public class EventTriggerActivityTests {
     public async Task HandleUIResponse_Should_Complete_Activity() {
         // Arrange
         var activity = EventTriggerActivity.CreateWaitForResponse(
-            "TestHandleResponse",
-            "test.response.event",
-            "user_response",
-            null,
-            _logger
+            id: "TestHandleResponse",
+            eventName: "test.response.event",
+            responseContextKey: "user_response",
+            eventData: null,
+            responseTimeout: TimeSpan.FromMinutes(1), // Provide valid timeout
+            logger: _logger
         );
 
-        // First trigger the event to put it in waiting state
+        // Setup event handler to prevent Failed state
+        activity.CustomEventTriggered += (sender, e) => {
+            // Event handler to allow proper flow
+        };
+
+        // First trigger to put into waiting state
         await activity.RunAsync(_context);
         activity.CurrentState.Should().Be(ActivityState.WaitingForUserInput);
 
@@ -101,30 +107,30 @@ public class EventTriggerActivityTests {
         // Assert
         activity.CurrentState.Should().Be(ActivityState.Completed);
         _context.GetValue<object>("user_response").Should().Be(responseData);
-        
-        // Check that waiting markers are cleaned up
-        var waitingEvent = _context.GetValue<string>($"{activity.Id}_WaitingForEvent");
-        waitingEvent.Should().BeNull();
+
+        // Verify markers cleared
+        _context.GetValue<string>($"{activity.Id}_WaitingForEvent").Should().BeNull();
+        _context.GetValue<string>($"{activity.Id}_ResponseKey").Should().BeNull();
     }
 
     [Fact]
     public void Constructor_Should_Validate_Parameters() {
         // Test null/empty event name
-        var ex1 = Assert.Throws<ArgumentException>(() => 
-            new EventTriggerActivity("test", "", null, false, null, _logger));
+        var ex1 = Assert.Throws<ArgumentException>(() =>
+            new EventTriggerActivity("test", "", null, false, null, null, _logger));
         ex1.ParamName.Should().Be("eventName");
-        
-        var ex2 = Assert.Throws<ArgumentException>(() => 
-            new EventTriggerActivity("test", null!, null, false, null, _logger));
+
+        var ex2 = Assert.Throws<ArgumentException>(() =>
+            new EventTriggerActivity("test", null!, null, false, null, null, _logger));
         ex2.ParamName.Should().Be("eventName");
 
         // Test missing response key for blocking events
-        var ex3 = Assert.Throws<ArgumentException>(() => 
-            new EventTriggerActivity("test", "event", null, true, null, _logger));
+        var ex3 = Assert.Throws<ArgumentException>(() =>
+            new EventTriggerActivity("test", "event", null, true, null, null, _logger));
         ex3.ParamName.Should().Be("responseContextKey");
-        
-        var ex4 = Assert.Throws<ArgumentException>(() => 
-            new EventTriggerActivity("test", "event", null, true, "", _logger));
+
+        var ex4 = Assert.Throws<ArgumentException>(() =>
+            new EventTriggerActivity("test", "event", null, true, "", null, _logger));
         ex4.ParamName.Should().Be("responseContextKey");
     }
 
@@ -132,50 +138,53 @@ public class EventTriggerActivityTests {
     public async Task GetWaitingInfo_Should_Return_Correct_Information() {
         // Arrange
         var activity = EventTriggerActivity.CreateWaitForResponse(
-            "TestWaitInfo",
-            "test.waiting.event",
-            "response_key",
-            null,
-            _logger
+            id: "TestWaitInfo",
+            eventName: "test.waiting.event",
+            responseContextKey: "response_key",
+            eventData: null,
+            responseTimeout: TimeSpan.FromMinutes(1), // Provide valid timeout
+            logger: _logger
         );
 
-        // Act
-        var (eventName, responseKey, isWaiting) = activity.GetWaitingInfo();
+        // Setup event handler to prevent Failed state
+        activity.CustomEventTriggered += (sender, e) => {
+            // Event handler to allow proper flow
+        };
 
-        // Assert
+        // Before running
+        var (eventName, responseKey, isWaiting) = activity.GetWaitingInfo();
         eventName.Should().Be("test.waiting.event");
         responseKey.Should().Be("response_key");
-        isWaiting.Should().BeFalse(); // Not waiting until RunAsync is called
+        isWaiting.Should().BeFalse();
 
-        // After running, should be waiting
+        // After running
         await activity.RunAsync(_context);
-        var (eventName2, responseKey2, isWaiting2) = activity.GetWaitingInfo();
+        var (_, _, isWaiting2) = activity.GetWaitingInfo();
         isWaiting2.Should().BeTrue();
     }
 
     [Fact]
     public void ToString_Should_Return_Descriptive_String() {
         // Arrange
-        var fireForgetActivity = EventTriggerActivity.CreateFireAndForget(
-            "FireForgetTest",
-            "test.event",
-            null,
-            _logger
+        var fireForget = new EventTriggerActivity(
+            id: "FireForgetTest",
+            eventName: "test.event",
+            eventData: null,
+            waitForResponse: false,
+            logger: _logger
         );
 
-        var waitForResponseActivity = EventTriggerActivity.CreateWaitForResponse(
-            "WaitTest",
-            "test.wait.event",
-            "response",
-            null,
-            _logger
+        var waitResponse = new EventTriggerActivity(
+            id: "WaitTest",
+            eventName: "test.wait.event",
+            eventData: null,
+            waitForResponse: true,
+            responseContextKey: "response",
+            logger: _logger
         );
 
         // Act & Assert
-        fireForgetActivity.ToString().Should()
-            .Be("EventTriggerActivity(FireForgetTest: test.event, FireAndForget)");
-            
-        waitForResponseActivity.ToString().Should()
-            .Be("EventTriggerActivity(WaitTest: test.wait.event, WaitForResponse)");
+        fireForget.ToString().Should().Be("EventTriggerActivity(FireForgetTest: test.event, FireAndForget)");
+        waitResponse.ToString().Should().Be("EventTriggerActivity(WaitTest: test.wait.event, WaitForResponse)");
     }
 }

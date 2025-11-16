@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace ConversaCore.TopicFlow
 {
@@ -49,33 +50,50 @@ namespace ConversaCore.TopicFlow
             
             _values[key] = value;
         }
-        
+
         /// <summary>
         /// Gets a value from the workflow context.
         /// </summary>
         /// <typeparam name="T">The type to convert the value to.</typeparam>
         /// <param name="key">The key to retrieve the value for.</param>
         /// <returns>The value if found and convertible to T; default(T) otherwise.</returns>
-        public T? GetValue<T>(string key)
-        {
+        public T? GetValue<T>(string key) {
             if (string.IsNullOrEmpty(key) || !_values.ContainsKey(key))
                 return default;
-                
+
             var value = _values[key];
+
             if (value is T typedValue)
                 return typedValue;
-                
-            try
-            {
-                // Try to convert the value
+
+            try {
+                // 🔹 Handle JsonElement (common in JSON-based contexts)
+                if (value is JsonElement jsonElement) {
+                    object? unwrapped = jsonElement.ValueKind switch {
+                        JsonValueKind.String => jsonElement.GetString(),
+                        JsonValueKind.Number => jsonElement.TryGetInt64(out var i64) ? i64 : jsonElement.TryGetDouble(out var dbl) ? dbl : (object?)null,
+                        JsonValueKind.True => true,
+                        JsonValueKind.False => false,
+                        JsonValueKind.Null or JsonValueKind.Undefined => null,
+                        _ => jsonElement.ToString()
+                    };
+
+                    // Convert again if needed
+                    if (unwrapped is T direct)
+                        return direct;
+
+                    if (unwrapped != null)
+                        return (T)Convert.ChangeType(unwrapped, typeof(T));
+                }
+
+                // Fallback: normal conversion
                 return (T)Convert.ChangeType(value, typeof(T));
-            }
-            catch
-            {
+            } catch {
                 return default;
             }
         }
-        
+
+
         /// <summary>
         /// Gets a value from the workflow context or a default value if not found.
         /// </summary>

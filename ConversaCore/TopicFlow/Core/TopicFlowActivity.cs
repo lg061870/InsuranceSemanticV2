@@ -1,143 +1,123 @@
-﻿using System.Text.Json;
+﻿using ConversaCore.Cards;
 using ConversaCore.Core;
 using ConversaCore.Events;
 using ConversaCore.Models;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
+using ConversaCore.TopicFlow.Core.Interfaces;
 
 namespace ConversaCore.TopicFlow;
 
+
 /// <summary>
-/// Base class for all workflow activities with lifecycle state machine support.
-/// Provides only the core/common transitions. Subtypes must override to expand.
+/// Base class for all workflow activities with lifecycle and transition handling.
+/// Provides automatic context propagation for BaseCardModel descendants.
 /// </summary>
-public abstract class TopicFlowActivity : ITerminable {
-    // ================================
+public abstract class TopicFlowActivity : ITerminable, IPausableActivity {
+    // ======================================================
     // EVENTS
-    // ================================
+    // ======================================================
     public event EventHandler<ActivityLifecycleEventArgs>? ActivityLifecycleChanged;
     public event EventHandler<ActivityCompletedEventArgs>? ActivityCompleted;
+    public event EventHandler<MessageEmittedEventArgs>? MessageEmitted;
 
-        /// <summary>
-        /// Resets the activity state to Idle. Override in subclasses if needed.
-        /// </summary>
-        public virtual void Reset()
-        {
-            CurrentState = ActivityState.Idle;
-        }
-        
-        // ================================
-        // TERMINATION SUPPORT
-        // ================================
-        
-        /// <summary>
-        /// Flag indicating whether this activity has been terminated.
-        /// </summary>
-        private bool _isTerminated = false;
-        
-        /// <summary>
-        /// Gets whether this activity has been terminated.
-        /// </summary>
-        public bool IsTerminated => _isTerminated;
-        
-        /// <summary>
-        /// Optional cancellation token source for activity cancellation.
-        /// </summary>
-        protected CancellationTokenSource? _cancellationTokenSource;
-        
-        /// <summary>
-        /// Terminates the activity, releasing resources and unsubscribing from events.
-        /// This method implements proper cleanup to prevent memory leaks from event handlers
-        /// and ongoing tasks.
-        /// </summary>
-        public virtual void Terminate()
-        {
-            if (_isTerminated) return; // Prevent multiple terminations
-            
-            _logger?.LogDebug("[{ActivityId}] Terminating activity of type {ActivityType}", Id, GetType().Name);
-            
-            // Cancel any ongoing operations
-            try {
-                _cancellationTokenSource?.Cancel();
-                _cancellationTokenSource?.Dispose();
-                _cancellationTokenSource = null;
-            }
-            catch (Exception ex) {
-                _logger?.LogWarning(ex, "[{ActivityId}] Exception during cancellation token cleanup", Id);
-            }
-            
-            // Special handling for activities in waiting states
-            if (CurrentState == ActivityState.WaitingForUserInput || CurrentState == ActivityState.Rendered) {
-                _logger?.LogDebug("[{ActivityId}] Activity was waiting for input, force transitioning to Failed state", Id);
-                try {
-                    // Force transition to a terminal state to ensure proper cleanup
-                    TransitionTo(ActivityState.Failed, "Terminated while waiting for input");
-                }
-                catch (Exception ex) {
-                    _logger?.LogWarning(ex, "[{ActivityId}] Exception during forced state transition", Id);
-                }
-            }
-            
-            // Unregister event handlers - do this explicitly to avoid memory leaks
-            ActivityLifecycleChanged = null;
-            ActivityCompleted = null;
-            
-            // Clean up any model type references that could hold strong references
-            ModelType = null;
-            CustomDeserializer = null;
-            
-            // Reset state variables
-            CurrentState = ActivityState.Idle;
-            
-            // Mark as terminated
-            _isTerminated = true;
-            
-            _logger?.LogDebug("[{ActivityId}] Activity terminated successfully", Id);
-        }
-        
-        /// <summary>
-        /// Asynchronously terminates the activity, releasing resources and unsubscribing from events.
-        /// This implementation handles activities that may have async cleanup requirements.
-        /// </summary>
-        /// <param name="cancellationToken">Optional cancellation token to cancel the termination process.</param>
-        public virtual async Task TerminateAsync(CancellationToken cancellationToken = default)
-        {
-            try {
-                // First perform synchronous termination
-                Terminate();
-                
-                // Special handling for derived classes that might have async cleanup requirements
-                // This is a hook for subclasses to override with their own async cleanup logic
-                await PerformAsyncCleanupAsync(cancellationToken);
-            }
-            catch (Exception ex) {
-                _logger?.LogError(ex, "[{ActivityId}] Exception during async termination", Id);
-            }
-        }
-        
-        /// <summary>
-        /// Protected method for derived classes to override with their own async cleanup logic.
-        /// Base implementation does nothing.
-        /// </summary>
-        protected virtual Task PerformAsyncCleanupAsync(CancellationToken cancellationToken = default)
-        {
-            // Default implementation does nothing
-            return Task.CompletedTask;
+    // ======================================================
+    // CONSTRUCTOR + PROPERTIES
+    // ======================================================
+    protected readonly ILogger<TopicFlowActivity>? _logger;
+    public virtual bool IsRequired => false;
+
+    protected TopicFlowActivity(string id, ILogger<TopicFlowActivity>? logger = null) {
+        if (string.IsNullOrEmpty(id))
+            throw new ArgumentNullException(nameof(id));
+
+        Id = id;
+        SubmissionContextKey = id;
+        _logger = logger;
+
+        TransitionTo(ActivityState.Created);
+    }
+
+    public string Id { get; }
+    public string? Name { get; set; }
+    public string? Description { get; set; }
+    public object? Metadata { get; set; }
+
+    public Type? ModelType { get; set; }
+    public string? ModelContextKey { get; set; }
+    public string? SubmissionContextKey { get; set; }
+    public Func<object, object?>? CustomDeserializer { get; set; }
+
+    // The active workflow context for this activity instance
+    protected TopicWorkflowContext? Context { get; private set; }
+
+    // ======================================================
+    // TERMINATION SUPPORT
+    // ======================================================
+    private bool _isTerminated = false;
+    protected CancellationTokenSource? _cancellationTokenSource;
+
+    public bool IsTerminated => _isTerminated;
+
+    public virtual void Reset() => CurrentState = ActivityState.Idle;
+
+    public virtual void Terminate() {
+        if (_isTerminated) return;
+
+        _logger?.LogDebug("[{ActivityId}] Terminating {ActivityType}", Id, GetType().Name);
+
+        try {
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+        } catch (Exception ex) {
+            _logger?.LogWarning(ex, "[{ActivityId}] Cancellation cleanup failed", Id);
         }
 
-    // ================================
+        if (CurrentState == ActivityState.WaitingForUserInput || CurrentState == ActivityState.Rendered) {
+            _logger?.LogDebug("[{ActivityId}] Forcing Failed state during termination", Id);
+            try {
+                TransitionTo(ActivityState.Failed, "Terminated");
+            } catch (Exception ex) {
+                _logger?.LogWarning(ex, "[{ActivityId}] Forced transition failed", Id);
+            }
+        }
+
+        ActivityLifecycleChanged = null;
+        ActivityCompleted = null;
+        ModelType = null;
+        CustomDeserializer = null;
+        CurrentState = ActivityState.Idle;
+        _isTerminated = true;
+
+        _logger?.LogDebug("[{ActivityId}] Activity terminated", Id);
+    }
+
+    public virtual async Task TerminateAsync(CancellationToken cancellationToken = default) {
+        try {
+            Terminate();
+            await PerformAsyncCleanupAsync(cancellationToken);
+        } catch (Exception ex) {
+            _logger?.LogError(ex, "[{ActivityId}] Async termination failed", Id);
+        }
+    }
+
+    protected virtual Task PerformAsyncCleanupAsync(CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    // ======================================================
     // FSM (STATE + TRANSITIONS)
-    // ================================
+    // ======================================================
     public ActivityState CurrentState { get; private set; } = ActivityState.Idle;
 
-    protected virtual Dictionary<ActivityState, HashSet<ActivityState>> AllowedTransitions =>
-        new()
-        {
-            { ActivityState.Idle,      new() { ActivityState.Created } },
-            { ActivityState.Created,   new() { ActivityState.Running, ActivityState.Failed } },
-            { ActivityState.Running,   new() { ActivityState.Completed, ActivityState.Failed } },
-            { ActivityState.Completed, new() { } },   // terminal
-            { ActivityState.Failed,    new() { } }    // terminal
-        };
+    protected virtual Dictionary<ActivityState, HashSet<ActivityState>> AllowedTransitions => new()
+    {
+        { ActivityState.Idle,      new() { ActivityState.Created } },
+        { ActivityState.Created,   new() { ActivityState.Running, ActivityState.Failed } },
+        { ActivityState.Running,   new() { ActivityState.Completed, ActivityState.Failed } },
+        { ActivityState.Completed, new() { } },
+        { ActivityState.Failed,    new() { } }
+    };
 
     protected void TransitionTo(ActivityState newState, object? data = null) {
         if (CurrentState == newState) return;
@@ -151,90 +131,55 @@ public abstract class TopicFlowActivity : ITerminable {
         var previous = CurrentState;
         CurrentState = newState;
 
-        _logger?.LogDebug("[{ActivityId}] Transition {From} → {To} | Data={Data}",
-            Id, previous, newState, data);
-
-        ActivityLifecycleChanged?.Invoke(this,
-            new ActivityLifecycleEventArgs(Id, newState, data));
+        _logger?.LogDebug("[{ActivityId}] Transition {From} → {To}", Id, previous, newState);
+        ActivityLifecycleChanged?.Invoke(this, new ActivityLifecycleEventArgs(Id, newState, data));
 
         OnStateTransition(previous, newState, data);
 
         if (newState == ActivityState.Completed) {
             OnCompleted(data);
-            // Ensure we don't pass null to ActivityCompletedEventArgs constructor
             ActivityCompleted?.Invoke(this, new ActivityCompletedEventArgs(Id, data ?? new object()));
         }
     }
 
-    // ================================
-    // EVENT HANDLER HOOKS
-    // ================================
     protected virtual void OnStateTransition(ActivityState from, ActivityState to, object? data) { }
-    protected virtual void OnCompleted(object? data) { }
 
-    // ================================
-    // OTHER CODE (PROPERTIES, CTOR, EXECUTION)
-    // ================================
-    public string Id { get; }
-    public string? Name { get; set; }
-    public string? Description { get; set; }
-    public object? Metadata { get; set; }
-
-    public Type? ModelType { get; set; }
-    public string? ModelContextKey { get; set; }
-    public string? SubmissionContextKey { get; set; }
-    public Func<object, object?>? CustomDeserializer { get; set; }
-
-    private readonly ILogger<TopicFlowActivity>? _logger;
-
-    protected TopicFlowActivity(string id, ILogger<TopicFlowActivity>? logger = null) {
-        if (string.IsNullOrEmpty(id))
-            throw new ArgumentNullException(nameof(id));
-
-        Id = id;
-        SubmissionContextKey = id;
-        _logger = logger;
-
-        TransitionTo(ActivityState.Created);
-    }
-
+    // ======================================================
+    // CORE EXECUTION
+    // ======================================================
     public virtual async Task<ActivityResult> RunAsync(
         TopicWorkflowContext context,
         object? input = null,
         CancellationToken cancellationToken = default) {
+        Context = context;
         TransitionTo(ActivityState.Running, input);
 
         try {
-            if (input != null && !string.IsNullOrEmpty(SubmissionContextKey)) {
+            // Save submission payload
+            if (input != null && !string.IsNullOrEmpty(SubmissionContextKey))
                 context.SetValue(SubmissionContextKey, input);
 
-                if (ModelType != null && !string.IsNullOrEmpty(ModelContextKey)) {
-                    try {
-                        object? model;
-                        if (CustomDeserializer != null) {
-                            model = CustomDeserializer(input);
-                        }
-                        else {
-                            var json = input?.ToString() ?? "{}";
-                            model = JsonSerializer.Deserialize(json, ModelType,
-                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                        }
-                        context.SetValue(ModelContextKey, model);
-                    } catch (Exception ex) {
-                        _logger?.LogWarning(ex,
-                            "[{ActivityId}] Failed to deserialize input into {ModelType}", Id, ModelType);
-                    }
+            // Deserialize to model if applicable
+            if (ModelType != null && !string.IsNullOrEmpty(ModelContextKey)) {
+                try {
+                    object? model = CustomDeserializer != null
+                        ? CustomDeserializer(input)
+                        : JsonSerializer.Deserialize(input?.ToString() ?? "{}", ModelType,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                    context.SetValue(ModelContextKey, model);
+                } catch (Exception ex) {
+                    _logger?.LogWarning(ex, "[{ActivityId}] Model deserialization failed", Id);
                 }
             }
 
             var result = await RunActivity(context, input, cancellationToken);
 
-            if (result?.ModelContext != null && !string.IsNullOrEmpty(ModelContextKey)) {
+            if (result?.ModelContext != null && !string.IsNullOrEmpty(ModelContextKey))
                 context.SetValue(ModelContextKey, result.ModelContext);
-            }
 
             if (result != null && result.IsWaiting) {
-                _logger?.LogInformation("[{ActivityId}] Activity waiting for input", Id);
+                _logger?.LogInformation("[{ActivityId}] Waiting for input", Id);
             }
             else {
                 TransitionTo(ActivityState.Completed, result);
@@ -252,6 +197,90 @@ public abstract class TopicFlowActivity : ITerminable {
         TopicWorkflowContext context,
         object? input = null,
         CancellationToken cancellationToken = default);
+
+    // ======================================================
+    // AUTOMATIC CONTEXT PROPAGATION
+    // ======================================================
+    protected virtual async Task HandleActivityCompletionAsync(ActivityState from, ActivityState to, object? data) {
+        if (to != ActivityState.Completed || data == null) return;
+        if (Context == null) return;
+
+        if (data is BaseCardModel cardModel) {
+            try {
+                cardModel.UpdateContext(Context);
+                _logger?.LogInformation("[{ActivityId}] ✅ Auto-updated Context from {ModelType}",
+                    Id, data.GetType().Name);
+            } catch (Exception ex) {
+                _logger?.LogError(ex, "[{ActivityId}] ⚠️ Failed auto-context update ({ModelType})",
+                    Id, data.GetType().Name);
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
+    protected virtual void OnCompleted(object? data) {
+        // Automatically trigger context propagation
+        _ = HandleActivityCompletionAsync(CurrentState, ActivityState.Completed, data);
+    }
+
+    protected virtual void OnMessageEmitted(string message) {
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+
+        MessageEmitted?.Invoke(this, new MessageEmittedEventArgs(Id, message, Context));
+    }
+
+    // ======================================================
+    // PAUSING / RESUMING SUPPORT
+    // ======================================================
+
+    /// <summary>
+    /// Indicates whether the activity is currently paused.
+    /// </summary>
+    public virtual bool IsPaused =>
+        CurrentState == ActivityState.WaitingForUserInput ||
+        CurrentState == ActivityState.WaitingForSubActivity ||
+        CurrentState == ActivityState.Rendered;
+
+    /// <summary>
+    /// Pauses the activity gracefully. Derived classes may override to capture additional state.
+    /// </summary>
+    public virtual Task PauseAsync(string reason, CancellationToken cancellationToken = default) {
+        if (!IsPaused) {
+            _logger?.LogDebug("[{ActivityId}] Pause requested but activity not in a pausable state ({State})", Id, CurrentState);
+            return Task.CompletedTask;
+        }
+
+        _logger?.LogInformation("[{ActivityId}] ⏸️ Activity paused. Reason: {Reason}", Id, reason);
+        try {
+            ActivityLifecycleChanged?.Invoke(this, new ActivityLifecycleEventArgs(Id, ActivityState.WaitingForUserInput, reason));
+        } catch (Exception ex) {
+            _logger?.LogWarning(ex, "[{ActivityId}] PauseAsync event dispatch failed", Id);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Resumes a previously paused activity.
+    /// </summary>
+    public virtual Task ResumeAsync(string? input = null, CancellationToken cancellationToken = default) {
+        if (!IsPaused) {
+            _logger?.LogDebug("[{ActivityId}] Resume ignored (activity not paused)", Id);
+            return Task.CompletedTask;
+        }
+
+        _logger?.LogInformation("[{ActivityId}] ▶️ Activity resuming from paused state", Id);
+
+        try {
+            ActivityLifecycleChanged?.Invoke(this, new ActivityLifecycleEventArgs(Id, ActivityState.Running, input));
+        } catch (Exception ex) {
+            _logger?.LogWarning(ex, "[{ActivityId}] ResumeAsync event dispatch failed", Id);
+        }
+
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>
@@ -264,9 +293,21 @@ public enum ActivityState {
     Completed,
     Failed,
 
-    // Extended by subclasses
+    // Extended by subclasses and container activities
     Rendered,
+
+    /// <summary>
+    /// The activity is paused waiting for user input
+    /// (typical for AdaptiveCard-based activities).
+    /// </summary>
     WaitingForUserInput,
+
+    /// <summary>
+    /// The activity is paused while waiting for one of its
+    /// child/sub-activities to complete (used by container activities).
+    /// </summary>
+    WaitingForSubActivity,
+
     InputCollected,
     ValidationFailed,
     Triggered,

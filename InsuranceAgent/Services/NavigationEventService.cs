@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using ConversaCore.Services;
+using ConversaCore.Interfaces;
 
 namespace InsuranceAgent.Services {
     /// <summary>
