@@ -99,6 +99,9 @@ public class HealthInfoTopic : TopicFlow
                 Context.SetValue("health_data_quality_grade", healthInfoModel.HealthDataQualityGrade);
                 Context.SetValue("underwriting_flags", healthInfoModel.UnderwritingFlags);
                 Context.SetValue("number_of_medical_conditions", healthInfoModel.NumberOfMedicalConditions);
+                Context.SetValue("overall_health_status", healthInfoModel.OverallHealthStatus);
+                Context.SetValue("current_medications", healthInfoModel.CurrentMedications);
+                Context.SetValue("family_medical_history", healthInfoModel.FamilyMedicalHistory);
                 
                 _logger.LogInformation("[{Topic}] Health Info - Tobacco: {Tobacco}, Conditions: {Conditions}, Risk: {Risk}, Premium Multiplier: {Multiplier}", 
                     Name, healthInfoModel.UsesTobacco, healthInfoModel.NumberOfMedicalConditions, 

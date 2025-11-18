@@ -1,5 +1,4 @@
-﻿@typeparam TProduct
-
+﻿
 <div class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all relative">
 
     @if (Product.MatchScore >= 85) {
@@ -52,5 +51,5 @@
 </div>
 
 @code {
-    [Parameter] public TProduct Product { get; set; } = default!;
+    [Parameter] public ProductMatch Product { get; set; } = default!;
 }

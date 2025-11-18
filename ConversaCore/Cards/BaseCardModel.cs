@@ -28,14 +28,20 @@ namespace ConversaCore.Cards {
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
 
+            Console.WriteLine($"[BaseCardModel] 🔄 UpdateContext called for {GetType().Name}");
+
             // Serialize this model instance to JSON
             var json = JsonSerializer.Serialize(this, this.GetType(), new JsonSerializerOptions {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             });
 
+            Console.WriteLine($"[BaseCardModel] 📄 Serialized JSON: {json}");
+
             // Deserialize into a loose dictionary
             var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(json)!;
+
+            Console.WriteLine($"[BaseCardModel] 📦 Dictionary has {dict.Count} entries");
 
             // Normalize all values (unwrap JsonElement, etc.)
             foreach (var kvp in dict) {
@@ -57,10 +63,12 @@ namespace ConversaCore.Cards {
 
                 // Push clean value into workflow context
                 context.SetValue(kvp.Key, value);
+                Console.WriteLine($"[BaseCardModel] ✅ Stored: '{kvp.Key}' = '{value}' (Type: {value?.GetType().Name ?? "null"})");
             }
 
             // Optional: record class name + timestamp for tracing
             context.SetValue($"{GetType().Name}_updated", DateTime.UtcNow);
+            Console.WriteLine($"[BaseCardModel] ✅ UpdateContext completed for {GetType().Name}");
         }
     }
 }

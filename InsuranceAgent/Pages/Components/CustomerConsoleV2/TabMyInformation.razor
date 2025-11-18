@@ -270,7 +270,6 @@
 @code {
     [Parameter] public TopicWorkflowContext Context { get; set; } = default!;
     [Parameter] public string ActiveTab { get; set; } = "";
-    [Parameter] public List<ProductMatch>? MatchedProducts { get; set; }
 
     private RenderFragment InfoRow(string label, string value) => __builder => {
         <div class="flex items-start justify-between py-3 border-b border-gray-100">

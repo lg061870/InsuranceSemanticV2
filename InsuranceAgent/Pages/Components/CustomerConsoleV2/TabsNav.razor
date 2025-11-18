@@ -1,5 +1,6 @@
 @using ConversaCore.TopicFlow
 @using Microsoft.AspNetCore.Components
+@using InsuranceAgent.Models
 
 <div id="tab-navigation" class="border-b border-gray-200 bg-gray-50">
     <div class="flex">
@@ -46,33 +47,38 @@
 <!-- TAB CONTENT RENDERING -->
 @if (IsActive("my-information"))
 {
-    <TabMyInformation Context="Context" />
+    <TabMyInformation Context="Context" ActiveTab="@ActiveTab" />
 }
 else if (IsActive("matched-products"))
 {
-    <TabMatchedProduct Context="Context" />
+    <TabMatchedProduct Context="Context" ActiveTab="@ActiveTab" MatchedProducts="@MatchedProducts" />
 }
 else if (IsActive("compliance"))
 {
-    <TabCompliance Context="Context" />
+    <TabCompliance Context="Context" ActiveTab="@ActiveTab" />
 }
 else if (IsActive("live-agent"))
 {
-    <TabLiveAgent Context="Context" />
+    <TabLiveAgent Context="Context" ActiveTab="@ActiveTab" />
 }
 
 @code {
 
     [Parameter] public TopicWorkflowContext Context { get; set; } = default!;
-
-    private string ActiveTab { get; set; } = "matched-products";
+    [Parameter] public string ActiveTab { get; set; } = "matched-products";
+    [Parameter] public List<ProductMatch>? MatchedProducts { get; set; }
+    [Parameter] public EventCallback<string> OnTabChanged { get; set; }
 
     private bool IsActive(string tab) =>
         string.Equals(ActiveTab, tab, StringComparison.OrdinalIgnoreCase);
 
-    private void ChangeTab(string tab)
+    private async Task ChangeTab(string tab)
     {
         ActiveTab = tab;
+        if (OnTabChanged.HasDelegate)
+        {
+            await OnTabChanged.InvokeAsync(tab);
+        }
         StateHasChanged();
     }
 }

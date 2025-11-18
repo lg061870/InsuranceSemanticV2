@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.VectorData;
 using Microsoft.SemanticKernel.Connectors.SqliteVec;
+using System.Text.Json;
 
 namespace ConversaCore.Services;
 
@@ -29,7 +30,7 @@ public class SqliteVectorDatabaseService : IVectorDatabaseService {
             {
                 new VectorStoreKeyProperty("Key", typeof(string)),
                 new VectorStoreDataProperty("Content", typeof(string)),
-                new VectorStoreDataProperty("Metadata", typeof(Dictionary<string, object>)),
+                new VectorStoreDataProperty("Metadata", typeof(string)),
                 new VectorStoreVectorProperty("Embedding", typeof(float[]), dimensions: 1536)
             }
         };
@@ -55,7 +56,7 @@ public class SqliteVectorDatabaseService : IVectorDatabaseService {
         var record = new Dictionary<string, object?> {
             ["Key"] = documentId,
             ["Content"] = content,
-            ["Metadata"] = metadata ?? new Dictionary<string, object>(),
+            ["Metadata"] = JsonSerializer.Serialize(metadata ?? new Dictionary<string, object>()),
             ["Embedding"] = embedding
         };
 
@@ -78,7 +79,7 @@ public class SqliteVectorDatabaseService : IVectorDatabaseService {
         var records = documentChunks.Select((dc, i) => new Dictionary<string, object?> {
             ["Key"] = dc.Id,
             ["Content"] = dc.Content,
-            ["Metadata"] = dc.Metadata ?? new Dictionary<string, object>(),
+            ["Metadata"] = JsonSerializer.Serialize(dc.Metadata ?? new Dictionary<string, object>()),
             ["Embedding"] = embeddings.ElementAtOrDefault(i) ?? GeneratePlaceholderEmbedding(dc.Content)
         }).ToList();
 
@@ -108,11 +109,13 @@ public class SqliteVectorDatabaseService : IVectorDatabaseService {
         await foreach (var match in collection.SearchAsync(queryEmbedding, limit * 2, options, cancellationToken)) {
             if (match.Score is double score && score >= minRelevanceScore) {
                 var record = match.Record;
+                var metadataJson = record["Metadata"]?.ToString() ?? "{}";
+                var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson) ?? new Dictionary<string, object>();
                 results.Add(new DocumentSearchResult(
                     record["Key"]?.ToString() ?? string.Empty,
                     record["Content"]?.ToString() ?? string.Empty,
                     score,
-                    record["Metadata"] as Dictionary<string, object> ?? new Dictionary<string, object>()));
+                    metadata));
 
                 if (results.Count >= limit) break;
             }
@@ -181,8 +184,10 @@ public class SqliteVectorDatabaseService : IVectorDatabaseService {
         var options = new VectorSearchOptions<Dictionary<string, object?>> { IncludeVectors = false };
 
         await foreach (var match in collection.SearchAsync(dummy, int.MaxValue, options, cancellationToken)) {
-            if (match.Record.TryGetValue("Metadata", out var metaObj) &&
-                metaObj is Dictionary<string, object> recordMeta) {
+            if (match.Record.TryGetValue("Metadata", out var metaObj)) {
+                var metadataJson = metaObj?.ToString() ?? "{}";
+                var recordMeta = JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson) ?? new Dictionary<string, object>();
+
                 bool matches = metadata.All(kv =>
                     recordMeta.TryGetValue(kv.Key, out var val) &&
                     val?.ToString() == kv.Value?.ToString());

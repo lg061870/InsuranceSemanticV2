@@ -33,9 +33,10 @@
         <!-- Customer Console -->
         <div class="absolute top-0 left-0 w-full h-full transition-transform duration-500 ease-in-out z-40"
              style="@TranslateX(showCustomerConsole)">
-            <CustomerConsoleV2 IsVisible="@showCustomerConsole"
+            <CustomerConsoleV2 @ref="customerConsoleRef"
+                             IsVisible="@showCustomerConsole"
                              OnClose="@CloseCustomerConsole" />
-             
+
         </div>
 
         <!-- Questionnaire -->
@@ -116,7 +117,7 @@
 @code {
 
     #region --- Fields & Enums ---
-    // private CustomerConsoleV2? customerConsoleRef;
+    private CustomerConsoleV2? customerConsoleRef;
 
     private enum ViewState { LandingPage, AgentConsole, Questionnaire, ConsentDenied }
     private ViewState currentView = ViewState.LandingPage;

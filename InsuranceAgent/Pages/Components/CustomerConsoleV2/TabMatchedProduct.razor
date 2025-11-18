@@ -124,9 +124,6 @@
     [Parameter] public string ActiveTab { get; set; } = "";
     [Parameter] public List<ProductMatch>? MatchedProducts { get; set; }
 
-    // Product match record from parent component
-    public record ProductMatch(string Name, string Description, int MatchScore, int MonthlyPremium, string Coverage);
-
     private string GetMatchScoreColor(int score) {
         return score switch {
             >= 90 => "bg-gradient-to-r from-green-400 to-green-600",

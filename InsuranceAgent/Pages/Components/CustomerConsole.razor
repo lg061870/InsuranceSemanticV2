@@ -292,25 +292,6 @@
             Console.WriteLine($"[CustomerConsole] AnimateProgressListAsync error: {ex.Message}");
         }
     }
-
-    // === Supporting Classes ===
-    private class ProgressStep {
-        public ProgressStep(string label, string key) {
-            Label = label;
-            EventKey = key;
-        }
-        public string Label { get; }
-        public string EventKey { get; }
-        public bool Active { get; set; }
-        public bool Completed { get; set; }
-    }
-
-    private record ProductMatch(string Name, string Description, int MatchScore, int MonthlyPremium, string Coverage);
-
-    private record SummaryCard {
-        public string Title { get; set; } = "";
-        public Dictionary<string, string> Data { get; set; } = new();
-    }
 }
 
 <style>

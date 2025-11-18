@@ -37,16 +37,6 @@ artifacts/
 # Prevent committing secrets
 InsuranceAgent/appsettings.json
 InsuranceAgent/appsettings.Development.json
-appsettings*.json
-secrets.json
-secrets/
-*.env
-*.local
-
-# Sensitive certs/keys
-*.pfx
-*.pem
-*.key
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
@@ -71,14 +61,3 @@ Thumbs.db
 *.swp
 *.swo
 *~
-
-# Node
-node_modules/
-
-# Publish
-publish/
-
-dist/
-
-# Ignore the git directory if accidentally copied
-.git/

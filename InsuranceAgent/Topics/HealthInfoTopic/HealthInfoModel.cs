@@ -41,6 +41,21 @@ public class HealthInfoModel : BaseCardModel
     [StringLength(20, ErrorMessage = "Weight cannot exceed 20 characters")]
     public string? Weight { get; set; }
 
+    // Overall Health Status
+    [JsonPropertyName("overall_health_status")]
+    [Required(ErrorMessage = "Overall health status is required")]
+    public string? OverallHealthStatus { get; set; }
+
+    // Current Medications
+    [JsonPropertyName("current_medications")]
+    [StringLength(500, ErrorMessage = "Current medications cannot exceed 500 characters")]
+    public string? CurrentMedications { get; set; }
+
+    // Family Medical History
+    [JsonPropertyName("family_medical_history")]
+    [StringLength(500, ErrorMessage = "Family medical history cannot exceed 500 characters")]
+    public string? FamilyMedicalHistory { get; set; }
+
     // Computed properties for business logic
     public bool? UsesTobacco
     {

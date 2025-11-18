@@ -4,6 +4,7 @@
 @using InsuranceAgent.Topics
 @using InsuranceAgent.DomainTypes
 @using InsuranceAgent.Extensions
+@using InsuranceAgent.Models
 @using System.Text.Json.Serialization
 @using System.Reflection
 
@@ -43,8 +44,8 @@
                         <div class="flex items-center space-x-4">
                             <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg" alt="Client" class="w-16 h-16 rounded-full border-4 border-white shadow-lg">
                             <div class="text-white">
-                                <h3 class="text-lg font-bold">@GetName()</h3>
-                                <p class="text-sm text-blue-100">Prospect ID: #P-8472</p>
+                                <h3 class="text-lg font-bold">@GetDisplayName()</h3>
+                                <p class="text-sm text-blue-100">Prospect ID: @GetProspectId()</p>
                             </div>
                         </div>
                     </div>
@@ -79,7 +80,7 @@
                                         <i class="fa-solid fa-heart-pulse w-5 text-gray-400"></i>
                                         Health Status
                                     </span>
-                                    <span class="text-sm font-semibold text-gray-900">@GetHealthStatus()</span>
+                                    <span class="text-sm font-semibold @GetHealthStatusColor()">@GetOverallHealthStatus()</span>
                                 </div>
                                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                                     <span class="text-sm text-gray-600 flex items-center">
@@ -206,27 +207,102 @@
 
     // ===== CONTEXT HELPER METHODS USING CORRECT KEYS =====
 
-    private string GetName() => context?.GetString("lead_name", "customer_name", "name") ?? "Client";
+    private string GetName() {
+        var value = context?.GetString("lead_name", "customer_name", "name") ?? "Client";
+        Logger?.LogDebug("[CustomerConsoleV2] GetName() returned: {Value}", value);
+        return value;
+    }
 
-    private string GetAge() => context?.GetAge("customer_dob", "date_of_birth", "dob") ?? "n/a";
+    private string GetDisplayName() {
+        var name = GetName();
 
-    private string GetIncome() =>
-        context.GetString("household_income_band", "estimated_household_income", "income") ?? "n/a";
+        // If name looks like a system value or is empty, show "Prospect"
+        if (name == "Client" || name == "n/a" || string.IsNullOrWhiteSpace(name) ||
+            name.Contains("Marketing") || name.Contains("Type") || name.Contains("Path")) {
+            return "Prospect";
+        }
 
-    private string GetDependents() =>
-        context?.GetString("estimated_number_of_dependents", "has_dependents", "dependents") ?? "n/a";
+        return name;
+    }
+
+    private string GetProspectId() {
+        var id = context?.GetString("prospect_id", "lead_id", "customer_id") ?? "";
+
+        if (string.IsNullOrWhiteSpace(id) || id == "n/a") {
+            return "N/A";
+        }
+
+        // Add # prefix if not already there
+        return id.StartsWith("#") ? id : $"#{id}";
+    }
+
+    private string GetAge() {
+        if (context == null) return "n/a";
+
+        var age = context.GetAge("customer_dob", "date_of_birth", "dob");
+
+        // If age looks like a date (contains year or hyphen), return n/a
+        if (age != null && (age.Contains("-") || age.Contains("T") || age.Length > 15)) {
+            return "n/a";
+        }
+
+        return age ?? "n/a";
+    }
+
+    private string GetIncome() {
+        var value = context?.GetString("household_income_band", "householdIncomeBand", "estimated_household_income", "estimatedHouseholdIncome", "income") ?? "n/a";
+        Logger?.LogDebug("[CustomerConsoleV2] GetIncome() returned: {Value}", value);
+        return value;
+    }
+
+    private string GetDependents() {
+        if (context == null) return "n/a";
+
+        var value = context.GetString("estimated_number_of_dependents", "number_of_dependents", "dependents");
+
+        // If value looks like a date, return n/a
+        if (value != null && (value.Contains("-") || value.Contains("T") || value.Length > 10)) {
+            return "n/a";
+        }
+
+        // If it's "has_dependents" boolean, convert to friendly text
+        if (value == "true" || value == "True") return "Yes";
+        if (value == "false" || value == "False") return "No";
+
+        return value ?? "n/a";
+    }
 
     private string GetHealthStatus() =>
-        context?.GetString("health_risk_category", "bmi_category", "health_status") ?? "n/a";
+        context?.GetString("health_risk_category", "healthRiskCategory", "bmi_category", "bmiCategory", "health_status", "healthStatus") ?? "n/a";
+
+    private string GetOverallHealthStatus() =>
+        context?.GetString("overall_health_status", "overallHealthStatus") ?? "n/a";
+
+    private string GetHealthStatusColor() {
+        var status = GetOverallHealthStatus();
+        return status switch {
+            "Excellent" => "text-green-600",
+            "Good" => "text-blue-600",
+            "Fair" => "text-yellow-600",
+            "Poor" => "text-red-600",
+            _ => "text-gray-600"
+        };
+    }
+
+    private string GetCurrentMedications() =>
+        context?.GetString("current_medications", "currentMedications") ?? "None reported";
+
+    private string GetFamilyMedicalHistory() =>
+        context?.GetString("family_medical_history", "familyMedicalHistory") ?? "None reported";
 
     private string GetHealthRiskCategory() =>
-        context?.GetString("health_risk_category") ?? "Standard Risk";
+        context?.GetString("health_risk_category", "healthRiskCategory") ?? "Standard Risk";
 
     private string GetPrimaryGoal() =>
-        context?.GetString("primary_goal_category", "coverage_goal", "insurance_goal") ?? "n/a";
+        context?.GetString("primary_goal_category", "primaryGoalCategory", "coverage_goal", "coverageGoal", "insurance_goal", "insuranceGoal") ?? "n/a";
 
     private string GetCoverageTarget() =>
-        context?.GetString("insurance_target", "parsed_insurance_target", "coverage_amount") ?? "n/a";
+        context?.GetString("insurance_target", "insuranceTarget", "parsed_insurance_target", "parsedInsuranceTarget", "coverage_amount", "coverageAmount") ?? "n/a";
 
     private string GetQualificationScore() =>
         context?.GetString("lead_qualification_score", "qualification_score") ?? "n/a";
@@ -256,18 +332,41 @@
         var goalsString = context.GetString("selected_goals", "life_goals", "goals");
 
         if (goalsString != "n/a" && !string.IsNullOrWhiteSpace(goalsString)) {
-            // Parse if it's a comma-separated list or JSON array
-            var goals = goalsString.Split(',', ';').Select(g => g.Trim()).Where(g => !string.IsNullOrWhiteSpace(g)).ToList();
-            if (goals.Any()) return goals;
+            // Skip if it looks like a date
+            if (goalsString.Contains("T") || goalsString.Contains("-") && goalsString.Length > 20) {
+                // This is likely a date, skip it
+            }
+            else {
+                // Try to parse JSON array first
+                if (goalsString.StartsWith("[") && goalsString.EndsWith("]")) {
+                    try {
+                        var jsonGoals = System.Text.Json.JsonSerializer.Deserialize<List<string>>(goalsString);
+                        if (jsonGoals != null && jsonGoals.Any()) {
+                            return jsonGoals.Where(g => !string.IsNullOrWhiteSpace(g)).ToList();
+                        }
+                    }
+                    catch {
+                        // Not valid JSON, try comma-separated
+                    }
+                }
+
+                // Parse if it's a comma-separated list
+                var goals = goalsString.Split(',', ';')
+                    .Select(g => g.Trim().Trim('"', '[', ']'))
+                    .Where(g => !string.IsNullOrWhiteSpace(g) && !g.Contains("T") && g.Length < 50)
+                    .ToList();
+
+                if (goals.Any()) return goals;
+            }
         }
 
         // Check individual goal flags
         var individualGoals = new List<string>();
-        if (context.GetBool("protect_loved_ones")) individualGoals.Add("Protect Loved Ones");
-        if (context.GetBool("pay_mortgage")) individualGoals.Add("Mortgage Protection");
-        if (context.GetBool("prepare_future")) individualGoals.Add("Future Planning");
-        if (context.GetBool("peace_of_mind")) individualGoals.Add("Peace of Mind");
-        if (context.GetBool("cover_expenses")) individualGoals.Add("Cover Expenses");
+        if (context.GetBool("protectLovedOnes", "protect_loved_ones")) individualGoals.Add("Protect Loved Ones");
+        if (context.GetBool("payMortgage", "pay_mortgage")) individualGoals.Add("Mortgage Protection");
+        if (context.GetBool("prepareFuture", "prepare_future")) individualGoals.Add("Future Planning");
+        if (context.GetBool("peaceOfMind", "peace_of_mind")) individualGoals.Add("Peace of Mind");
+        if (context.GetBool("coverExpenses", "cover_expenses")) individualGoals.Add("Cover Expenses");
 
         return individualGoals.Any() ? individualGoals : new List<string> { "Goals pending" };
     }
@@ -290,10 +389,38 @@
     // ===== EVENT HANDLING =====
 
     public async Task UpdateFromChatEvent(string eventName, object? eventData = null, TopicWorkflowContext? ctx = null) {
+        Logger?.LogInformation("[CustomerConsoleV2] 📥 UpdateFromChatEvent called: EventName={EventName}", eventName);
+
         await AnimateProgressListAsync(eventName);
 
-        if (ctx != null)
+        if (ctx != null) {
             context = ctx;
+            var keys = context.GetKeys().ToList();
+            Logger?.LogInformation("[CustomerConsoleV2] ✅ Context updated. Keys count: {Count}", keys.Count);
+            Logger?.LogInformation("[CustomerConsoleV2] 📋 Context keys: {Keys}", string.Join(", ", keys));
+
+            // Log specific values we're looking for
+            Logger?.LogInformation("[CustomerConsoleV2] 🔍 Key lookups:");
+            Logger?.LogInformation("  - lead_name: {Value}", context.GetString("lead_name"));
+            Logger?.LogInformation("  - language: {Value}", context.GetString("language"));
+            Logger?.LogInformation("  - household_income_band: {Value}", context.GetString("household_income_band"));
+            Logger?.LogInformation("  - estimated_household_income: {Value}", context.GetString("estimated_household_income"));
+            Logger?.LogInformation("  - income: {Value}", context.GetString("income"));
+            Logger?.LogInformation("  - primary_goal_category: {Value}", context.GetString("primary_goal_category"));
+            Logger?.LogInformation("  - coverage_goal: {Value}", context.GetString("coverage_goal"));
+            Logger?.LogInformation("  - insurance_goal: {Value}", context.GetString("insurance_goal"));
+            Logger?.LogInformation("  - health_risk_category: {Value}", context.GetString("health_risk_category"));
+            Logger?.LogInformation("  - bmi_category: {Value}", context.GetString("bmi_category"));
+            Logger?.LogInformation("  - health_status: {Value}", context.GetString("health_status"));
+
+            // Log what GetXXX methods actually return
+            Logger?.LogInformation("[CustomerConsoleV2] 📊 Computed values:");
+            Logger?.LogInformation("  - GetIncome(): {Value}", GetIncome());
+            Logger?.LogInformation("  - GetPrimaryGoal(): {Value}", GetPrimaryGoal());
+            Logger?.LogInformation("  - GetHealthStatus(): {Value}", GetHealthStatus());
+        } else {
+            Logger?.LogWarning("[CustomerConsoleV2] ⚠️ Context was NULL in UpdateFromChatEvent");
+        }
 
         QualifiedCarriers? carriers = null;
 
@@ -392,8 +519,6 @@
         public bool Active { get; set; }
         public bool Completed { get; set; }
     }
-
-    public record ProductMatch(string Name, string Description, int MatchScore, int MonthlyPremium, string Coverage);
 
     private record SummaryCard {
         public string Title { get; set; } = "";

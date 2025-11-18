@@ -13,7 +13,10 @@ public class HealthInfoCard
         List<string>? selectedConditions = null,
         bool? hasHealthInsurance = null,
         string? height = "",
-        string? weight = "")
+        string? weight = "",
+        string? overallHealthStatus = null,
+        string? currentMedications = "",
+        string? familyMedicalHistory = "")
     {
         selectedConditions ??= new List<string>();
 
@@ -139,6 +142,59 @@ public class HealthInfoCard
                 Id = "weight",
                 Text = "Enter your weight",
                 Value = weight ?? ""
+            },
+
+            // Overall Health Status
+            new CardElement
+            {
+                Type = "TextBlock",
+                Text = "💪 Overall Health Status",
+                Wrap = true
+            },
+            new CardElement
+            {
+                Type = "Input.ChoiceSet",
+                Id = "overall_health_status",
+                Value = overallHealthStatus ?? "",
+                Choices = new List<CardChoice>
+                {
+                    new CardChoice { Title = "Excellent", Value = "Excellent" },
+                    new CardChoice { Title = "Good", Value = "Good" },
+                    new CardChoice { Title = "Fair", Value = "Fair" },
+                    new CardChoice { Title = "Poor", Value = "Poor" }
+                }
+            },
+
+            // Current Medications
+            new CardElement
+            {
+                Type = "TextBlock",
+                Text = "💊 Current Medications (if any)",
+                Wrap = true
+            },
+            new CardElement
+            {
+                Type = "Input.Text",
+                Id = "current_medications",
+                Placeholder = "List any medications you're currently taking",
+                IsMultiline = true,
+                Value = currentMedications ?? ""
+            },
+
+            // Family Medical History
+            new CardElement
+            {
+                Type = "TextBlock",
+                Text = "👨‍👩‍👧‍👦 Family Medical History (if any)",
+                Wrap = true
+            },
+            new CardElement
+            {
+                Type = "Input.Text",
+                Id = "family_medical_history",
+                Placeholder = "Note any significant family medical history",
+                IsMultiline = true,
+                Value = familyMedicalHistory ?? ""
             },
 
             // Consent Notice
