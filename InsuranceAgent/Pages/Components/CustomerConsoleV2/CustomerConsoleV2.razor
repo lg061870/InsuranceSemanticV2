@@ -1,0 +1,402 @@
+﻿@using System.Text.Json
+@using ConversaCore.TopicFlow
+@using ConversaCore.Models
+@using InsuranceAgent.Topics
+@using InsuranceAgent.DomainTypes
+@using InsuranceAgent.Extensions
+@using System.Text.Json.Serialization
+@using System.Reflection
+
+@inject IJSRuntime JS
+@inject ILogger<CustomerConsoleV2>? Logger
+@inherits ComponentBase
+
+@if (IsVisible) {
+    <!-- Breadcrumbs section -->
+    <section id="breadcrumb-section" class="bg-white border-b border-gray-200">
+        <div class="max-w-screen-2xl mx-auto px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2 text-sm text-gray-600">
+                    <a href="#" class="hover:text-blue-600 transition-colors">Dashboard</a>
+                    <i class="fa-solid fa-chevron-right text-xs"></i>
+                    <a href="#" class="hover:text-blue-600 transition-colors">Lead Management</a>
+                    <i class="fa-solid fa-chevron-right text-xs"></i>
+                    <span class="text-gray-900 font-medium">Client Consultation</span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span class="text-xs text-gray-500">Session ID: <span class="font-mono font-medium text-gray-700">CS-2847-9341</span></span>
+                    <span class="w-1 h-1 bg-gray-300 rounded-full"></span>
+                    <span class="text-xs text-gray-500">Started: <span class="font-medium text-gray-700">2:34 PM</span></span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Customer Console area -->
+    <main id="main-console-area" class="max-w-screen-2xl mx-auto px-6 py-6">
+        <div class="grid grid-cols-12 gap-6">
+
+            <!-- Lead Card -->
+            <aside id="client-profile-sidebar" class="col-span-3">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden sticky top-24">
+                    <div class="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5">
+                        <div class="flex items-center space-x-4">
+                            <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg" alt="Client" class="w-16 h-16 rounded-full border-4 border-white shadow-lg">
+                            <div class="text-white">
+                                <h3 class="text-lg font-bold">@GetName()</h3>
+                                <p class="text-sm text-blue-100">Prospect ID: #P-8472</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 space-y-5">
+                        <div>
+                            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Client Profile</h4>
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                                    <span class="text-sm text-gray-600 flex items-center">
+                                        <i class="fa-solid fa-calendar-days w-5 text-gray-400"></i>
+                                        Age
+                                    </span>
+                                    <span class="text-sm font-semibold text-gray-900">@GetAge()</span>
+                                </div>
+                                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                                    <span class="text-sm text-gray-600 flex items-center">
+                                        <i class="fa-solid fa-dollar-sign w-5 text-gray-400"></i>
+                                        Annual Income
+                                    </span>
+                                    <span class="text-sm font-semibold text-gray-900">@GetIncome()</span>
+                                </div>
+                                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                                    <span class="text-sm text-gray-600 flex items-center">
+                                        <i class="fa-solid fa-users w-5 text-gray-400"></i>
+                                        Dependents
+                                    </span>
+                                    <span class="text-sm font-semibold text-gray-900">@GetDependents()</span>
+                                </div>
+                                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                                    <span class="text-sm text-gray-600 flex items-center">
+                                        <i class="fa-solid fa-heart-pulse w-5 text-gray-400"></i>
+                                        Health Status
+                                    </span>
+                                    <span class="text-sm font-semibold text-gray-900">@GetHealthStatus()</span>
+                                </div>
+                                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                                    <span class="text-sm text-gray-600 flex items-center">
+                                        <i class="fa-solid fa-bullseye w-5 text-gray-400"></i>
+                                        Primary Goal
+                                    </span>
+                                    <span class="text-sm font-semibold text-gray-900">@GetPrimaryGoal()</span>
+                                </div>
+                                <div class="flex items-center justify-between py-2">
+                                    <span class="text-sm text-gray-600 flex items-center">
+                                        <i class="fa-solid fa-wallet w-5 text-gray-400"></i>
+                                        Coverage Target
+                                    </span>
+                                    <span class="text-sm font-semibold text-gray-900">@GetCoverageTarget()</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Risk Assessment</h4>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm font-medium text-gray-700">Qualification Score</span>
+                                    <span class="text-xl font-bold @GetQualificationColor()">@GetQualificationScore()</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                    <div class="@GetQualificationBarColor() h-3 rounded-full" style="width: @GetQualificationPercent()%"></div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-2">@GetQualificationGrade() • @GetHealthRiskCategory()</p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Coverage Needs</h4>
+                            <div class="space-y-2">
+                                @foreach (var goal in GetSelectedGoals()) {
+                                    <div class="flex items-center space-x-2">
+                                        <i class="fa-solid fa-check-circle text-green-500 text-sm"></i>
+                                        <span class="text-sm text-gray-700">@goal</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="pt-4 border-t border-gray-200">
+                            <button class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2.5 rounded-lg transition-colors text-sm">
+                                <i class="fa-solid fa-pen-to-square mr-2"></i>
+                                Edit Profile
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 rounded-xl border border-blue-100 p-5 mt-4">
+                    <div class="flex items-start space-x-3">
+                        <i class="fa-solid fa-lightbulb text-blue-600 text-xl mt-1"></i>
+                        <div>
+                            <h4 class="text-sm font-bold text-blue-900 mb-1">AI Recommendation</h4>
+                            <p class="text-xs text-blue-700 leading-relaxed">@GetRecommendation()</p>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Tabbed Console -->
+            <div id="console-tabs-area" class="col-span-9">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <TabsNav ActiveTab="@activeTab"
+                             Context="@context"
+                             MatchedProducts="@matchedProducts"
+                             OnTabChanged="@HandleTabChange" />
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Call to Action -->
+    <section id="quick-actions-section" class="max-w-screen-2xl mx-auto px-6 py-6">
+        <div class="bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl shadow-lg p-8 text-white">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold mb-2">Ready to Move Forward?</h2>
+                    <p class="text-gray-300">Take the next step in @GetName()'s insurance journey</p>
+                </div>
+                <div class="flex space-x-4">
+                    <button class="bg-white text-gray-900 font-semibold px-6 py-3 rounded-lg hover:bg-gray-100 transition-colors">
+                        <i class="fa-solid fa-file-export mr-2"></i>
+                        Generate Proposal
+                    </button>
+                    <button class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors">
+                        <i class="fa-solid fa-paper-plane mr-2"></i>
+                        Send Recommendations
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter] public bool IsVisible { get; set; } = true;
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private TopicWorkflowContext? context;
+    private bool isAnalyzing = true;
+    private int analysisProgress = 0;
+    private string activeTab = "matched-products";
+    private List<ProductMatch> matchedProducts = new();
+    private List<SummaryCard> summaryCards = new();
+
+    private readonly List<ProgressStep> progressSteps = new()
+    {
+        new("Collecting lead details", "lead_details_submitted"),
+        new("Recording life goals", "life_goals_submitted"),
+        new("Capturing coverage intent", "coverage_intent_submitted"),
+        new("Collecting health information", "health_info_submitted"),
+        new("Saving dependents data", "dependents_submitted"),
+        new("Confirming employment", "employment_submitted"),
+        new("Listing beneficiaries", "beneficiaries_submitted"),
+        new("Verifying contact info", "contact_info_submitted"),
+        new("Finalizing qualification", "qualification_complete")
+    };
+
+    // ===== CONTEXT HELPER METHODS USING CORRECT KEYS =====
+
+    private string GetName() => context?.GetString("lead_name", "customer_name", "name") ?? "Client";
+
+    private string GetAge() => context?.GetAge("customer_dob", "date_of_birth", "dob") ?? "n/a";
+
+    private string GetIncome() =>
+        context.GetString("household_income_band", "estimated_household_income", "income") ?? "n/a";
+
+    private string GetDependents() =>
+        context?.GetString("estimated_number_of_dependents", "has_dependents", "dependents") ?? "n/a";
+
+    private string GetHealthStatus() =>
+        context?.GetString("health_risk_category", "bmi_category", "health_status") ?? "n/a";
+
+    private string GetHealthRiskCategory() =>
+        context?.GetString("health_risk_category") ?? "Standard Risk";
+
+    private string GetPrimaryGoal() =>
+        context?.GetString("primary_goal_category", "coverage_goal", "insurance_goal") ?? "n/a";
+
+    private string GetCoverageTarget() =>
+        context?.GetString("insurance_target", "parsed_insurance_target", "coverage_amount") ?? "n/a";
+
+    private string GetQualificationScore() =>
+        context?.GetString("lead_qualification_score", "qualification_score") ?? "n/a";
+
+    private string GetQualificationGrade() =>
+        context?.GetString("lead_qualification_grade", "qualification_grade") ?? "n/a";
+
+    private int GetQualificationPercent() =>
+        context?.GetPercent("lead_qualification_score", "qualification_score") ?? 0;
+
+    private string GetQualificationColor() {
+        var score = context?.GetInt(0, "lead_qualification_score", "qualification_score") ?? 0;
+        return score >= 80 ? "text-green-600" : score >= 60 ? "text-yellow-600" : "text-red-600";
+    }
+
+    private string GetQualificationBarColor() {
+        var score = context?.GetInt(0, "lead_qualification_score", "qualification_score") ?? 0;
+        return score >= 80 ? "bg-gradient-to-r from-green-400 to-green-600" :
+               score >= 60 ? "bg-gradient-to-r from-yellow-400 to-yellow-600" :
+               "bg-gradient-to-r from-red-400 to-red-600";
+    }
+
+    private List<string> GetSelectedGoals() {
+        if (context == null) return new List<string> { "No goals selected" };
+
+        // Try to get the selected goals from various possible keys
+        var goalsString = context.GetString("selected_goals", "life_goals", "goals");
+
+        if (goalsString != "n/a" && !string.IsNullOrWhiteSpace(goalsString)) {
+            // Parse if it's a comma-separated list or JSON array
+            var goals = goalsString.Split(',', ';').Select(g => g.Trim()).Where(g => !string.IsNullOrWhiteSpace(g)).ToList();
+            if (goals.Any()) return goals;
+        }
+
+        // Check individual goal flags
+        var individualGoals = new List<string>();
+        if (context.GetBool("protect_loved_ones")) individualGoals.Add("Protect Loved Ones");
+        if (context.GetBool("pay_mortgage")) individualGoals.Add("Mortgage Protection");
+        if (context.GetBool("prepare_future")) individualGoals.Add("Future Planning");
+        if (context.GetBool("peace_of_mind")) individualGoals.Add("Peace of Mind");
+        if (context.GetBool("cover_expenses")) individualGoals.Add("Cover Expenses");
+
+        return individualGoals.Any() ? individualGoals : new List<string> { "Goals pending" };
+    }
+
+    private string GetRecommendation() {
+        var name = GetName();
+        var product = context?.GetString("recommended_product_type", "product_type") ?? "term life";
+        var coverage = GetCoverageTarget();
+        var health = GetHealthRiskCategory();
+
+        return $"Based on {name}'s profile, focus on {product} products with coverage around {coverage}. " +
+               $"Their {health.ToLower()} status may qualify them for preferred rates.";
+    }
+
+    private async Task HandleTabChange(string newTab) {
+        activeTab = newTab;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ===== EVENT HANDLING =====
+
+    public async Task UpdateFromChatEvent(string eventName, object? eventData = null, TopicWorkflowContext? ctx = null) {
+        await AnimateProgressListAsync(eventName);
+
+        if (ctx != null)
+            context = ctx;
+
+        QualifiedCarriers? carriers = null;
+
+        try {
+            if (eventData is QualifiedCarriers qc) {
+                carriers = qc;
+            }
+            else {
+                var payloadProp = eventData?.GetType().GetProperty("payload") ??
+                                  eventData?.GetType().GetProperty("Payload");
+
+                if (payloadProp != null) {
+                    var payloadValue = payloadProp.GetValue(eventData);
+
+                    switch (payloadValue) {
+                        case QualifiedCarriers innerQc:
+                            carriers = innerQc;
+                            break;
+                        case JsonElement elem when elem.ValueKind == JsonValueKind.Object:
+                            carriers = JsonSerializer.Deserialize<QualifiedCarriers>(elem.GetRawText());
+                            break;
+                        case string s:
+                            carriers = JsonSerializer.Deserialize<QualifiedCarriers>(s);
+                            break;
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            Console.WriteLine($"[CustomerConsoleV2] Failed to extract carriers: {ex.Message}");
+        }
+
+        if (carriers != null && carriers.Carriers != null && carriers.Carriers.Any()) {
+            isAnalyzing = false;
+            matchedProducts = carriers.Carriers.Select(c => new ProductMatch(
+                c.CarrierName,
+                c.ProductName ?? "Life Insurance Product",
+                c.MatchScore ?? 80,
+                c.EstimatedMonthlyPremium ?? 0,
+                c.CoverageAmount ?? "N/A"
+            )).ToList();
+
+            await InvokeAsync(StateHasChanged);
+        }
+
+        if (context == null) return;
+
+        switch (eventName) {
+            case "lead_details_submitted":
+            case "life_goals_submitted":
+            case "coverage_intent_submitted":
+            case "health_info_submitted":
+            case "dependents_submitted":
+            case "employment_submitted":
+            case "beneficiaries_submitted":
+            case "contact_info_submitted":
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "qualification_complete":
+                isAnalyzing = false;
+                analysisProgress = 100;
+                break;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AnimateProgressListAsync(string eventKey) {
+        try {
+            var normalizedKey = eventKey.Replace("_started", "_submitted", StringComparison.OrdinalIgnoreCase);
+            int index = progressSteps.FindIndex(s => s.EventKey.Equals(normalizedKey, StringComparison.OrdinalIgnoreCase));
+            if (index == -1) return;
+
+            bool isSubmitted = eventKey.EndsWith("_submitted", StringComparison.OrdinalIgnoreCase);
+
+            for (int i = 0; i < progressSteps.Count; i++) {
+                progressSteps[i].Completed = i < index || (isSubmitted && i == index);
+                progressSteps[i].Active = isSubmitted && i == index + 1;
+            }
+
+            analysisProgress = (int)Math.Round(((double)(index + 1) / progressSteps.Count) * 100);
+            await InvokeAsync(StateHasChanged);
+        } catch (Exception ex) {
+            Console.WriteLine($"[CustomerConsoleV2] AnimateProgressListAsync error: {ex.Message}");
+        }
+    }
+
+    // ===== SUPPORTING CLASSES =====
+
+    private class ProgressStep {
+        public ProgressStep(string label, string key) {
+            Label = label;
+            EventKey = key;
+        }
+        public string Label { get; }
+        public string EventKey { get; }
+        public bool Active { get; set; }
+        public bool Completed { get; set; }
+    }
+
+    public record ProductMatch(string Name, string Description, int MatchScore, int MonthlyPremium, string Coverage);
+
+    private record SummaryCard {
+        public string Title { get; set; } = "";
+        public Dictionary<string, string> Data { get; set; } = new();
+    }
+}

@@ -1,0 +1,46 @@
+﻿<div class="bg-gradient-to-br from-green-50 to-white rounded-xl border-2 border-green-200 p-6 sticky top-24">
+
+    <div class="flex items-center justify-center mb-6">
+        <div class="w-20 h-20 bg-green-600 rounded-full flex items-center justify-center shadow-lg">
+            <i class="fa-solid fa-phone text-white text-3xl"></i>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-bold text-gray-900 text-center mb-3">Immediate Connection</h3>
+    <p class="text-sm text-gray-600 text-center mb-6">
+        Connect @ClientName with a licensed insurance agent right now
+    </p>
+
+    <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+        <div class="flex items-center justify-between mb-3">
+            <span class="text-sm text-gray-600">TCPA Consent</span>
+            <span class="flex items-center text-sm font-semibold text-green-600">
+                <i class="fa-solid fa-check-circle mr-1"></i>
+                Granted
+            </span>
+        </div>
+
+        <div class="flex items-center justify-between mb-3">
+            <span class="text-sm text-gray-600">Available Agents</span>
+            <span class="text-sm font-semibold text-gray-900">@AgentsOnline Online</span>
+        </div>
+
+        <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-600">Avg Wait Time</span>
+            <span class="text-sm font-semibold text-gray-900">@AverageWaitTime</span>
+        </div>
+    </div>
+
+    <button class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-lg transition-colors text-lg shadow-lg mb-3">
+        <i class="fa-solid fa-phone-volume mr-2"></i>
+        Initiate Call Now
+    </button>
+
+    <p class="text-xs text-gray-500 text-center">Client will receive a call within 2–3 minutes</p>
+</div>
+
+@code {
+    [Parameter] public string ClientName { get; set; } = "Client";
+    [Parameter] public int AgentsOnline { get; set; } = 0;
+    [Parameter] public string AverageWaitTime { get; set; } = "~2 minutes";
+}

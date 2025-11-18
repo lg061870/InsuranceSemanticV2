@@ -168,14 +168,13 @@
 
 
 @code {
-
-    // ========== EVENTS ==========
+    // ========== EVENTS ========== 
     public event EventHandler<MessageEventArgs>? UserMessageEntered;
     public event EventHandler<ChatCardSubmitEventArgs>? AdaptiveCardSubmitted;
     public event EventHandler<ChatWindowCardActionEventArgs>? CardActionInvoked;
     public event EventHandler<ChatWindowBotMessageEventArgs>? BotMessageRendered;
 
-    // ========== STATE ==========
+    // ========== STATE ========== 
     private ChatSessionState SessionState { get; set; } = new ChatSessionState();
     private List<ChatMessage> Messages { get; set; } = new();
     private string CurrentMessage { get; set; } = "";
@@ -237,8 +236,6 @@
                     Logger?.LogInformation($"[ChatWindow] AdaptiveCard appended: CardId={e.CardId}");
                 });
             };
-
-
 
             ChatService.HybridTypingIndicatorChanged += (s, e) => {
                 Logger?.LogInformation($"[ChatWindow] TypingIndicatorChanged: IsTyping={e.IsTyping}");
@@ -302,7 +299,6 @@
                 });
             };
 
-
             ChatService.PromptInputStateChanged += (s, e) => {
                 Logger?.LogInformation($"[ChatWindow] Prompt state changed: Enabled={e.IsEnabled} (CardId={e.CardId})");
                 InvokeAsync(() => {
@@ -310,8 +306,6 @@
                     StateHasChanged();
                 });
             };
-
-
 
             // Subscribe ChatWindow → Service
             UserMessageEntered += ChatService.HandleUserMessage;
@@ -335,12 +329,11 @@
         }
     }
 
-
     public void Dispose() {
         ChatService.OnConversationStart -= HandleConversationStart;
     }
 
-    // ========== CONVERSATION ==========
+    // ========== CONVERSATION ========== 
     private async void HandleConversationStart(ChatSessionState sessionState, ConversaCore.Topics.ITopic topic) {
         Logger?.LogInformation("[ChatWindow] HandleConversationStart called");
         var result = await topic.ProcessMessageAsync("__init__", CancellationToken.None);
@@ -381,7 +374,7 @@
         Logger?.LogInformation("[ChatWindow] SendMessage completed");
     }
 
-    // ========== UTILITY ==========
+    // ========== UTILITY ========== 
     private void ClearChat() {
         Logger?.LogInformation($"[ChatWindow] ClearChat called, clearing {Messages.Count} messages");
         Messages.Clear();

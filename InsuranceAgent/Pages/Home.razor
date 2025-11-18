@@ -11,6 +11,7 @@
 @using InsuranceAgent.DomainTypes
 @using InsuranceAgent.Models
 @using InsuranceAgent.Pages.Components
+@using InsuranceAgent.Pages.Components.CustomerConsoleV2
 @using InsuranceAgent.Services
 @using InsuranceAgent.Topics
 @using System.Dynamic
@@ -32,9 +33,9 @@
         <!-- Customer Console -->
         <div class="absolute top-0 left-0 w-full h-full transition-transform duration-500 ease-in-out z-40"
              style="@TranslateX(showCustomerConsole)">
-            <CustomerConsole @ref="customerConsoleRef"
-                             IsVisible="@showCustomerConsole"
+            <CustomerConsoleV2 IsVisible="@showCustomerConsole"
                              OnClose="@CloseCustomerConsole" />
+             
         </div>
 
         <!-- Questionnaire -->
@@ -115,7 +116,7 @@
 @code {
 
     #region --- Fields & Enums ---
-    private CustomerConsole? customerConsoleRef;
+    // private CustomerConsoleV2? customerConsoleRef;
 
     private enum ViewState { LandingPage, AgentConsole, Questionnaire, ConsentDenied }
     private ViewState currentView = ViewState.LandingPage;

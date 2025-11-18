@@ -1,4 +1,5 @@
-﻿using System;
+﻿using ConversaCore.TopicFlow;
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 
@@ -106,6 +107,8 @@ namespace ConversaCore.TopicFlow
             var value = GetValue<T>(key);
             return value != null ? value : defaultValue;
         }
+
+
         
         /// <summary>
         /// Checks if the workflow context contains a specific key.
@@ -144,5 +147,101 @@ namespace ConversaCore.TopicFlow
         /// Gets the number of items in the workflow context.
         /// </summary>
         public int Count => _values.Count;
+
+        /// -------------------------------------------------------
+        /// ✅ NEW METHOD: Dictionary-style TryGetValue<T>
+        /// -------------------------------------------------------
+        public bool TryGetValue<T>(string key, out T? result) {
+            result = default;
+
+            if (string.IsNullOrEmpty(key))
+                return false;
+
+            if (!_values.TryGetValue(key, out var raw))
+                return false;
+
+            // Direct cast works?
+            if (raw is T direct) {
+                result = direct;
+                return true;
+            }
+
+            try {
+                // JSON case
+                if (raw is JsonElement el) {
+                    object? unwrapped = el.ValueKind switch {
+                        JsonValueKind.String => el.GetString(),
+                        JsonValueKind.Number =>
+                            el.TryGetInt64(out var i64) ? i64 :
+                            el.TryGetDouble(out var dbl) ? dbl : (object?)null,
+                        JsonValueKind.True => true,
+                        JsonValueKind.False => false,
+                        JsonValueKind.Null or JsonValueKind.Undefined => null,
+                        _ => el.ToString()
+                    };
+
+                    if (unwrapped is T castUnwrapped) {
+                        result = castUnwrapped;
+                        return true;
+                    }
+
+                    if (unwrapped != null) {
+                        result = (T)Convert.ChangeType(unwrapped, typeof(T));
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                // Normal conversion
+                result = (T)Convert.ChangeType(raw, typeof(T));
+                return true;
+            } catch {
+                return false;
+            }
+        }
+        /// -------------------------------------------------------
+        /// 
+
+        /// <summary>
+        /// Attempts to get a value from the context without knowing the type.
+        /// Automatically unwraps JsonElement and returns a native .NET object.
+        /// </summary>
+        public bool TryGetValue(string key, out object? result) {
+            result = null;
+
+            if (string.IsNullOrWhiteSpace(key))
+                return false;
+
+            if (!_values.TryGetValue(key, out var raw))
+                return false;
+
+            // Direct non-JSON value
+            if (raw is not JsonElement el) {
+                result = raw;
+                return true;
+            }
+
+            // Unwrap JsonElement
+            try {
+                result = el.ValueKind switch {
+                    JsonValueKind.String => el.GetString(),
+                    JsonValueKind.Number =>
+                        el.TryGetInt64(out var i64) ? i64 :
+                        el.TryGetDouble(out var dbl) ? dbl : null,
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    JsonValueKind.Null or JsonValueKind.Undefined => null,
+                    _ => el.ToString()
+                };
+
+                return true;
+            } catch {
+                result = null;
+                return false;
+            }
+        }
+
     }
 }
+

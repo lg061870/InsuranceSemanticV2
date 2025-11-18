@@ -1,0 +1,78 @@
+@using ConversaCore.TopicFlow
+@using Microsoft.AspNetCore.Components
+
+<div id="tab-navigation" class="border-b border-gray-200 bg-gray-50">
+    <div class="flex">
+
+        <!-- MY INFORMATION -->
+        <button @onclick='() => ChangeTab("my-information")'
+                class="tab-button flex-1 px-6 py-4 text-sm font-semibold @(IsActive("my-information")
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-white"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 border-b-2 border-transparent") transition-all">
+            <i class="fa-solid fa-user-circle mr-2"></i>
+            My Information
+        </button>
+
+        <!-- MATCHED PRODUCTS -->
+        <button @onclick='() => ChangeTab("matched-products")'
+                class="tab-button flex-1 px-6 py-4 text-sm font-semibold @(IsActive("matched-products")
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-white"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 border-b-2 border-transparent") transition-all">
+            <i class="fa-solid fa-compass mr-2"></i>
+            Matched Products
+        </button>
+
+        <!-- COMPLIANCE -->
+        <button @onclick='() => ChangeTab("compliance")'
+                class="tab-button flex-1 px-6 py-4 text-sm font-semibold @(IsActive("compliance")
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-white"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 border-b-2 border-transparent") transition-all">
+            <i class="fa-solid fa-file-shield mr-2"></i>
+            Compliance
+        </button>
+
+        <!-- LIVE AGENT -->
+        <button @onclick='() => ChangeTab("live-agent")'
+                class="tab-button flex-1 px-6 py-4 text-sm font-semibold @(IsActive("live-agent")
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-white"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 border-b-2 border-transparent") transition-all">
+            <i class="fa-solid fa-phone mr-2"></i>
+            Live Agent
+        </button>
+
+    </div>
+</div>
+
+<!-- TAB CONTENT RENDERING -->
+@if (IsActive("my-information"))
+{
+    <TabMyInformation Context="Context" />
+}
+else if (IsActive("matched-products"))
+{
+    <TabMatchedProduct Context="Context" />
+}
+else if (IsActive("compliance"))
+{
+    <TabCompliance Context="Context" />
+}
+else if (IsActive("live-agent"))
+{
+    <TabLiveAgent Context="Context" />
+}
+
+@code {
+
+    [Parameter] public TopicWorkflowContext Context { get; set; } = default!;
+
+    private string ActiveTab { get; set; } = "matched-products";
+
+    private bool IsActive(string tab) =>
+        string.Equals(ActiveTab, tab, StringComparison.OrdinalIgnoreCase);
+
+    private void ChangeTab(string tab)
+    {
+        ActiveTab = tab;
+        StateHasChanged();
+    }
+}
