@@ -11,7 +11,7 @@ Update your `appsettings.json` or `appsettings.Development.json`:
 ```json
 {
   "OpenAI": {
-    "ApiKey": "sk-your-actual-openai-api-key-here",
+    "ApiKey": "ApiKey": "__ADD_KEY_HERE__",
     "Model": "gpt-4o-mini",
     "MaxTokens": 1000,
     "Temperature": 0.7
