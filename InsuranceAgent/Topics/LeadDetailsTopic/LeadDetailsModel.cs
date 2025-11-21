@@ -12,11 +12,6 @@ namespace InsuranceAgent.Topics;
 /// </summary>
 public class LeadDetailsModel : BaseCardModel
 {
-    [JsonPropertyName("lead_name")]
-    [Required(ErrorMessage = "Lead name is required")]
-    [StringLength(100, ErrorMessage = "Lead name cannot exceed 100 characters")]
-    public string? LeadName { get; set; }
-
     [JsonPropertyName("language")]
     [StringLength(50, ErrorMessage = "Language cannot exceed 50 characters")]
     public string? Language { get; set; }
@@ -67,7 +62,6 @@ public class LeadDetailsModel : BaseCardModel
     }
 
     // Validation properties
-    public bool HasProvidedLeadName => !string.IsNullOrWhiteSpace(LeadName);
     public bool HasProvidedLanguage => !string.IsNullOrWhiteSpace(Language);
     public bool HasProvidedLeadSource => !string.IsNullOrWhiteSpace(LeadSource);
     public bool HasProvidedInterestLevel => !string.IsNullOrWhiteSpace(InterestLevel);
@@ -258,8 +252,7 @@ public class LeadDetailsModel : BaseCardModel
         get
         {
             var score = 0;
-            if (HasProvidedLeadName) score += 20; // Most important
-            if (HasProvidedInterestLevel) score += 15;
+            if (HasProvidedInterestLevel) score += 20; // Most important
             if (HasProvidedLeadIntent) score += 15;
             if (HasProvidedLeadSource) score += 15;
             if (HasProvidedLanguage) score += 10;

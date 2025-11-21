@@ -71,7 +71,7 @@ public static class LeadSummaryBuilder {
 
         if (leadName != null) {
             summary.LeadDetails ??= new LeadDetailsModel();
-            summary.LeadDetails.LeadName = leadName;
+            //summary.LeadDetails.LeadName = leadName;
         }
 
         if (email != null || phone != null) {

@@ -1,6 +1,4 @@
 using ConversaCore.Cards;
-using System;
-using System.Collections.Generic;
 
 namespace InsuranceAgent.Topics;
 
@@ -8,13 +6,13 @@ namespace InsuranceAgent.Topics;
 /// Adaptive card for collecting employment information.
 /// Ported from Copilot Studio JSON.
 /// </summary>
-public class EmploymentCard
-{
+public class EmploymentCard {
     public AdaptiveCardModel Create(
         string? employmentStatus = "",
         string? householdIncomeBand = "",
-        string? occupation = "")
-    {
+        string? occupation = "",
+        string? yearsEmployed = ""
+    ) {
         var bodyElements = new List<CardElement>
         {
             // Header
@@ -51,6 +49,22 @@ public class EmploymentCard
                     new CardChoice { Title = "Student", Value = "Student" }
                 }
             },
+
+            // Years Employed Question
+            new CardElement
+            {
+                Type = "TextBlock",
+                Text = "⏳ How many years have you been employed?",
+                Wrap = true
+            },
+            new CardElement
+            {
+                Type = "Input.Text",
+                Id = "years_employed",
+                Text = "Enter number of years",
+                Value = yearsEmployed ?? ""
+            },
+
 
             // Household Income Question
             new CardElement
@@ -93,22 +107,19 @@ public class EmploymentCard
             }
         };
 
-        var actions = new List<CardAction>
-        {
-            new CardAction
-            {
-                Type = "Action.Submit",
-                Title = "➡️ Next"
-            }
-        };
-
-        return new AdaptiveCardModel
-        {
+        return new AdaptiveCardModel {
             Type = "AdaptiveCard",
             Schema = "https://adaptivecards.io/schemas/adaptive-card.json",
             Version = "1.5",
             Body = bodyElements,
-            Actions = actions
+            Actions = new List<CardAction>
+            {
+                new CardAction
+                {
+                    Type = "Action.Submit",
+                    Title = "➡️ Next"
+                }
+            }
         };
     }
 }

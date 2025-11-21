@@ -177,7 +177,6 @@ public class HealthInfoCard
                 Type = "Input.Text",
                 Id = "current_medications",
                 Placeholder = "List any medications you're currently taking",
-                IsMultiline = true,
                 Value = currentMedications ?? ""
             },
 
@@ -193,7 +192,6 @@ public class HealthInfoCard
                 Type = "Input.Text",
                 Id = "family_medical_history",
                 Placeholder = "Note any significant family medical history",
-                IsMultiline = true,
                 Value = familyMedicalHistory ?? ""
             },
 

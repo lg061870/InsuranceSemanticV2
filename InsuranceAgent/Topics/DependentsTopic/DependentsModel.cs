@@ -6,110 +6,119 @@ namespace InsuranceAgent.Topics;
 
 /// <summary>
 /// Model for financial dependents form data.
-/// Inherits from BaseCardModel for continuation support.
 /// </summary>
-public class DependentsModel : BaseCardModel
-{
-    // Marital Status Selection (single choice)
+public class DependentsModel : BaseCardModel {
+    // -----------------------------
+    // MARITAL STATUS
+    // -----------------------------
     [JsonPropertyName("marital_status")]
     public string? MaritalStatusValue { get; set; }
 
-    // Has Dependents Selection (single choice)
+    public string MaritalStatus =>
+        MaritalStatusValue ?? "Not specified";
+
+    // -----------------------------
+    // HAS DEPENDENTS (yes/no)
+    // -----------------------------
     [JsonPropertyName("has_dependents")]
     public string? HasDependentsValue { get; set; }
 
-    // Age Range Selections
-    [JsonPropertyName("ageRange_0_5")]
-    public string AgeRange0To5 { get; set; } = "false";
+    public bool? HasDependents =>
+        HasDependentsValue?.ToLower() switch {
+            "yes" => true,
+            "no" => false,
+            _ => null
+        };
 
-    [JsonPropertyName("ageRange_6_12")]
-    public string AgeRange6To12 { get; set; } = "false";
+    // -----------------------------
+    // NUMBER OF CHILDREN (explicit)
+    // -----------------------------
+    [JsonPropertyName("no_of_children")]
+    public string? NoOfChildren { get; set; }
 
-    [JsonPropertyName("ageRange_13_17")]
-    public string AgeRange13To17 { get; set; } = "false";
+    public int ChildrenCount {
+        get {
+            if (int.TryParse(NoOfChildren, out var n) && n >= 0)
+                return n;
 
-    [JsonPropertyName("ageRange_18_25")]
-    public string AgeRange18To25 { get; set; } = "false";
-
-    [JsonPropertyName("ageRange_25plus")]
-    public string AgeRange25Plus { get; set; } = "false";
-
-    // Computed properties for business logic
-    public string MaritalStatus
-    {
-        get
-        {
-            return MaritalStatusValue ?? "Not specified";
+            return 0;
         }
     }
 
-    public bool? HasDependents
-    {
-        get
-        {
-            return HasDependentsValue?.ToLower() switch
-            {
-                "yes" => true,
-                "no" => false,
-                _ => null
-            };
+    // -----------------------------
+    // CHILD AGE RANGES
+    // -----------------------------
+    [JsonPropertyName("ageRange_0_5")] public string AgeRange0To5 { get; set; } = "false";
+    [JsonPropertyName("ageRange_6_12")] public string AgeRange6To12 { get; set; } = "false";
+    [JsonPropertyName("ageRange_13_17")] public string AgeRange13To17 { get; set; } = "false";
+    [JsonPropertyName("ageRange_18_25")] public string AgeRange18To25 { get; set; } = "false";
+    [JsonPropertyName("ageRange_25plus")] public string AgeRange25Plus { get; set; } = "false";
+
+    public List<string> SelectedAgeRanges {
+        get {
+            var list = new List<string>();
+
+            if (AgeRange0To5 == "true") list.Add("0-5");
+            if (AgeRange6To12 == "true") list.Add("6-12");
+            if (AgeRange13To17 == "true") list.Add("13-17");
+            if (AgeRange18To25 == "true") list.Add("18-25");
+            if (AgeRange25Plus == "true") list.Add("Over 25");
+
+            return list;
         }
     }
 
-    public List<string> SelectedAgeRanges
-    {
-        get
-        {
-            var ranges = new List<string>();
-            if (AgeRange0To5?.ToLower() == "true") ranges.Add("0-5");
-            if (AgeRange6To12?.ToLower() == "true") ranges.Add("6-12");
-            if (AgeRange13To17?.ToLower() == "true") ranges.Add("13-17");
-            if (AgeRange18To25?.ToLower() == "true") ranges.Add("18-25");
-            if (AgeRange25Plus?.ToLower() == "true") ranges.Add("Over 25");
-            return ranges;
-        }
-    }
+    // -----------------------------
+    // VALIDATION
+    // -----------------------------
+    public bool HasSelectedMaritalStatus =>
+        MaritalStatusValue != null;
 
-    // Validation properties
-    public bool HasSelectedMaritalStatus => MaritalStatus != "Not specified";
-    public bool HasAnsweredDependentsQuestion => HasDependents.HasValue;
-    public bool HasSelectedAgeRanges => SelectedAgeRanges.Any();
+    public bool HasAnsweredDependentsQuestion =>
+        HasDependents.HasValue;
 
-    // Family structure analysis
-    public bool IsMarriedOrPartnered => 
-        MaritalStatus == "Married" || 
-        MaritalStatus == "Partnered";
+    public bool HasSelectedAgeRanges =>
+        SelectedAgeRanges.Any();
 
-    public bool IsSingleParent => 
-        (MaritalStatus == "Single" || MaritalStatus == "Divorced" || MaritalStatus == "Widowed") && 
+    // -----------------------------
+    // FAMILY STRUCTURE ANALYSIS
+    // -----------------------------
+    public bool IsMarriedOrPartnered =>
+        MaritalStatus is "Married" or "Partnered";
+
+    public bool IsSingleParent =>
+        (MaritalStatus is "Single" or "Divorced" or "Widowed") &&
         HasDependents == true;
 
     public bool HasPartner => IsMarriedOrPartnered;
-    
-    public bool HasChildren => HasDependents == true && HasSelectedAgeRanges;
 
-    public bool IsChildlessCouple => IsMarriedOrPartnered && HasDependents == false;
+    public bool HasChildren =>
+        HasDependents == true;
 
-    // Children age analysis
-    public bool HasYoungChildren => 
-        SelectedAgeRanges.Contains("0-5") || 
-        SelectedAgeRanges.Contains("6-12");
+    public bool IsChildlessCouple =>
+        IsMarriedOrPartnered && HasDependents == false;
 
-    public bool HasTeenageChildren => 
+    // -----------------------------
+    // CHILD AGE ANALYSIS
+    // -----------------------------
+    public bool HasYoungChildren =>
+        SelectedAgeRanges.Contains("0-5") || SelectedAgeRanges.Contains("6-12");
+
+    public bool HasTeenageChildren =>
         SelectedAgeRanges.Contains("13-17");
 
-    public bool HasAdultChildren => 
-        SelectedAgeRanges.Contains("18-25") || 
+    public bool HasAdultChildren =>
+        SelectedAgeRanges.Contains("18-25") ||
         SelectedAgeRanges.Contains("Over 25");
 
-    public bool HasOnlyAdultChildren => 
+    public bool HasOnlyAdultChildren =>
         HasAdultChildren && !HasYoungChildren && !HasTeenageChildren;
 
-    // Financial responsibility assessment
-    public string FinancialResponsibilityLevel
-    {
-        get
-        {
+    // -----------------------------
+    // FINANCIAL RESPONSIBILITY
+    // -----------------------------
+    public string FinancialResponsibilityLevel {
+        get {
             if (IsSingleParent && HasYoungChildren) return "Very High";
             if (HasYoungChildren && IsMarriedOrPartnered) return "High";
             if (HasTeenageChildren) return "High";
@@ -117,97 +126,100 @@ public class DependentsModel : BaseCardModel
             if (IsChildlessCouple) return "Moderate";
             if (MaritalStatus == "Single" && HasDependents == false) return "Low";
             if (HasDependents == false) return "Low";
+
             return "Unknown";
         }
     }
 
-    // Life insurance need assessment
-    public string LifeInsuranceNeedLevel
-    {
-        get
-        {
-            if (IsSingleParent) return "Critical";
-            if (HasYoungChildren || HasTeenageChildren) return "High";
-            if (IsMarriedOrPartnered && HasDependents == false) return "Moderate";
-            if (HasOnlyAdultChildren) return "Moderate";
-            if (MaritalStatus == "Single" && HasDependents == false) return "Low";
-            return "Moderate";
+    // -----------------------------
+    // LIFE INSURANCE NEED LEVEL
+    // -----------------------------
+    public string LifeInsuranceNeedLevel =>
+        IsSingleParent ? "Critical" :
+        (HasYoungChildren || HasTeenageChildren) ? "High" :
+        (IsMarriedOrPartnered && HasDependents == false) ? "Moderate" :
+        HasOnlyAdultChildren ? "Moderate" :
+        (MaritalStatus == "Single" && HasDependents == false) ? "Low" :
+        "Moderate";
+
+    // -----------------------------
+    // COVERAGE MULTIPLIER
+    // -----------------------------
+    public decimal LifeInsuranceMultiplier {
+        get {
+            decimal m = 5m;
+
+            if (IsSingleParent) m += 3m;
+            else if (HasPartner) m += 1m;
+
+            if (HasYoungChildren) m += 2m;
+            else if (HasTeenageChildren) m += 1.5m;
+            else if (HasAdultChildren) m += 0.5m;
+
+            return Math.Min(m, 15m);
         }
     }
 
-    // Coverage amount suggestion factors
-    public decimal LifeInsuranceMultiplier
-    {
-        get
-        {
-            decimal baseMultiplier = 5.0m; // Base 5x annual income
-            
-            if (IsSingleParent) baseMultiplier += 3.0m;
-            else if (HasPartner) baseMultiplier += 1.0m;
-            
-            if (HasYoungChildren) baseMultiplier += 2.0m;
-            else if (HasTeenageChildren) baseMultiplier += 1.5m;
-            else if (HasAdultChildren) baseMultiplier += 0.5m;
-            
-            return Math.Min(baseMultiplier, 15.0m); // Cap at 15x income
+    // -----------------------------
+    // ESTIMATED DEPENDENT COUNT
+    // -----------------------------
+    public int EstimatedNumberOfDependents {
+        get {
+            if (HasDependents != true) return 0;
+
+            // Prefer explicit answer if provided
+            if (ChildrenCount > 0) return ChildrenCount;
+
+            // Otherwise infer from toggles
+            int inferred = SelectedAgeRanges.Count;
+
+            if (inferred == 0) return 1; // minimally assume 1
+            if (inferred >= 4) return 3; // cap
+
+            return inferred;
         }
     }
 
-    // Data completeness scoring
-    public int DependentsDataQualityScore
-    {
-        get
-        {
-            var score = 0;
+    // -----------------------------
+    // COMPLETENESS SCORE
+    // -----------------------------
+    public int DependentsDataQualityScore {
+        get {
+            int score = 0;
+
             if (HasSelectedMaritalStatus) score += 40;
             if (HasAnsweredDependentsQuestion) score += 40;
+
             if (HasDependents == true && HasSelectedAgeRanges) score += 20;
-            else if (HasDependents == false) score += 20; // Complete if no dependents
+            else if (HasDependents == false) score += 20;
+
             return score;
         }
     }
 
-    public string DependentsDataQualityGrade => DependentsDataQualityScore switch
-    {
-        >= 90 => "A+",
-        >= 80 => "A",
-        >= 70 => "B",
-        >= 60 => "C",
-        _ => "D"
-    };
+    public string DependentsDataQualityGrade =>
+        DependentsDataQualityScore switch {
+            >= 90 => "A+",
+            >= 80 => "A",
+            >= 70 => "B",
+            >= 60 => "C",
+            _ => "D"
+        };
 
-    // Risk factors for underwriting
-    public List<string> UnderwritingRiskFactors
-    {
-        get
-        {
-            var factors = new List<string>();
-            
-            if (IsSingleParent) factors.Add("Single Parent - High Dependency Risk");
-            if (HasYoungChildren) factors.Add("Young Children - Long-term Financial Obligation");
-            if (SelectedAgeRanges.Count >= 3) factors.Add("Multiple Age Groups - Extended Coverage Period");
-            if (MaritalStatus == "Divorced") factors.Add("Divorced - Potential Alimony/Child Support Obligations");
-            if (MaritalStatus == "Widowed") factors.Add("Widowed - Previous Loss Experience");
-            
-            return factors;
-        }
-    }
+    // -----------------------------
+    // UNDERWRITING RISK FACTORS
+    // -----------------------------
+    public List<string> UnderwritingRiskFactors {
+        get {
+            var f = new List<string>();
 
-    // Estimated number of dependents (rough calculation)
-    public int EstimatedNumberOfDependents
-    {
-        get
-        {
-            if (HasDependents != true) return 0;
-            
-            // Rough estimate based on age ranges selected
-            var estimate = SelectedAgeRanges.Count;
-            
-            // Adjust for typical family patterns
-            if (estimate == 0) return HasDependents == true ? 1 : 0;
-            if (estimate >= 4) return 3; // Cap realistic estimate
-            
-            return estimate;
+            if (IsSingleParent) f.Add("Single Parent - High Dependency Risk");
+            if (HasYoungChildren) f.Add("Young Children - Long-term Financial Obligation");
+            if (SelectedAgeRanges.Count >= 3) f.Add("Multiple Age Groups - Extended Coverage Period");
+            if (MaritalStatus == "Divorced") f.Add("Divorced - Potential Alimony/Child Support Obligations");
+            if (MaritalStatus == "Widowed") f.Add("Widowed - Previous Loss Experience");
+
+            return f;
         }
     }
 }

@@ -8,16 +8,19 @@ namespace InsuranceAgent.Topics;
 /// Adaptive card for collecting contact information and preferences.
 /// Ported from Copilot Studio JSON.
 /// </summary>
-public class ContactInfoCard
-{
+public class ContactInfoCard {
     public AdaptiveCardModel Create(
         string? fullName = "",
         string? phoneNumber = "",
         string? emailAddress = "",
+        string? dateOfBirth = "",
+        string? streetAddress = "",
+        string? city = "",
+        string? state = "",
+        string? zipCode = "",
         string? bestContactTime = "",
         string? contactMethod = "",
-        bool consentContact = false)
-    {
+        bool consentContact = false) {
         var bodyElements = new List<CardElement>
         {
             // Header
@@ -77,6 +80,82 @@ public class ContactInfoCard
                 Value = emailAddress ?? ""
             },
 
+            // ===================
+            // 🎂 DATE OF BIRTH
+            // ===================
+            new CardElement
+            {
+                Type = "TextBlock",
+                Text = "🎂 Date of Birth",
+                Wrap = true
+            },
+            new CardElement
+            {
+                Type = "Input.Date",
+                Id = "date_of_birth",
+                Value = dateOfBirth ?? ""
+            },
+
+            // Street Address
+            new CardElement
+            {
+                Type = "TextBlock",
+                Text = "🏠 Street Address",
+                Wrap = true
+            },
+            new CardElement
+            {
+                Type = "Input.Text",
+                Id = "street_address",
+                Text = "Enter your street address",
+                Value = streetAddress ?? ""
+            },
+
+            // City
+            new CardElement
+            {
+                Type = "TextBlock",
+                Text = "🏙️ City",
+                Wrap = true
+            },
+            new CardElement
+            {
+                Type = "Input.Text",
+                Id = "city",
+                Text = "Enter your city",
+                Value = city ?? ""
+            },
+
+            // State
+            new CardElement
+            {
+                Type = "TextBlock",
+                Text = "📍 State",
+                Wrap = true
+            },
+            new CardElement
+            {
+                Type = "Input.Text",
+                Id = "state",
+                Text = "Enter your state",
+                Value = state ?? ""
+            },
+
+            // ZIP Code
+            new CardElement
+            {
+                Type = "TextBlock",
+                Text = "📮 ZIP Code",
+                Wrap = true
+            },
+            new CardElement
+            {
+                Type = "Input.Text",
+                Id = "zip_code",
+                Text = "Enter your ZIP code",
+                Value = zipCode ?? ""
+            },
+
             // Best Time to Contact
             new CardElement
             {
@@ -85,7 +164,7 @@ public class ContactInfoCard
                 Wrap = true
             },
 
-            // Contact Time Toggles - Row 1 (Morning, Afternoon)
+            // Contact Time Toggles
             new CardElement
             {
                 Type = "Input.Toggle",
@@ -100,8 +179,6 @@ public class ContactInfoCard
                 Text = "Afternoon",
                 Value = bestContactTime == "Afternoon" ? "true" : "false"
             },
-
-            // Contact Time Toggles - Row 2 (Evening, Anytime)
             new CardElement
             {
                 Type = "Input.Toggle",
@@ -125,7 +202,6 @@ public class ContactInfoCard
                 Wrap = true
             },
 
-            // Contact Method Toggles
             new CardElement
             {
                 Type = "Input.Toggle",
@@ -173,8 +249,7 @@ public class ContactInfoCard
             }
         };
 
-        return new AdaptiveCardModel
-        {
+        return new AdaptiveCardModel {
             Type = "AdaptiveCard",
             Schema = "https://adaptivecards.io/schemas/adaptive-card.json",
             Version = "1.5",

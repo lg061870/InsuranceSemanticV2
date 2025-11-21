@@ -20,6 +20,10 @@ public class CoverageIntentModel : BaseCardModel
     [JsonPropertyName("coverage_amount")]
     public string? CoverageAmount { get; set; }
 
+    [JsonPropertyName("monthly_budget")]
+    public string? MonthlyBudget { get; set; }
+
+
     // Computed properties for business logic
     public List<string> SelectedCoverageTypes
     {

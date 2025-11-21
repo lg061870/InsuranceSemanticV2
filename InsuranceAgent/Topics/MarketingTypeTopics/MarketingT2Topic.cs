@@ -85,7 +85,7 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics {
 
                 summary += "### 📇 Lead Details\n";
                 if (leadDetails != null) {
-                    summary += $"- **Name:** {leadDetails.LeadName}\n";
+                    //summary += $"- **Name:** {leadDetails.LeadName}\n";
                     summary += $"- **Interest Level:** {leadDetails.NormalizedInterestLevel}\n";
                     summary += $"- **Lead Intent:** {leadDetails.NormalizedLeadIntent}\n";
                     summary += $"- **Lead Source:** {leadDetails.NormalizedLeadSource}\n";
@@ -186,20 +186,20 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics {
                 Add(new DumpCtxActivity(ActivityId_DumpCtx, true));
             }
 
-            // === Bind LeadDetails Model Event ===
-            leadDetailsActivity.ModelBound += (s, e) => {
-                _logger.LogInformation("[MarketingT2Topic] LeadDetails model bound");
-                if (e.Model is LeadDetailsModel model) {
-                    Context.SetValue("lead_details_data", model);
-                    Context.SetValue("lead_name", model.LeadName);
-                    Context.SetValue("lead_source", model.LeadSource);
-                    Context.SetValue("interest_level", model.InterestLevel);
-                    Context.SetValue("lead_intent", model.LeadIntent);
-                    Context.SetValue("lead_qualification_score", model.LeadQualificationScore);
-                    _logger.LogInformation("[MarketingT2Topic] Captured lead: {Name}, Intent: {Intent}, Priority: {Priority}",
-                        model.LeadName, model.NormalizedLeadIntent, model.SalesPriorityLevel);
-                }
-            };
+            //// === Bind LeadDetails Model Event ===
+            //leadDetailsActivity.ModelBound += (s, e) => {
+            //    _logger.LogInformation("[MarketingT2Topic] LeadDetails model bound");
+            //    if (e.Model is LeadDetailsModel model) {
+            //        Context.SetValue("lead_details_data", model);
+            //        //Context.SetValue("lead_name", model.LeadName);
+            //        Context.SetValue("lead_source", model.LeadSource);
+            //        Context.SetValue("interest_level", model.InterestLevel);
+            //        Context.SetValue("lead_intent", model.LeadIntent);
+            //        Context.SetValue("lead_qualification_score", model.LeadQualificationScore);
+            //        //_logger.LogInformation("[MarketingT2Topic] Captured lead: {Name}, Intent: {Intent}, Priority: {Priority}",
+            //        //    model.LeadName, model.NormalizedLeadIntent, model.SalesPriorityLevel);
+            //    }
+            //};
         }
 
         public override Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default) {

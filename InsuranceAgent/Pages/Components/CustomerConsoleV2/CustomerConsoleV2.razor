@@ -192,6 +192,10 @@
     private List<ProductMatch> matchedProducts = new();
     private List<SummaryCard> summaryCards = new();
 
+    override protected void OnInitialized() {
+        base.OnInitialized();
+    }
+
     private readonly List<ProgressStep> progressSteps = new()
     {
         new("Collecting lead details", "lead_details_submitted"),
@@ -208,7 +212,7 @@
     // ===== CONTEXT HELPER METHODS USING CORRECT KEYS =====
 
     private string GetName() {
-        var value = context?.GetString("lead_name", "customer_name", "name") ?? "Client";
+        var value = context?.GetString("lead_name", "customer_name", "full_name") ?? "Client";
         Logger?.LogDebug("[CustomerConsoleV2] GetName() returned: {Value}", value);
         return value;
     }
@@ -258,7 +262,7 @@
     private string GetDependents() {
         if (context == null) return "n/a";
 
-        var value = context.GetString("estimated_number_of_dependents", "number_of_dependents", "dependents");
+        var value = context.GetString("no_of_children");
 
         // If value looks like a date, return n/a
         if (value != null && (value.Contains("-") || value.Contains("T") || value.Length > 10)) {
@@ -344,8 +348,7 @@
                         if (jsonGoals != null && jsonGoals.Any()) {
                             return jsonGoals.Where(g => !string.IsNullOrWhiteSpace(g)).ToList();
                         }
-                    }
-                    catch {
+                    } catch {
                         // Not valid JSON, try comma-separated
                     }
                 }
@@ -391,36 +394,10 @@
     public async Task UpdateFromChatEvent(string eventName, object? eventData = null, TopicWorkflowContext? ctx = null) {
         Logger?.LogInformation("[CustomerConsoleV2] 📥 UpdateFromChatEvent called: EventName={EventName}", eventName);
 
-        await AnimateProgressListAsync(eventName);
-
-        if (ctx != null) {
+        if (ctx != null)
             context = ctx;
-            var keys = context.GetKeys().ToList();
-            Logger?.LogInformation("[CustomerConsoleV2] ✅ Context updated. Keys count: {Count}", keys.Count);
-            Logger?.LogInformation("[CustomerConsoleV2] 📋 Context keys: {Keys}", string.Join(", ", keys));
 
-            // Log specific values we're looking for
-            Logger?.LogInformation("[CustomerConsoleV2] 🔍 Key lookups:");
-            Logger?.LogInformation("  - lead_name: {Value}", context.GetString("lead_name"));
-            Logger?.LogInformation("  - language: {Value}", context.GetString("language"));
-            Logger?.LogInformation("  - household_income_band: {Value}", context.GetString("household_income_band"));
-            Logger?.LogInformation("  - estimated_household_income: {Value}", context.GetString("estimated_household_income"));
-            Logger?.LogInformation("  - income: {Value}", context.GetString("income"));
-            Logger?.LogInformation("  - primary_goal_category: {Value}", context.GetString("primary_goal_category"));
-            Logger?.LogInformation("  - coverage_goal: {Value}", context.GetString("coverage_goal"));
-            Logger?.LogInformation("  - insurance_goal: {Value}", context.GetString("insurance_goal"));
-            Logger?.LogInformation("  - health_risk_category: {Value}", context.GetString("health_risk_category"));
-            Logger?.LogInformation("  - bmi_category: {Value}", context.GetString("bmi_category"));
-            Logger?.LogInformation("  - health_status: {Value}", context.GetString("health_status"));
-
-            // Log what GetXXX methods actually return
-            Logger?.LogInformation("[CustomerConsoleV2] 📊 Computed values:");
-            Logger?.LogInformation("  - GetIncome(): {Value}", GetIncome());
-            Logger?.LogInformation("  - GetPrimaryGoal(): {Value}", GetPrimaryGoal());
-            Logger?.LogInformation("  - GetHealthStatus(): {Value}", GetHealthStatus());
-        } else {
-            Logger?.LogWarning("[CustomerConsoleV2] ⚠️ Context was NULL in UpdateFromChatEvent");
-        }
+        await AnimateProgressListAsync(eventName);
 
         QualifiedCarriers? carriers = null;
 
@@ -473,6 +450,7 @@
             case "coverage_intent_submitted":
             case "health_info_submitted":
             case "dependents_submitted":
+            case "assets_liabilities_submitted":
             case "employment_submitted":
             case "beneficiaries_submitted":
             case "contact_info_submitted":

@@ -69,6 +69,12 @@ else if (IsActive("live-agent"))
     [Parameter] public List<ProductMatch>? MatchedProducts { get; set; }
     [Parameter] public EventCallback<string> OnTabChanged { get; set; }
 
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+    }
+
+
     private bool IsActive(string tab) =>
         string.Equals(ActiveTab, tab, StringComparison.OrdinalIgnoreCase);
 

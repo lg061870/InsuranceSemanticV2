@@ -81,26 +81,26 @@ public class EmploymentTopic : TopicFlow
         {
             _logger.LogInformation("[{Topic}] Model bound: {ModelType}", Name, e.Model?.GetType().Name);
             
-            // Store employment data in conversation context for other topics to access
-            if (e.Model is EmploymentModel employmentModel)
-            {
-                Context.SetValue("employment_data", employmentModel);
-                Context.SetValue("employment_status", employmentModel.EmploymentStatus);
-                Context.SetValue("household_income_band", employmentModel.HouseholdIncomeBand);
-                Context.SetValue("occupation", employmentModel.Occupation);
-                Context.SetValue("estimated_household_income", employmentModel.EstimatedHouseholdIncome);
-                Context.SetValue("is_employed", employmentModel.IsEmployed);
-                Context.SetValue("is_full_time_equivalent", employmentModel.IsFullTimeEquivalent);
-                Context.SetValue("employment_risk_category", employmentModel.EmploymentRiskCategory);
-                Context.SetValue("can_likely_afford_insurance", employmentModel.CanLikelyAffordInsurance);
-                Context.SetValue("employment_data_quality_score", employmentModel.EmploymentDataQualityScore);
-                Context.SetValue("employment_data_quality_grade", employmentModel.EmploymentDataQualityGrade);
-                Context.SetValue("income_disclosed", employmentModel.IncomeDisclosed);
+            //// Store employment data in conversation context for other topics to access
+            //if (e.Model is EmploymentModel employmentModel)
+            //{
+            //    Context.SetValue("employment_data", employmentModel);
+            //    Context.SetValue("employment_status", employmentModel.EmploymentStatus);
+            //    Context.SetValue("household_income_band", employmentModel.HouseholdIncomeBand);
+            //    Context.SetValue("occupation", employmentModel.Occupation);
+            //    Context.SetValue("estimated_household_income", employmentModel.EstimatedHouseholdIncome);
+            //    Context.SetValue("is_employed", employmentModel.IsEmployed);
+            //    Context.SetValue("is_full_time_equivalent", employmentModel.IsFullTimeEquivalent);
+            //    Context.SetValue("employment_risk_category", employmentModel.EmploymentRiskCategory);
+            //    Context.SetValue("can_likely_afford_insurance", employmentModel.CanLikelyAffordInsurance);
+            //    Context.SetValue("employment_data_quality_score", employmentModel.EmploymentDataQualityScore);
+            //    Context.SetValue("employment_data_quality_grade", employmentModel.EmploymentDataQualityGrade);
+            //    Context.SetValue("income_disclosed", employmentModel.IncomeDisclosed);
                 
-                _logger.LogInformation("[{Topic}] Employment - Status: {Status}, Income: {Income}, Risk: {Risk}, Affordability: {Afford}", 
-                    Name, employmentModel.EmploymentStatus, employmentModel.HouseholdIncomeBand, 
-                    employmentModel.EmploymentRiskCategory, employmentModel.CanLikelyAffordInsurance);
-            }
+            //    _logger.LogInformation("[{Topic}] Employment - Status: {Status}, Income: {Income}, Risk: {Risk}, Affordability: {Afford}", 
+            //        Name, employmentModel.EmploymentStatus, employmentModel.HouseholdIncomeBand, 
+            //        employmentModel.EmploymentRiskCategory, employmentModel.CanLikelyAffordInsurance);
+            //}
         };
 
         showCardActivity.ValidationFailed += (s, e) =>

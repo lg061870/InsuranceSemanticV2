@@ -11,7 +11,6 @@ namespace InsuranceAgent.Topics;
 public class LeadDetailsCard
 {
     public AdaptiveCardModel Create(
-        string? leadName = "",
         string? language = "",
         string? leadSource = "",
         string? interestLevel = "",
@@ -26,21 +25,6 @@ public class LeadDetailsCard
                 Text = "📇 Lead Details",
                 Weight = "Bolder",
                 Size = "Medium"
-            },
-
-            // Lead Name
-            new CardElement
-            {
-                Type = "TextBlock",
-                Text = "🧑 Lead Name ⓘ",
-                Wrap = true
-            },
-            new CardElement
-            {
-                Type = "Input.Text",
-                Id = "lead_name",
-                Text = "Enter prospect's full name",
-                Value = leadName ?? ""
             },
 
             // Preferred Language

@@ -86,10 +86,28 @@ public class MarketingT1Topic : TopicFlow {
             conversationContext: _conversationContext
         ));
 
+        // === CONTACT INFO ===
+        Add(new AdaptiveCardActivity<ContactInfoCard, ContactInfoModel>(
+            "ContactInfo", Context,
+            cardFactory: c => c.Create(
+                fullName: Context.GetValue<string>("full_name"),
+                phoneNumber: Context.GetValue<string>("phone_number"),
+                emailAddress: Context.GetValue<string>("email_address"),
+                dateOfBirth: Context.GetValue<string>("date_of_birth"),
+                streetAddress: Context.GetValue<string>("street_address"),
+                city: Context.GetValue<string>("city"),
+                state: Context.GetValue<string>("state"),
+                zipCode: Context.GetValue<string>("zip_code"),
+                bestContactTime: Context.GetValue<string>("best_contact_time"),
+                contactMethod: Context.GetValue<string>("contact_method"),
+                consentContact: Context.GetValue<bool>("consent_contact")
+            )
+
+        ));
+
         Add(new AdaptiveCardActivity<LeadDetailsCard, LeadDetailsModel>(
             "LeadDetails", Context,
             cardFactory: c => c.Create(
-                leadName: Context.GetValue<string>("lead_name"),
                 language: Context.GetValue<string>("language"),
                 leadSource: Context.GetValue<string>("lead_source"),
                 interestLevel: Context.GetValue<string>("interest_level"),
@@ -97,6 +115,7 @@ public class MarketingT1Topic : TopicFlow {
             )
         ));
 
+        // lead_details_submitted
         Add(EventTriggerActivity.CreateFireAndForget(
             eventName: "lead_details_submitted",
             data: new { stage = "lead-details", progress = 20, message = "Lead details collected" },
@@ -117,6 +136,7 @@ public class MarketingT1Topic : TopicFlow {
             )
         ));
 
+        // life_goals_submitted
         Add(EventTriggerActivity.CreateFireAndForget(
             eventName: "life_goals_submitted",
             data: new { stage = "life-goals", progress = 40, message = "Life goals recorded" },
@@ -146,6 +166,7 @@ public class MarketingT1Topic : TopicFlow {
             runInBackground: true
         );
 
+        // health_info_submitted
         healthQuery.OnAsyncCompleted(
             AttachQueryPayloadAsync(
                 eventName: "health_info_submitted",
@@ -157,15 +178,43 @@ public class MarketingT1Topic : TopicFlow {
 
         Add(healthQuery);
 
+        // === ASSETS & LIABILITIES ===
+        Add(new AdaptiveCardActivity<AssetsLiabilitiesCard, AssetsLiabilitiesModel>(
+            "AssetsLiabilities",
+            Context,
+            cardFactory: c => c.Create(
+                hasHomeEquity: Context.GetValue<string>("has_home_equity"),
+                homeEquityAmount: Context.GetValue<string>("home_equity_amount"),
+                mortgageDebt: Context.GetValue<string>("mortgage_debt"),
+                otherDebt: Context.GetValue<string>("other_debt"),
+                savingsAmount: Context.GetValue<string>("savings_amount"),
+                investmentsAmount: Context.GetValue<string>("investments_amount"),
+                retirementAmount: Context.GetValue<string>("retirement_amount")
+            )
+        ));
+
+        // assets_liabilities_submitted
+        Add(EventTriggerActivity.CreateFireAndForget(
+            eventName: "assets_liabilities_submitted",
+            data: new {
+                stage = "assets-liabilities",
+                progress = 60,
+                message = "Assets and liabilities information collected"
+            },
+            logger: _logger,
+            conversationContext: _conversationContext
+        ));
 
 
         // === COVERAGE INTENT ===
         Add(new AdaptiveCardActivity<CoverageIntentCard, CoverageIntentModel>(
-            "CoverageIntent", Context,
+            "CoverageIntent",
+            Context,
             cardFactory: c => c.Create(
                 selectedCoverageTypes: Context.GetValue<List<string>>("selected_coverage_types"),
                 coverageStartTime: Context.GetValue<string>("coverage_start_time"),
-                desiredCoverageAmount: Context.GetValue<string>("desired_coverage_amount")
+                desiredCoverageAmount: Context.GetValue<string>("coverage_amount"),
+                monthlyBudget: Context.GetValue<string>("monthly_budget")
             )
         ));
 
@@ -182,7 +231,7 @@ public class MarketingT1Topic : TopicFlow {
                 runInBackground: true
             );
 
-        // 🔄 Attach the event to fire *after* async completion
+        // coverage_intent_submitted
         coverageQuery.OnAsyncCompleted(
             AttachQueryPayloadAsync(
                 eventName: "coverage_intent_submitted",
@@ -195,15 +244,41 @@ public class MarketingT1Topic : TopicFlow {
         // Finally, add it to the workflow
         Add(coverageQuery);
 
-
         // === DEPENDENTS ===
         Add(new AdaptiveCardActivity<DependentsCard, DependentsModel>(
-            "Dependents", Context,
-            cardFactory: c => c.Create(
-                maritalStatus: Context.GetValue<string>("marital_status"),
-                hasDependents: Context.GetValue<bool?>("has_dependents"),
-                selectedAgeRanges: Context.GetValue<List<string>>("selected_age_ranges")
-            )
+            "Dependents",
+            Context,
+            cardFactory: c => {
+                // -----------------------------
+                // Parse "yes/no" → bool?
+                // -----------------------------
+                bool? hasDeps = Context.GetValue<string>("has_dependents")?.ToLower() switch {
+                    "yes" => true,
+                    "no" => false,
+                    _ => null
+                };
+
+                // -----------------------------
+                // Selected age ranges (toggles)
+                // -----------------------------
+                var ranges = new List<string>();
+
+                if (Context.GetValue<string>("ageRange_0_5") == "true") ranges.Add("0-5");
+                if (Context.GetValue<string>("ageRange_6_12") == "true") ranges.Add("6-12");
+                if (Context.GetValue<string>("ageRange_13_17") == "true") ranges.Add("13-17");
+                if (Context.GetValue<string>("ageRange_18_25") == "true") ranges.Add("18-25");
+                if (Context.GetValue<string>("ageRange_25plus") == "true") ranges.Add("Over 25");
+
+                // -----------------------------
+                // Return card with NEW field: no_of_children
+                // -----------------------------
+                return c.Create(
+                    maritalStatus: Context.GetValue<string>("marital_status"),
+                    noOfChildren: Context.GetValue<string>("no_of_children"),   // ← ADDED
+                    hasDependents: hasDeps,
+                    selectedAgeRanges: ranges
+                );
+            }
         ));
 
         var dependentsQuery = new SemanticQueryActivity<
@@ -219,7 +294,7 @@ public class MarketingT1Topic : TopicFlow {
                 runInBackground: true
             );
 
-        // 🧩 Trigger payload attachment only after async completion
+        // dependents_submitted
         dependentsQuery.OnAsyncCompleted(
             AttachQueryPayloadAsync(
                 eventName: "dependents_submitted",
@@ -231,17 +306,18 @@ public class MarketingT1Topic : TopicFlow {
 
         Add(dependentsQuery);
 
-
         // === EMPLOYMENT ===
         Add(new AdaptiveCardActivity<EmploymentCard, EmploymentModel>(
             "Employment", Context,
             cardFactory: c => c.Create(
                 employmentStatus: Context.GetValue<string>("employment_status"),
-                householdIncomeBand: Context.GetValue<string>("household_income_band"),
-                occupation: Context.GetValue<string>("occupation")
+                householdIncomeBand: Context.GetValue<string>("household_income"),
+                occupation: Context.GetValue<string>("occupation"),
+                yearsEmployed: Context.GetValue<string>("years_employed")
             )
         ));
 
+        // employment_submitted
         Add(EventTriggerActivity.CreateFireAndForget(
             eventName: "employment_submitted",
             data: new { stage = "employment", progress = 85, message = "Employment details collected" },
@@ -273,7 +349,7 @@ public class MarketingT1Topic : TopicFlow {
                 runInBackground: true
             );
 
-        // 🔄 Attach event trigger that fires only after async completion
+        // beneficiaries_submitted
         finalQuery.OnAsyncCompleted(
             AttachQueryPayloadAsync(
                 eventName: "beneficiaries_submitted",
@@ -285,20 +361,7 @@ public class MarketingT1Topic : TopicFlow {
 
         Add(finalQuery);
 
-
-        // === CONTACT INFO ===
-        Add(new AdaptiveCardActivity<ContactInfoCard, ContactInfoModel>(
-            "ContactInfo", Context,
-            cardFactory: c => c.Create(
-                fullName: Context.GetValue<string>("full_name"),
-                phoneNumber: Context.GetValue<string>("phone_number"),
-                emailAddress: Context.GetValue<string>("email_address"),
-                bestContactTime: Context.GetValue<string>("best_contact_time"),
-                contactMethod: Context.GetValue<string>("contact_method"),
-                consentContact: Context.GetValue<bool>("consent_contact")
-            )
-        ));
-
+        // contact_info_submitted
         Add(EventTriggerActivity.CreateFireAndForget(
             eventName: "contact_info_submitted",
             data: new { stage = "contact-info", progress = 95, message = "Contact info verified" },
@@ -315,6 +378,7 @@ public class MarketingT1Topic : TopicFlow {
             return Task.FromResult<object?>(summary);
         }));
 
+        // qualification_complete
         AttachQueryPayload(
             eventName: "qualification_complete",
             progress: 100,

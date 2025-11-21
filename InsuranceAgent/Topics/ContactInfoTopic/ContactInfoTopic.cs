@@ -85,11 +85,48 @@ public class ContactInfoTopic : TopicFlow
             if (e.Model is ContactInfoModel contactInfoModel)
             {
                 Context.SetValue("contact_info_data", contactInfoModel);
+                
+                // Name aliases
                 Context.SetValue("lead_name", contactInfoModel.FullName);
+                Context.SetValue("customer_name", contactInfoModel.FullName);
+                Context.SetValue("name", contactInfoModel.FullName);
+                
+                // Phone aliases
                 Context.SetValue("lead_phone", contactInfoModel.PhoneNumber);
+                Context.SetValue("customer_phone", contactInfoModel.PhoneNumber);
+                Context.SetValue("phone", contactInfoModel.PhoneNumber);
+                
+                // Email aliases
                 Context.SetValue("lead_email", contactInfoModel.EmailAddress);
+                Context.SetValue("customer_email", contactInfoModel.EmailAddress);
+                Context.SetValue("email", contactInfoModel.EmailAddress);
+                
+                // Address fields
+                Context.SetValue("street_address", contactInfoModel.StreetAddress);
+                Context.SetValue("customer_address", contactInfoModel.StreetAddress);
+                Context.SetValue("address", contactInfoModel.StreetAddress);
+                
+                Context.SetValue("city", contactInfoModel.City);
+                Context.SetValue("state", contactInfoModel.State);
+                Context.SetValue("zip_code", contactInfoModel.ZipCode);
+                
+                // City/State combined
+                Context.SetValue("customer_city_state", !string.IsNullOrWhiteSpace(contactInfoModel.City) && !string.IsNullOrWhiteSpace(contactInfoModel.State) 
+                    ? $"{contactInfoModel.City}, {contactInfoModel.State}" : null);
+                Context.SetValue("city_state", !string.IsNullOrWhiteSpace(contactInfoModel.City) && !string.IsNullOrWhiteSpace(contactInfoModel.State) 
+                    ? $"{contactInfoModel.City}, {contactInfoModel.State}" : null);
+                
+                Context.SetValue("formatted_address", contactInfoModel.FormattedAddress);
+                Context.SetValue("has_complete_address", contactInfoModel.HasCompleteAddress);
+                
+                // Contact preferences
                 Context.SetValue("best_contact_time", contactInfoModel.BestContactTime);
+                Context.SetValue("best_time_to_contact", contactInfoModel.BestContactTime);
+                Context.SetValue("contact_time", contactInfoModel.BestContactTime);
+                
                 Context.SetValue("preferred_contact_method", contactInfoModel.PreferredContactMethod);
+                Context.SetValue("contact_preference", contactInfoModel.PreferredContactMethod);
+                
                 Context.SetValue("contact_consent", contactInfoModel.HasContactConsent);
                 Context.SetValue("lead_quality_score", contactInfoModel.LeadQualityScore);
                 Context.SetValue("lead_quality_grade", contactInfoModel.LeadQualityGrade);

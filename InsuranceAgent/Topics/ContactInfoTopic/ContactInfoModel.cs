@@ -16,6 +16,10 @@ public class ContactInfoModel : BaseCardModel
     [StringLength(100, ErrorMessage = "Full name cannot exceed 100 characters")]
     public string FullName { get; set; } = string.Empty;
 
+    [JsonPropertyName("date_of_birth")]
+    [Required(ErrorMessage = "Date of birth is required")]
+    public DateTime? DateOfBirth { get; set; }
+
     [JsonPropertyName("phone_number")]
     [Required(ErrorMessage = "Phone number is required")]
     [Phone(ErrorMessage = "Please enter a valid phone number")]
@@ -25,6 +29,22 @@ public class ContactInfoModel : BaseCardModel
     [Required(ErrorMessage = "Email address is required")]
     [EmailAddress(ErrorMessage = "Please enter a valid email address")]
     public string EmailAddress { get; set; } = string.Empty;
+
+    [JsonPropertyName("street_address")]
+    [StringLength(200, ErrorMessage = "Street address cannot exceed 200 characters")]
+    public string? StreetAddress { get; set; }
+
+    [JsonPropertyName("city")]
+    [StringLength(100, ErrorMessage = "City cannot exceed 100 characters")]
+    public string? City { get; set; }
+
+    [JsonPropertyName("state")]
+    [StringLength(50, ErrorMessage = "State cannot exceed 50 characters")]
+    public string? State { get; set; }
+
+    [JsonPropertyName("zip_code")]
+    [StringLength(10, ErrorMessage = "ZIP code cannot exceed 10 characters")]
+    public string? ZipCode { get; set; }
 
     // Contact Time Preferences
     [JsonPropertyName("contact_time_morning")]
@@ -139,15 +159,32 @@ public class ContactInfoModel : BaseCardModel
         }
     }
 
+    // Address validation helpers
+    public bool HasCompleteAddress =>
+        !string.IsNullOrWhiteSpace(StreetAddress) &&
+        !string.IsNullOrWhiteSpace(City) &&
+        !string.IsNullOrWhiteSpace(State) &&
+        !string.IsNullOrWhiteSpace(ZipCode);
+
+    public string FormattedAddress
+    {
+        get
+        {
+            if (!HasCompleteAddress) return "Not provided";
+            return $"{StreetAddress}, {City}, {State} {ZipCode}";
+        }
+    }
+
     // Lead quality scoring
     public int LeadQualityScore
     {
         get
         {
             var score = 0;
-            if (!string.IsNullOrWhiteSpace(FullName)) score += 20;
-            if (IsValidPhoneNumber) score += 30;
-            if (IsValidEmailAddress) score += 30;
+            if (!string.IsNullOrWhiteSpace(FullName)) score += 15;
+            if (IsValidPhoneNumber) score += 25;
+            if (IsValidEmailAddress) score += 25;
+            if (HasCompleteAddress) score += 15;
             if (HasContactConsent) score += 20;
             return score;
         }
