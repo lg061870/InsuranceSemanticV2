@@ -16,6 +16,8 @@
 @using InsuranceAgent.Topics
 @using System.Dynamic
 @using System.Reflection
+@using InsuranceSemanticV2.Core.DTO
+@using AutoMapper;
 
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -23,6 +25,9 @@
 @inject INavigationEventService NavEvents
 @inject InsuranceAgentService InsuranceAgentService
 @inject HybridChatService ChatService
+@inject AutoMapper.IMapper _mapper
+@inject LeadsService LeadsService
+
 
 <div class="flex flex-row w-full h-screen font-sans overflow-hidden">
     <!-- ===========================
@@ -177,20 +182,50 @@
                     break;
 
                 case "lead_details_submitted":
+                    HandleProgressUpdate(e.EventData);
+                    await SaveLeadDetailsAsync(e);
+                    break;
+
                 case "life_goals_submitted":
+                    HandleProgressUpdate(e.EventData);
+                    await SaveLifeGoalsAsync(e);
+                    break;
+
                 case "coverage_intent_submitted":
+                    HandleProgressUpdate(e.EventData);
+                    await SaveCoverageIntentAsync(e);
+                    break;
+
                 case "health_info_submitted":
+                    HandleProgressUpdate(e.EventData);
+                    await SaveHealthInfoAsync(e);
+                    break;
+
                 case "dependents_submitted":
+                    HandleProgressUpdate(e.EventData);
+                    await SaveDependentsAsync(e);
+                    break;
+
                 case "employment_submitted":
+                    HandleProgressUpdate(e.EventData);
+                    await SaveEmploymentAsync(e);
+                    break;
+
                 case "beneficiaries_submitted":
+                    HandleProgressUpdate(e.EventData);
+                    await SaveBeneficiariesAsync(e);
+                    break;
+
                 case "contact_info_submitted":
                     HandleProgressUpdate(e.EventData);
+                    await SaveContactInfoAsync(e);
                     break;
 
                 case "qualification_complete":
                     HandleProgressComplete(e.EventData);
                     break;
             }
+
 
             // =============================================================
             // 2) Extract payload for CustomerConsole
@@ -354,6 +389,106 @@
         Logger.LogInformation("[Home] Progress {Percent}% | Stage={Stage}", progressPercent, progressStage);
         _ = InvokeAsync(StateHasChanged);
     }
+
+    private async Task SaveLeadDetailsAsync(CustomEventTriggeredEventArgs e) {
+        try {
+            var leadModel = e.Context?.GetValue<LeadDetailsModel>("LeadDetailsModel");
+            if (leadModel is null) {
+                Logger.LogWarning("[Home] LeadDetailsModel not found in context.");
+                return;
+            }
+
+            var dto = _mapper.Map<LeadRequest>(leadModel);
+
+            // // Only assign AgentId if it's been selected
+            // if (InsuranceAgentService.CurrentAgentId is int agentId)
+            //     dto.AssignedAgentId = agentId;
+
+            var result = await LeadsService.CreateLeadAsync(dto);
+            Logger.LogInformation("[Home] Lead saved with ID: {LeadId}", result);
+        } catch (Exception ex) {
+            Logger.LogError(ex, "[Home] Failed to save lead details.");
+        }
+    }
+    private async Task SaveLifeGoalsAsync(CustomEventTriggeredEventArgs e) {
+        var model = e.Context?.GetValue<LifeGoalsModel>("LifeGoalsModel");
+        if (model is null) {
+            Logger.LogWarning("[Home] LifeGoalsModel not found in context.");
+            return;
+        }
+
+        var dto = _mapper.Map<LifeGoalsRequest>(model);
+        await LeadsService.SaveLifeGoalsAsync(dto);
+    }
+
+    private async Task SaveCoverageIntentAsync(CustomEventTriggeredEventArgs e) {
+        var model = e.Context?.GetValue<CoverageIntentModel>("CoverageIntentModel");
+        if (model is null) {
+            Logger.LogWarning("[Home] CoverageIntentModel not found in context.");
+            return;
+        }
+
+        var dto = _mapper.Map<CoverageIntentRequest>(model);
+        await LeadsService.SaveCoverageIntentAsync(dto);
+    }
+
+    private async Task SaveHealthInfoAsync(CustomEventTriggeredEventArgs e) {
+        var model = e.Context?.GetValue<HealthInfoModel>("HealthInfoModel");
+        if (model is null) {
+            Logger.LogWarning("[Home] HealthInfoModel not found in context.");
+            return;
+        }
+
+        var dto = _mapper.Map<HealthInfoRequest>(model);
+        await LeadsService.SaveHealthInfoAsync(dto);
+    }
+
+    private async Task SaveDependentsAsync(CustomEventTriggeredEventArgs e) {
+        var model = e.Context?.GetValue<DependentsModel>("DependentsModel");
+        if (model is null) {
+            Logger.LogWarning("[Home] DependentsModel not found in context.");
+            return;
+        }
+
+        var dto = _mapper.Map<DependentsRequest>(model);
+        await LeadsService.SaveDependentsAsync(dto);
+    }
+
+    private async Task SaveEmploymentAsync(CustomEventTriggeredEventArgs e) {
+        var model = e.Context?.GetValue<EmploymentModel>("EmploymentModel");
+        if (model is null) {
+            Logger.LogWarning("[Home] EmploymentModel not found in context.");
+            return;
+        }
+
+        var dto = _mapper.Map<EmploymentRequest>(model);
+        await LeadsService.SaveEmploymentAsync(dto);
+    }
+
+    private async Task SaveBeneficiariesAsync(CustomEventTriggeredEventArgs e) {
+        var model = e.Context?.GetValue<BeneficiaryInfoModel>("BeneficiariesModel");
+        if (model is null) {
+            Logger.LogWarning("[Home] BeneficiariesModel not found in context.");
+            return;
+        }
+
+        var dto = _mapper.Map<BeneficiaryInfoRequest>(model);
+        await LeadsService.SaveBeneficiariesAsync(dto);
+    }
+
+    private async Task SaveContactInfoAsync(CustomEventTriggeredEventArgs e) {
+        var model = e.Context?.GetValue<ContactInfoModel>("ContactInfoModel");
+        if (model is null) {
+            Logger.LogWarning("[Home] ContactInfoModel not found in context.");
+            return;
+        }
+
+        var dto = _mapper.Map<ContactInfoRequest>(model);
+        await LeadsService.SaveContactInfoAsync(dto);
+    }
+
+
+
     #endregion
 
     #region --- UI Actions ---

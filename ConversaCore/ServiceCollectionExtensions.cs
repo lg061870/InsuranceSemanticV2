@@ -1,23 +1,15 @@
 ﻿#pragma warning disable SKEXP0010
 
-using ConversaCore.Configuration;
 using ConversaCore.Context;
-using ConversaCore.Events;
 using ConversaCore.Interfaces;
 using ConversaCore.Services;
-using ConversaCore.StateMachine;
-using ConversaCore.SystemTopics;
 using ConversaCore.TopicFlow;
 using ConversaCore.Topics;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.VectorData;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
-using Microsoft.SemanticKernel.Connectors.SqliteVec;
-using System.Diagnostics;
 
 namespace ConversaCore;
 
@@ -25,147 +17,88 @@ public static class ServiceCollectionExtensions {
     private static void Log(string msg) =>
         Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] [DI] {msg}");
 
-    public static IServiceCollection AddConversaCore(this IServiceCollection services, IConfiguration? configuration = null) {
-        Log("Starting ConversaCore registration...");
+    /// <summary>
+    /// Adds ConversaCore to the DI container.
+    /// The host application MUST provide the OpenAI API key and embedding model.
+    /// </summary>
+    public static IServiceCollection AddConversaCore(
+        this IServiceCollection services,
+        string openAIApiKey,
+        string embeddingModel = "text-embedding-3-small"
+    ) {
+        Console.WriteLine("Starting ConversaCore registration...");
 
-        // --------------------------------------------------------------------
-        // Core registries & buses
-        // --------------------------------------------------------------------
+        // ---------------------------------------
+        // VALIDATE INPUTS
+        // ---------------------------------------
+        if (string.IsNullOrWhiteSpace(openAIApiKey))
+            throw new InvalidOperationException("OpenAI API key not provided to AddConversaCore().");
+
+        // ---------------------------------------
+        // TOPIC REGISTRY
+        // ---------------------------------------
         services.AddSingleton<TopicRegistry>();
-        //services.AddSingleton<ITopicEventBus>(_ => TopicEventBus.Instance);
 
-        // --------------------------------------------------------------------
-        // Semantic Kernel
-        // --------------------------------------------------------------------
+        // ---------------------------------------
+        // SEMANTIC KERNEL
+        // ---------------------------------------
         services.AddSingleton<Kernel>(sp => {
-            Log("Creating Kernel singleton...");
-            var config = configuration ?? sp.GetRequiredService<IConfiguration>();
-            var apiKey = config["OpenAI:ApiKey"];
+            Console.WriteLine("Creating Semantic Kernel...");
+
             var builder = Kernel.CreateBuilder();
-            builder.AddOpenAIChatCompletion("gpt-4o-mini", apiKey);
-            Log("Kernel build complete.");
+
+            builder.AddOpenAIChatCompletion(
+                modelId: "gpt-4o-mini",
+                apiKey: openAIApiKey
+            );
+
             return builder.Build();
         });
 
+        // ---------------------------------------
+        // EMBEDDING GENERATOR
+        // ---------------------------------------
         services.AddOpenAIEmbeddingGenerator(
-            modelId: configuration?["OpenAI:EmbeddingModel"] ?? "text-embedding-3-small",
-            apiKey: configuration?["OpenAI:ApiKey"]
+            modelId: embeddingModel,
+            apiKey: openAIApiKey
         );
 
-        // --------------------------------------------------------------------
-        // ConversaCore intent & chat orchestration
-        // --------------------------------------------------------------------
+        // ---------------------------------------
+        // SYSTEM SERVICES
+        // ---------------------------------------
         services.AddSingleton<IIntentRecognitionService, IntentRecognitionService>();
-        //services.AddScoped<IChatService, ChatService>();
 
-        // Conversation context
-        services.AddScoped<IConversationContext>(sp => {
-            var ctx = new ConversationContext(
+        services.AddScoped<IConversationContext>(sp =>
+            new ConversationContext(
                 Guid.NewGuid().ToString(),
                 "anonymous",
-                sp.GetRequiredService<ILogger<ConversationContext>>());
-            Log($"Created ConversationContext ({ctx.GetHashCode()})");
-            return ctx;
-        });
+                sp.GetRequiredService<ILogger<ConversationContext>>()
+            )
+        );
 
-        // --------------------------------------------------------------------
-        // 🧠 Shared TopicWorkflowContext per scope
-        // --------------------------------------------------------------------
-        //services.AddScoped<TopicWorkflowContext>(sp => {
-        //    var existing = sp.GetService<TopicWorkflowContext>();
-        //    if (existing != null) {
-        //        Log($"Reusing existing TopicWorkflowContext ({existing.GetHashCode()})");
-        //        return existing;
-        //    }
+        services.AddScoped<TopicWorkflowContext>();
+        services.AddScoped<ITopicManager>(sp =>
+            new TopicManager(
+                sp.GetServices<ITopic>(),
+                sp.GetRequiredService<IConversationContext>(),
+                sp.GetRequiredService<TopicWorkflowContext>(),
+                sp.GetRequiredService<ILogger<TopicManager>>()
+            )
+        );
 
-        //    var logger = sp.GetRequiredService<ILogger<TopicWorkflowContext>>();
-        //    var ctx = new TopicWorkflowContext();
-        //    Log($"Created new TopicWorkflowContext ({ctx.GetHashCode()})");
-        //    return ctx;
-        //});
-
-        services.AddScoped<TopicWorkflowContext>(sp => {
-            var logger = sp.GetRequiredService<ILogger<TopicWorkflowContext>>();
-            var ctx = new TopicWorkflowContext();
-            logger.LogInformation("[ConversaCore] Created TopicWorkflowContext ({Hash})", ctx.GetHashCode());
-            return ctx;
-        });
-
-
-        // --------------------------------------------------------------------
-        // Topic manager
-        // --------------------------------------------------------------------
-        services.AddScoped<ITopicManager>(sp => {
-            Log("Constructing TopicManager...");
-            var topics = sp.GetRequiredService<IEnumerable<ITopic>>();
-            Log($"TopicManager: resolved {topics.Count()} topics");
-            var context = sp.GetRequiredService<IConversationContext>();
-            var wfContext = sp.GetRequiredService<TopicWorkflowContext>();
-            var logger = sp.GetRequiredService<ILogger<TopicManager>>();
-            return new TopicManager(topics, context, wfContext, logger);
-        });
-
-        // --------------------------------------------------------------------
-        // Built-in system topics
-        // --------------------------------------------------------------------
-        void AddSystemTopic<T>(string name, Func<IServiceProvider, T> factory) where T : class, ITopic {
-            Log($"Registering system topic: {name}");
-            services.AddScoped<ITopic>(sp => {
-                Log($" → Constructing {name}");
-                var t = factory(sp);
-                Log($" ← Finished constructing {name}");
-                return t;
-            });
-        }
-
-        AddSystemTopic("ConversationStartTopic", sp => new ConversationStartTopic(
-            sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<ConversationStartTopic>>(),
-            sp.GetRequiredService<IConversationContext>()));
-
-        AddSystemTopic("FallbackTopic", sp => new FallbackTopic(
-            sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<FallbackTopic>>(),
-            sp.GetRequiredService<Kernel>(),
-            sp.GetService<IVectorDatabaseService>()));
-
-        AddSystemTopic("OnErrorTopic", sp => new OnErrorTopic(
-            sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<OnErrorTopic>>()));
-
-        AddSystemTopic("EscalateTopic", sp => new EscalateTopic(
-            sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<EscalateTopic>>()));
-
-        AddSystemTopic("EndOfConversationTopic", sp => new EndOfConversationTopic(
-            sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<EndOfConversationTopic>>()));
-
-        AddSystemTopic("ResetConversationTopic", sp => new ResetConversationTopic(
-            sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<ResetConversationTopic>>()));
-
-        AddSystemTopic("MultipleTopicsMatchedTopic", sp => new MultipleTopicsMatchedTopic(
-            sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<MultipleTopicsMatchedTopic>>()));
-
-        AddSystemTopic("SignInTopic", sp => new SignInTopic(
-            sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<SignInTopic>>()));
-
-        // --------------------------------------------------------------------
-        // File & vector database services
-        // --------------------------------------------------------------------
+        // ---------------------------------------
+        // DATABASE / VECTORS
+        // ---------------------------------------
         services.AddScoped<IDocumentProcessingService, DocumentProcessingService>();
-        services.AddScoped<IVectorDatabaseService>(sp => {
-            Log("Creating SqliteVectorDatabaseService...");
-            return new SqliteVectorDatabaseService(
+        services.AddScoped<IVectorDatabaseService>(sp =>
+            new SqliteVectorDatabaseService(
                 sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
                 sp.GetRequiredService<ILogger<SqliteVectorDatabaseService>>(),
-                "vectorstore.db");
-        });
+                "vectorstore.db"
+            )
+        );
 
-        Log("✅ AddConversaCore completed successfully.");
+        Console.WriteLine("ConversaCore successfully registered.");
         return services;
     }
 
@@ -175,17 +108,8 @@ public static class ServiceCollectionExtensions {
         foreach (var topic in serviceProvider.GetServices<ITopic>()) {
             if (!(topic is Core.ITerminable terminable) || !terminable.IsTerminated) topicRegistry.RegisterTopic(topic);
         }
-        //if (serviceProvider.GetRequiredService<ITopicEventBus>() is Core.ITerminable bus) bus.Terminate();
-        //try {
-        //    var ctx = serviceProvider.GetRequiredService<IConversationContext>();
-        //    if (ctx is Core.ITerminable t && !t.IsTerminated) t.Terminate();
-        //    else ctx.Reset();
-        //} catch { }
     }
 
-    // --------------------------------------------------------------------
-    // Topic registration helpers
-    // --------------------------------------------------------------------
     public static TopicRegistry ConfigureTopics(this TopicRegistry registry, IServiceProvider sp) {
         Log("Starting ConfigureTopics() ...");
         try {

@@ -6,25 +6,31 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <UserSecretsId>671a2161-8af5-4cdb-a575-8c353368f5f8</UserSecretsId>
   </PropertyGroup>
 
+  <!-- Project References -->
   <ItemGroup>
-    <!-- Internal projects -->
     <ProjectReference Include="..\ConversaCore\ConversaCore.csproj" />
-    <ProjectReference Include="..\WorkflowEditor\WorkflowEditor.csproj" />
+    <ProjectReference Include="..\InsuranceSemanticV2.Api\InsuranceSemanticV2.Api.csproj" />
+    <ProjectReference Include="..\InsuranceSemanticV2.Core\InsuranceSemanticV2.Core.csproj" />
+    <ProjectReference Include="..\InsuranceSemanticV2.Data\InsuranceSemanticV2.Data.csproj" />
   </ItemGroup>
 
+  <!-- Microsoft.Extensions + Sqlite + Components (ALL upgraded to 9.0.11) -->
   <ItemGroup>
-    <!-- Core .NET 9 dependencies -->
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.10" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
-    <PackageReference Include="Microsoft.AspNetCore.Components" Version="9.0.10" />
+    <PackageReference Include="AutoMapper" Version="15.1.0" />
+    <PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" Version="12.0.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.11" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.Components" Version="9.0.11" />
   </ItemGroup>
 
+  <!-- Semantic Kernel packages (unchanged) -->
   <ItemGroup>
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.66.0-preview" />
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.SqliteVec" Version="1.66.0-preview" />
@@ -42,7 +48,5 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
-
-
 
 </Project>

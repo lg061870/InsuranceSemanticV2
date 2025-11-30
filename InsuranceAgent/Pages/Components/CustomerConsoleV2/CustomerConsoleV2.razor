@@ -148,10 +148,12 @@
             <!-- Tabbed Console -->
             <div id="console-tabs-area" class="col-span-9">
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <TabsNav ActiveTab="@activeTab"
-                             Context="@context"
-                             MatchedProducts="@matchedProducts"
-                             OnTabChanged="@HandleTabChange" />
+                    <TabsNav Context="context"
+                        ActiveTab="@activeTab"
+                        MatchedProducts="@matchedProducts"
+                        AgentCount="@AgentCount"
+                        OnTabChanged="HandleTabChange" />
+
                 </div>
             </div>
 
@@ -184,6 +186,8 @@
 @code {
     [Parameter] public bool IsVisible { get; set; } = true;
     [Parameter] public EventCallback OnClose { get; set; }
+
+    private int AgentCount { get; set; } = 0;
 
     private TopicWorkflowContext? context;
     private bool isAnalyzing = true;

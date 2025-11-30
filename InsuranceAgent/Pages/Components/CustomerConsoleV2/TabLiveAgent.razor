@@ -1,8 +1,10 @@
 ﻿@using ConversaCore.TopicFlow
-@using InsuranceAgent.Extensions
-@using System.Collections.Generic
+@using InsuranceSemanticV2.Core.DTO
+@using System.Net.Http.Json
+@inject HttpClient Http
 
-<div id="live-agent-panel" class="tab-content p-8 @(ActiveTab != "live-agent" ? "hidden" : "")">
+<div id="live-agent-panel" 
+     class="tab-content p-8 overflow-y-auto max-h-[85vh] @(ActiveTab != "live-agent" ? "hidden" : "")">
 
     <!-- Header -->
     <div class="mb-8">
@@ -36,11 +38,15 @@
                     @foreach (var agent in Agents) {
                         <div class="bg-white border border-gray-200 rounded-xl p-5 hover:border-blue-300 hover:shadow-md transition-all">
                             <div class="flex items-start space-x-4">
-                                <img src="@agent.AvatarUrl" alt="@agent.Name" class="w-16 h-16 rounded-full border-2 border-gray-200">
+
+                                <img src="@agent.AvatarUrl"
+                                     alt="@agent.FullName"
+                                     class="w-16 h-16 rounded-full border-2 border-gray-200">
+
                                 <div class="flex-1">
                                     <div class="flex items-start justify-between mb-1">
                                         <div>
-                                            <h4 class="text-base font-bold text-gray-900">@agent.Name</h4>
+                                            <h4 class="text-base font-bold text-gray-900">@agent.FullName</h4>
                                             <p class="text-xs text-gray-500">@agent.Specialty</p>
                                         </div>
                                         <span class="px-2 py-1 @GetStatusBadgeColor(agent.StatusColor) text-xs font-semibold rounded-full">
@@ -134,18 +140,36 @@
                     </div>
                 </div>
 
-                <div class="bg-gray-50 rounded-lg p-4 mb-4">
-                    <div class="flex items-center justify-between mb-2">
+                <div class="bg-gray-50 rounded-lg p-4 mb-4 space-y-2">
+
+                    <div class="flex items-center justify-between">
                         <span class="text-sm text-gray-600">Client Name</span>
                         <span class="text-sm font-semibold text-gray-900">@GetClientName()</span>
                     </div>
-                    <div class="flex items-center justify-between mb-2">
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600">Phone</span>
+                        <span class="text-sm font-semibold text-gray-900">@GetClientPhone()</span>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600">Email</span>
+                        <span class="text-sm font-semibold text-gray-900">@GetClientEmail()</span>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600">Client Path</span>
+                        <span class="text-sm font-semibold text-gray-900">@GetLeadPath()</span>
+                    </div>
+
+                    <div class="flex items-center justify-between">
                         <span class="text-sm text-gray-600">Agents Online</span>
                         <span class="text-sm font-semibold text-green-600">@Agents.Count</span>
                     </div>
+
                     <div class="flex items-center justify-between">
                         <span class="text-sm text-gray-600">Avg. Wait Time</span>
-                        <span class="text-sm font-semibold text-gray-900">~2 minutes</span>
+                        <span class="text-sm font-semibold text-gray-900">@GetWaitEstimate()</span>
                     </div>
                 </div>
 
@@ -191,10 +215,25 @@
 </div>
 
 @code {
+
     [Parameter] public TopicWorkflowContext? Context { get; set; }
     [Parameter] public string ActiveTab { get; set; } = "";
 
-    private string GetClientName() => Context?.GetString("lead_name", "customer_name", "name") ?? "Client";
+    private List<AgentRequest> Agents { get; set; } = new();
+
+    protected override async Task OnInitializedAsync() {
+        try {
+            var response = await Http.GetFromJsonAsync<AgentResponse>("api/agents");
+
+            Agents = response?.Payload ?? new List<AgentRequest>();
+        } catch (Exception ex) {
+            Console.WriteLine($"[TabLiveAgent] ERROR fetching agents: {ex.Message}");
+            Agents = new();
+        }
+    }
+
+    private string GetClientName() =>
+        Context?.GetString("full_name") ?? "N/A";
 
     private string GetTcpaStatus() {
         var tcpa = Context?.GetString("tcpa_consent", "phone_consent") ?? "N/A";
@@ -223,51 +262,18 @@
         };
     }
 
-    public class LiveAgent {
-        public string Name { get; set; } = "";
-        public string Specialty { get; set; } = "";
-        public string AvatarUrl { get; set; } = "";
-        public double Rating { get; set; }
-        public int Calls { get; set; }
-        public int AvgMinutes { get; set; }
-        public bool IsAvailable { get; set; }
-        public string StatusLabel { get; set; } = "Available Now";
-        public string StatusColor { get; set; } = "green";
+    private string GetClientPhone() =>
+    Context?.GetString("phone_number", "contact_phone", "client_phone") ?? "N/A";
+
+    private string GetClientEmail() =>
+        Context?.GetString("email_address", "email", "contact_email") ?? "N/A";
+
+    private string GetLeadPath() =>
+        Context?.GetString("marketing_path", "marketing_t1_path", "path_type") ?? "N/A";
+
+    private string GetWaitEstimate() {
+        // Later can be dynamic based on queue info
+        return "~2 minutes";
     }
 
-    private List<LiveAgent> Agents = new()
-    {
-        new LiveAgent
-        {
-            Name = "David Chen",
-            Specialty = "Life Insurance Specialist",
-            AvatarUrl = "https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg",
-            Rating = 5.0, Calls = 247, AvgMinutes = 12,
-            IsAvailable = true, StatusColor = "green", StatusLabel = "Available Now"
-        },
-        new LiveAgent
-        {
-            Name = "Jennifer Park",
-            Specialty = "Family Protection Expert",
-            AvatarUrl = "https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-6.jpg",
-            Rating = 4.8, Calls = 312, AvgMinutes = 15,
-            IsAvailable = true, StatusColor = "green", StatusLabel = "Available Now"
-        },
-        new LiveAgent
-        {
-            Name = "Marcus Johnson",
-            Specialty = "Senior Life Advisor",
-            AvatarUrl = "https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg",
-            Rating = 5.0, Calls = 189, AvgMinutes = 18,
-            IsAvailable = true, StatusColor = "green", StatusLabel = "Available Now"
-        },
-        new LiveAgent
-        {
-            Name = "Lisa Rodriguez",
-            Specialty = "Insurance Consultant",
-            AvatarUrl = "https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-7.jpg",
-            Rating = 4.5, Calls = 156, AvgMinutes = 14,
-            IsAvailable = false, StatusColor = "yellow", StatusLabel = "On Call (5 min)"
-        }
-    };
 }

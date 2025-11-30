@@ -6,6 +6,7 @@ using ConversaCore.Services;
 using ConversaCore.Topics;
 using InsuranceAgent.Configuration;
 using InsuranceAgent.Extensions;
+using InsuranceAgent.Mappings;
 using InsuranceAgent.Repositories;
 using InsuranceAgent.Services;
 using Microsoft.Data.Sqlite;
@@ -15,12 +16,16 @@ using System.Diagnostics;
 internal class Program {
     private static void Main(string[] args) {
         var sw = Stopwatch.StartNew();
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] 🟢 Starting InsuranceAgent (PID={Environment.ProcessId}, Thread={Environment.CurrentManagedThreadId})");
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] 🟢 Starting InsuranceAgent (PID={Environment.ProcessId})");
 
         // ------------------------------------------------------------
-        // CONFIGURE BUILDER & LOGGING
+        // BUILD BUILDER
         // ------------------------------------------------------------
         var builder = WebApplication.CreateBuilder(args);
+
+        // Enable User Secrets BEFORE reading configuration
+        builder.Configuration.AddUserSecrets<Program>(optional: true);
+
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
         builder.Logging.AddDebug();
@@ -32,43 +37,71 @@ internal class Program {
         builder.Services.AddServerSideBlazor();
         builder.Services.AddControllers();
 
+        
+
+        var configuration = builder.Configuration;
+
         // ------------------------------------------------------------
-        // CONVERSACORE & INSURANCE TOPICS
+        // LOAD OPENAI API KEY (single source of truth)
+        // ------------------------------------------------------------
+        string apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+            ?? throw new InvalidOperationException("Missing OPENAI_API_KEY");
+
+        Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🔑 OpenAI key loaded (length={apiKey.Length})");
+
+        // ------------------------------------------------------------
+        // CONVERSACORE (explicit key + explicit embedding model)
         // ------------------------------------------------------------
         Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🧠 Registering ConversaCore...");
-        builder.Services.AddConversaCore(builder.Configuration);
 
+        builder.Services.AddConversaCore(
+            openAIApiKey: apiKey,
+            embeddingModel: configuration["OpenAI:EmbeddingModel"] ?? "text-embedding-3-small"
+        );
+
+        // ------------------------------------------------------------
+        // INSURANCE TOPICS
+        // ------------------------------------------------------------
         Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 💬 Registering InsuranceTopics...");
         builder.Services.AddInsuranceTopics();
 
         builder.Services.Configure<OpenAIConfiguration>(
-            builder.Configuration.GetSection(OpenAIConfiguration.SectionName));
+            configuration.GetSection(OpenAIConfiguration.SectionName));
 
         // ------------------------------------------------------------
-        // CORE SERVICES & LLM INTEGRATIONS
+        // CORE SERVICES
         // ------------------------------------------------------------
-        Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🧩 Registering Agent Services...");
         builder.Services.AddScoped<ISemanticKernelService, SemanticKernelService>();
         builder.Services.AddScoped<HybridChatService>();
         builder.Services.AddScoped<InsuranceAgentService>();
         builder.Services.AddScoped<IChatInteropService, ChatInteropService>();
-        //builder.Services.AddScoped<ChatService>();
         builder.Services.AddScoped<IDocumentEmbeddingService, DocumentEmbeddingService>();
         builder.Services.AddScoped<INavigationEventService, NavigationEventService>();
+        builder.Services.AddScoped<LeadsService>();
 
-        builder.Services.AddOpenAIEmbeddingGenerator(
-            modelId: "text-embedding-3-small",
-            apiKey: builder.Configuration["OpenAI:ApiKey"]
-                    ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? "");
-
-        builder.Services.AddSingleton<IVectorDatabaseService, SqliteVectorDatabaseService>();
-        builder.Services.AddHttpClient();        // ------------------------------------------------------------
-        // INSURANCE RULES REPOSITORY
         // ------------------------------------------------------------
-        Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 📚 Registering InsuranceRuleRepository...");
+        // AUTOMAPPER CONFIG
+        // ------------------------------------------------------------
+        builder.Services.AddAutoMapper(typeof(MappingProfile));
+
+
+        // ------------------------------------------------------------
+        // EMBEDDINGS — used locally (Completely valid)
+        // ------------------------------------------------------------
+        builder.Services.AddOpenAIEmbeddingGenerator(
+            modelId: configuration["OpenAI:EmbeddingModel"] ?? "text-embedding-3-small",
+            apiKey: apiKey
+        );
+
+        // ------------------------------------------------------------
+        // DATABASES / REPOSITORIES
+        // ------------------------------------------------------------
+        builder.Services.AddSingleton<IVectorDatabaseService, SqliteVectorDatabaseService>();
         builder.Services.AddSingleton<InsuranceRuleRepository>();
-
-
+        builder.Services.AddHttpClient("ApiClient", client =>
+        {
+            client.BaseAddress = new Uri("https://localhost:7097/"); // your API port
+        });
 
         // ------------------------------------------------------------
         // BUILD APP
@@ -89,41 +122,37 @@ internal class Program {
         app.MapControllers();
 
         // ------------------------------------------------------------
-        // TOPIC CONFIGURATION
+        // TOPIC CONFIG
         // ------------------------------------------------------------
         Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🔍 Configuring topics...");
+
         try {
             using var scope = app.Services.CreateScope();
-            Console.WriteLine($"[{sw.ElapsedMilliseconds}ms]   ↳ Created DI scope");
             var topicRegistry = scope.ServiceProvider.GetRequiredService<TopicRegistry>();
-            Console.WriteLine($"[{sw.ElapsedMilliseconds}ms]   ↳ Got TopicRegistry");
             topicRegistry.ConfigureTopics(scope.ServiceProvider);
-            Console.WriteLine($"[{sw.ElapsedMilliseconds}ms]   ✅ Topic configuration finished");
-
-            // 🔹 Test insurance rule repository load
-            var repo = scope.ServiceProvider.GetRequiredService<InsuranceRuleRepository>();
-
+            Console.WriteLine($"[{sw.ElapsedMilliseconds}ms]   ✅ Topic configuration complete");
         } catch (Exception ex) {
-            Console.WriteLine($"[{sw.ElapsedMilliseconds}ms]   ❌ ERROR configuring topics or rules: {ex}");
+            Console.WriteLine($"[{sw.ElapsedMilliseconds}ms]   ❌ Topic configuration ERROR: {ex}");
         }
 
         // ------------------------------------------------------------
         // SQLITE HEALTH CHECK
         // ------------------------------------------------------------
         Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🗃️ SQLite health check...");
+
         try {
             var dbPath = Path.Combine(AppContext.BaseDirectory, "vectorstore.db");
             using var conn = new SqliteConnection($"Data Source={dbPath}");
             conn.Open();
-            Console.WriteLine($"✅ SQLite ready at: {dbPath}");
+            Console.WriteLine($"   ✅ SQLite ready: {dbPath}");
         } catch (Exception ex) {
-            Console.WriteLine($"❌ SQLite init failed: {ex.Message}");
+            Console.WriteLine($"   ❌ SQLite init failed: {ex.Message}");
         }
 
         // ------------------------------------------------------------
         // STARTUP COMPLETE
         // ------------------------------------------------------------
-        Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🚀 Application startup complete. Listening...");
+        Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🚀 Application startup complete.");
         app.Run();
     }
 }
