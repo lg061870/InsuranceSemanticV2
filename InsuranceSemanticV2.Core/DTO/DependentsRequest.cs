@@ -9,7 +9,7 @@ public class DependentsRequest {
     public int ProfileId { get; set; }
     public string MaritalStatusValue { get; set; }
     public string HasDependentsValue { get; set; }
-    public int NoOfChildren { get; set; }
+    public int? NoOfChildren { get; set; }
 
     public bool AgeRange0To5 { get; set; }
     public bool AgeRange6To12 { get; set; }

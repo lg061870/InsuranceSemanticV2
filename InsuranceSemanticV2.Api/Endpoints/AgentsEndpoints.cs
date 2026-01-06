@@ -241,14 +241,14 @@ public static class AgentsEndpoints {
         group.MapGet("/{agentId:int}/sessions", async (int agentId, AppDbContext db) => {
             var sessions = await db.AgentSessions
                 .Where(s => s.AgentId == agentId)
-                .OrderByDescending(s => s.StartedAt)
+                .OrderByDescending(s => s.LoginTime)
                 .ToListAsync();
 
             return Results.Ok(new AgentSessionResponse {
                 Payload = sessions.Select(s => new AgentSessionRequest {
                     AgentId = s.AgentId,
-                    StartedAt = s.StartedAt,
-                    EndedAt = s.EndedAt ?? default(DateTime) // Fixes CS0266 and CS8629
+                    StartedAt = s.LoginTime,
+                    EndedAt = s.LogoutTime ?? default(DateTime) // Fixes CS0266 and CS8629
                 }).ToList()
             });
         });
@@ -256,16 +256,20 @@ public static class AgentsEndpoints {
         group.MapPost("/{agentId:int}/sessions", async (int agentId, AgentSessionRequest req, AppDbContext db) => {
             var entity = new AgentSession {
                 AgentId = agentId,
-                StartedAt = DateTime.UtcNow,
-                EndedAt = null
+                LoginTime = DateTime.UtcNow,
+                LastActivityTime = DateTime.UtcNow,
+                LogoutTime = null,
+                ConnectionId = "",  // Will be set when SignalR connection established
+                Status = "Online",
+                IsActive = true
             };
 
             db.AgentSessions.Add(entity);
             await db.SaveChangesAsync();
 
-            return Results.Created($"/api/agents/{agentId}/sessions/{entity.SessionId}",
+            return Results.Created($"/api/agents/{agentId}/sessions/{entity.AgentSessionId}",
                 new AgentSessionResponse {
-                    SessionId = entity.SessionId,
+                    SessionId = entity.AgentSessionId,
                     Payload = new List<AgentSessionRequest> { req }
                 });
         });
@@ -277,7 +281,8 @@ public static class AgentsEndpoints {
                 if (session is null || session.AgentId != agentId)
                     return Results.NotFound();
 
-                session.EndedAt = DateTime.UtcNow;
+                session.LogoutTime = DateTime.UtcNow;
+                session.IsActive = false;
                 await db.SaveChangesAsync();
 
                 return Results.Ok(session);

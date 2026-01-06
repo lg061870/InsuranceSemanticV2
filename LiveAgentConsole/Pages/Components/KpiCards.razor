@@ -1,0 +1,72 @@
+@using InsuranceSemanticV2.Core.DTO
+
+@* KPI Cards displaying key metrics *@
+<div class="px-6 pb-4">
+    <div class="grid grid-cols-4 gap-4">
+        <!-- Total Leads -->
+        <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold">Total Leads</p>
+                    <p class="text-2xl font-bold text-gray-800 mt-1">@(Kpis?.TotalLeads ?? 0)</p>
+                </div>
+                <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                    <i class="fa-solid fa-users text-lg"></i>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+                <span class="font-semibold text-blue-600">@(Kpis?.NewLeadsToday ?? 0)</span> new today
+            </p>
+        </div>
+        
+        <!-- Avg Score -->
+        <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold">Avg Score</p>
+                    <p class="text-2xl font-bold text-gray-800 mt-1">@((Kpis?.AverageQualificationScore ?? 0).ToString("0"))</p>
+                </div>
+                <div class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+                    <i class="fa-solid fa-chart-line text-lg"></i>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+                <span class="font-semibold text-green-600">@(Kpis?.QualifiedLeads ?? 0)</span> qualified (≥70)
+            </p>
+        </div>
+        
+        <!-- Avg Progress -->
+        <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold">Avg Progress</p>
+                    <p class="text-2xl font-bold text-gray-800 mt-1">@((Kpis?.AverageProgressPercentage ?? 0).ToString("0"))%</p>
+                </div>
+                <div class="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center">
+                    <i class="fa-solid fa-tasks text-lg"></i>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+                <span class="font-semibold text-purple-600">@(Kpis?.CompletedProfiles ?? 0)</span> completed
+            </p>
+        </div>
+        
+        <!-- Follow-ups -->
+        <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold">Follow-ups</p>
+                    <p class="text-2xl font-bold text-gray-800 mt-1">@(Kpis?.LeadsNeedingFollowUp ?? 0)</p>
+                </div>
+                <div class="w-12 h-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center">
+                    <i class="fa-solid fa-phone text-lg"></i>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">Need attention</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public LeadKpiResponse? Kpis { get; set; }
+}

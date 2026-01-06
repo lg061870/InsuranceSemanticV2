@@ -148,6 +148,9 @@ namespace InsuranceSemanticV2.Data.Migrations
                     b.Property<bool>("IsAvailable")
                         .HasColumnType("bit");
 
+                    b.Property<string>("Password")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -305,24 +308,55 @@ namespace InsuranceSemanticV2.Data.Migrations
 
             modelBuilder.Entity("InsuranceSemanticV2.Data.Entities.AgentSession", b =>
                 {
-                    b.Property<int>("SessionId")
+                    b.Property<int>("AgentSessionId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SessionId"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AgentSessionId"));
 
                     b.Property<int>("AgentId")
                         .HasColumnType("int");
 
-                    b.Property<DateTime?>("EndedAt")
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastActivityTime")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime>("StartedAt")
+                    b.Property<DateTime>("LoginTime")
                         .HasColumnType("datetime2");
 
-                    b.HasKey("SessionId");
+                    b.Property<DateTime?>("LogoutTime")
+                        .HasColumnType("datetime2");
 
-                    b.HasIndex("AgentId");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("AgentSessionId");
+
+                    b.HasIndex("AgentId")
+                        .HasDatabaseName("IX_AgentSessions_AgentId");
+
+                    b.HasIndex("ConnectionId")
+                        .HasDatabaseName("IX_AgentSessions_ConnectionId");
+
+                    b.HasIndex("IsActive")
+                        .HasDatabaseName("IX_AgentSessions_IsActive");
 
                     b.ToTable("AgentSessions");
                 });
@@ -999,6 +1033,9 @@ namespace InsuranceSemanticV2.Data.Migrations
                     b.Property<string>("Language")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("LastModifiedByAgentId")
+                        .HasColumnType("int");
+
                     b.Property<string>("LeadIntent")
                         .HasColumnType("nvarchar(max)");
 
@@ -1028,6 +1065,8 @@ namespace InsuranceSemanticV2.Data.Migrations
                     b.HasKey("LeadId");
 
                     b.HasIndex("AssignedAgentId");
+
+                    b.HasIndex("LastModifiedByAgentId");
 
                     b.ToTable("Leads");
                 });
@@ -1538,9 +1577,17 @@ namespace InsuranceSemanticV2.Data.Migrations
                 {
                     b.HasOne("InsuranceSemanticV2.Data.Entities.Agent", "AssignedAgent")
                         .WithMany("AssignedLeads")
-                        .HasForeignKey("AssignedAgentId");
+                        .HasForeignKey("AssignedAgentId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("InsuranceSemanticV2.Data.Entities.Agent", "LastModifiedByAgent")
+                        .WithMany("ModifiedLeads")
+                        .HasForeignKey("LastModifiedByAgentId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("AssignedAgent");
+
+                    b.Navigation("LastModifiedByAgent");
                 });
 
             modelBuilder.Entity("InsuranceSemanticV2.Data.Entities.LeadAppointment", b =>
@@ -1671,6 +1718,8 @@ namespace InsuranceSemanticV2.Data.Migrations
                     b.Navigation("Licenses");
 
                     b.Navigation("Logins");
+
+                    b.Navigation("ModifiedLeads");
 
                     b.Navigation("Sessions");
                 });

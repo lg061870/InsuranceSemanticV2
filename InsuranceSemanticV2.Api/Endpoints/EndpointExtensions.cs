@@ -12,6 +12,7 @@ public static class EndpointExtensions {
         app.MapComplianceEndpoints();
         app.MapCarrierEndpoints();
         app.MapAuthEndpoints();
+        app.MapSessionEndpoints();
         app.MapCarrierStateComplianceEndpoints();
         app.MapAgentAvailabilityEndpoints();
         app.MapContactPolicyEndpoints();

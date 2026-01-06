@@ -9,6 +9,7 @@ public class Lead {
     public string Phone { get; set; } = string.Empty;
     public string Status { get; set; } = "new";
     public int? AssignedAgentId { get; set; }
+    public int? LastModifiedByAgentId { get; set; }  // Tracks which agent last modified this lead
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -26,6 +27,7 @@ public class Lead {
 
     // ---- Navigation Properties ----
     public Agent? AssignedAgent { get; set; }
+    public Agent? LastModifiedByAgent { get; set; }  // Agent who last modified this lead
     public LeadProfile? Profile { get; set; }
 
     public List<LeadAppointment> Appointments { get; set; } = new();

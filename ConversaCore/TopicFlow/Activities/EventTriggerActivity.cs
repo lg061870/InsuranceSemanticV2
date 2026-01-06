@@ -154,6 +154,10 @@ public class EventTriggerActivity : TopicFlowActivity, ICustomEventTriggeredActi
         TransitionTo(ActivityState.Running, input);
 
         try {
+            _logger?.LogWarning(
+                "[DEBUG] EventTriggerActivity.RunActivity CALLED - EventName={EventName}, ActivityId={ActivityId}, ThreadId={ThreadId}",
+                _eventName, Id, Environment.CurrentManagedThreadId);
+
             _logger?.LogInformation(
                 "[EventTriggerActivity] Triggering custom event '{EventName}' (WaitForResponse: {WaitForResponse})",
                 _eventName, _waitForResponse);

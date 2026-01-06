@@ -1,0 +1,52 @@
+﻿@inherits LayoutComponentBase
+
+<!-- Top Navigation Bar -->
+<header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 shadow-sm sticky top-0 z-30">
+    <div class="flex items-center gap-8">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold shadow-sm">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <h1 class="text-xl font-bold text-gray-800 tracking-tight">Copilot<span class="text-primary">Insurance</span></h1>
+        </div>
+
+        <nav class="hidden md:flex items-center gap-1">
+            <NavLink href="/dashboard" class="px-4 py-2 text-sm font-medium hover:bg-gray-50 rounded-md transition-colors" activeClass="text-white bg-primary">
+                <i class="fa-solid fa-users mr-2"></i> All Leads
+            </NavLink>
+            <NavLink href="/callbacks" class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-md transition-colors">
+                <i class="fa-solid fa-phone-volume mr-2"></i> Callbacks
+            </NavLink>
+            <NavLink href="/assist" class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-md transition-colors">
+                <i class="fa-solid fa-robot mr-2"></i> AI Assistance
+            </NavLink>
+            <NavLink href="/reports" class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-md transition-colors">
+                <i class="fa-solid fa-chart-pie mr-2"></i> Reports
+            </NavLink>
+        </nav>
+    </div>
+
+    <div class="flex items-center gap-4">
+        <div class="relative cursor-pointer">
+            <span class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+            <button class="text-gray-400 hover:text-gray-600 transition-colors">
+                <i class="fa-regular fa-bell text-lg"></i>
+            </button>
+        </div>
+        <div class="h-8 w-[1px] bg-gray-200"></div>
+        <div class="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-1 rounded-lg transition-colors">
+            <div class="text-right hidden sm:block">
+                <p class="text-sm font-bold text-gray-700">Agent Smith</p>
+                <p class="text-xs text-green-600 font-medium flex items-center justify-end gap-1">
+                    <span class="w-2 h-2 bg-green-500 rounded-full"></span> Online
+                </p>
+            </div>
+            <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg" class="w-9 h-9 rounded-full border border-gray-200 object-cover" alt="Profile" />
+        </div>
+    </div>
+</header>
+
+<!-- Main Body Slot -->
+<main class="flex-1 p-6 max-w-[1600px] mx-auto w-full">
+    @Body
+</main>

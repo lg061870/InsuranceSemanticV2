@@ -8,6 +8,7 @@ public class Agent {
     public string Email { get; set; }
     public string Phone { get; set; }
     public string Status { get; set; }
+    public string? Password { get; set; }  // Demo password (plain text for demo purposes only!)
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -32,6 +33,7 @@ public class Agent {
     public List<AgentLogin> Logins { get; set; } = new();
     public List<AgentAvailability> Availabilities { get; set; } = new();
     public List<Lead> AssignedLeads { get; set; } = new();
+    public List<Lead> ModifiedLeads { get; set; } = new();  // Leads modified by this agent
     public List<LeadStatusHistory> LeadStatusChanges { get; set; } = new();
     public List<LeadAuditLog> LeadAuditLogs { get; set; } = new();
     public List<LeadInteraction> LeadInteractions { get; set; } = new();

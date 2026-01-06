@@ -1,0 +1,166 @@
+@using LiveAgentConsole.Services
+@inject SelectedLeadService SelectedLeadService
+@implements IDisposable
+
+@* Displays the active call UI/card or selected lead ready to call *@
+<div class="p-6">
+    @if (SelectedLeadService.SelectedLead != null)
+    {
+        var lead = SelectedLeadService.SelectedLead;
+        var isOnCall = false; // TODO: Track actual call state
+
+        <div class="bg-white rounded-xl shadow-sm border border-primary/20 p-5 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-1.5 h-full @(isOnCall ? "bg-green-500" : "bg-blue-500")"></div>
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                <!-- Call Info -->
+                <div class="flex items-start gap-4">
+                    <div class="relative">
+                        <img src="@lead.AvatarUrl"
+                             class="w-16 h-16 rounded-full object-cover border-2 @(isOnCall ? "border-green-100" : "border-blue-100") p-0.5 shadow-sm" />
+                        @if (isOnCall)
+                        {
+                            <div class="absolute -bottom-1 -right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold border border-white flex items-center gap-1">
+                                <i class="fa-solid fa-microphone"></i> LIVE
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="absolute -bottom-1 -right-1 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold border border-white">
+                                <i class="fa-solid fa-phone"></i>
+                            </div>
+                        }
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">@lead.Name</h2>
+                        <div class="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                            <span class="flex items-center gap-1"><i class="fa-solid fa-envelope text-gray-400"></i> @lead.Email</span>
+                            <span class="w-1 h-1 bg-gray-300 rounded-full"></span>
+                            <span class="flex items-center gap-1"><i class="@lead.ProductIcon text-primary"></i> @lead.Product</span>
+                        </div>
+                    </div>
+                </div>
+
+                @if (isOnCall)
+                {
+                    <!-- Metrics (shown during active call) -->
+                    <div class="flex items-center gap-8 bg-gray-50 px-6 py-3 rounded-lg border border-gray-100">
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500 uppercase font-semibold">Duration</p>
+                            <p class="text-xl font-mono font-bold text-gray-800 w-20">@callDuration</p>
+                        </div>
+                        <div class="w-[1px] h-8 bg-gray-200"></div>
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500 uppercase font-semibold">Score</p>
+                            <p class="text-xl font-bold text-secondary">@lead.Score%</p>
+                        </div>
+                        <div class="w-[1px] h-8 bg-gray-200"></div>
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500 uppercase font-semibold">Progress</p>
+                            <p class="text-xl font-bold text-gray-800">@lead.ProgressPercentage%</p>
+                        </div>
+                    </div>
+
+                    <!-- Call Controls (shown during active call) -->
+                    <div class="flex items-center gap-3">
+                        <button class="w-10 h-10 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center transition-colors" title="Mute">
+                            <i class="fa-solid fa-microphone-slash"></i>
+                        </button>
+                        <button class="w-10 h-10 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center transition-colors" title="Hold">
+                            <i class="fa-solid fa-pause"></i>
+                        </button>
+                        <button class="w-10 h-10 rounded-full bg-blue-50 text-primary hover:bg-blue-100 flex items-center justify-center transition-colors border border-blue-100" title="Transfer">
+                            <i class="fa-solid fa-share-nodes"></i>
+                        </button>
+                        <button class="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium shadow-sm transition-colors flex items-center gap-2">
+                            <i class="fa-solid fa-phone-slash"></i> End Call
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <!-- Lead Info (shown when ready to call) -->
+                    <div class="flex items-center gap-8 bg-blue-50/50 px-6 py-3 rounded-lg border border-blue-100">
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500 uppercase font-semibold">Score</p>
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium @lead.ScoreLabelColor bg-opacity-20 mt-1">
+                                @lead.ScoreLabel
+                            </span>
+                        </div>
+                        <div class="w-[1px] h-8 bg-gray-200"></div>
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500 uppercase font-semibold">Progress</p>
+                            <p class="text-xl font-bold text-gray-800">@lead.ProgressPercentage%</p>
+                        </div>
+                        <div class="w-[1px] h-8 bg-gray-200"></div>
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500 uppercase font-semibold">Status</p>
+                            <span class="text-sm font-medium text-gray-700">@lead.Status</span>
+                        </div>
+                    </div>
+
+                    <!-- Call Button (shown when ready to call) -->
+                    <div class="flex items-center gap-3">
+                        <button @onclick="HandleCallClick" class="px-8 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-3 text-lg">
+                            <i class="fa-solid fa-phone"></i>
+                            <span>CALL</span>
+                        </button>
+                        <button @onclick="HandleClearSelection" class="w-10 h-10 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center transition-colors" title="Clear Selection">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Empty state - no lead selected -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+            <div class="flex flex-col items-center gap-4">
+                <div class="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+                    <i class="fa-solid fa-phone text-2xl text-gray-400"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-700">No Lead Selected</h3>
+                    <p class="text-sm text-gray-500 mt-1">Click on a lead from the table below to prepare for calling</p>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private string callDuration = "00:00";
+
+    protected override void OnInitialized()
+    {
+        SelectedLeadService.OnLeadSelectionChanged += HandleLeadSelectionChanged;
+    }
+
+    private void HandleLeadSelectionChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleCallClick()
+    {
+        // TODO: Implement actual call initiation
+        // For now, just show a console message
+        var lead = SelectedLeadService.SelectedLead;
+        if (lead != null)
+        {
+            Console.WriteLine($"Initiating call to {lead.Name} at {lead.Email}");
+            // Future: Start actual call, update call state, start timer
+        }
+    }
+
+    private void HandleClearSelection()
+    {
+        SelectedLeadService.ClearSelection();
+    }
+
+    public void Dispose()
+    {
+        SelectedLeadService.OnLeadSelectionChanged -= HandleLeadSelectionChanged;
+    }
+}

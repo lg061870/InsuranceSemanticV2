@@ -60,4 +60,8 @@ Thumbs.db
 # IDE specific files
 *.swp
 *.swo
-*~.vs/ 
+*~.vs/
+
+# MCP Server Configuration (contains secrets)
+# Note: .mcp.json should be committed, but create .mcp.local.json for local overrides with tokens
+.mcp.local.json 

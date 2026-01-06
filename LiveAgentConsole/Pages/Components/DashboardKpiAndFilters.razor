@@ -1,0 +1,124 @@
+﻿@using InsuranceSemanticV2.Core.DTO
+
+@* KPI + optionally filters/chart placeholder *@
+<div class="px-6 pb-4">
+    <div class="grid grid-cols-12 gap-6">
+        <div class="col-span-12 md:col-span-4 lg:col-span-3">
+            <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm h-32 flex flex-col justify-between">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Lead Velocity</span>
+                    <span class="text-xs @VelocityColor font-bold">
+                        @VelocityPercentageText <i class="fa-solid @VelocityIcon"></i>
+                    </span>
+                </div>
+                <div class="flex flex-col justify-end h-full">
+                    <div class="text-2xl font-bold text-gray-800">@(Kpis?.NewLeadsToday ?? 0)</div>
+                    <div class="text-xs text-gray-500">
+                        Today (@VelocityDifferenceText vs yesterday)
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-span-12 md:col-span-8 lg:col-span-9 flex flex-col justify-end">
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-2">
+                <h3 class="text-lg font-bold text-gray-800">Lead Queue</h3>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-500 mr-2">Filter by Temperature:</span>
+                    <button @onclick='() => OnTemperatureFilterChanged("All")'
+                            class="px-3 py-1.5 text-xs @(SelectedTemp == "All" ? "font-bold text-white bg-primary" : "font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50") rounded-full shadow-sm transition-colors">
+                        All (@TotalCount)
+                    </button>
+                    <button @onclick='() => OnTemperatureFilterChanged("Hot")'
+                            class="px-3 py-1.5 text-xs @(SelectedTemp == "Hot" ? "font-bold" : "font-medium") text-red-600 @(SelectedTemp == "Hot" ? "bg-red-100" : "bg-red-50") border border-red-100 hover:bg-red-100 rounded-full transition-colors">
+                        Hot (@HotCount)
+                    </button>
+                    <button @onclick='() => OnTemperatureFilterChanged("Warm")'
+                            class="px-3 py-1.5 text-xs @(SelectedTemp == "Warm" ? "font-bold" : "font-medium") text-orange-600 @(SelectedTemp == "Warm" ? "bg-orange-100" : "bg-orange-50") border border-orange-100 hover:bg-orange-100 rounded-full transition-colors">
+                        Warm (@WarmCount)
+                    </button>
+                    <button @onclick='() => OnTemperatureFilterChanged("Cold")'
+                            class="px-3 py-1.5 text-xs @(SelectedTemp == "Cold" ? "font-bold" : "font-medium") text-blue-600 @(SelectedTemp == "Cold" ? "bg-blue-100" : "bg-blue-50") border border-blue-100 hover:bg-blue-100 rounded-full transition-colors">
+                        Cold (@ColdCount)
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white p-2 rounded-lg border border-gray-200 flex items-center justify-between gap-4">
+                <div class="relative flex-1 max-w-md">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="text"
+                           @bind-value="SearchText"
+                           @bind-value:event="oninput"
+                           placeholder="Search leads by name or policy..."
+                           class="w-full pl-9 pr-4 py-1.5 text-sm border-none focus:ring-0 text-gray-700 placeholder-gray-400 bg-transparent" />
+                </div>
+                <div class="flex items-center gap-2 border-l border-gray-200 pl-4">
+                    <select @bind="SelectedSort"
+                            class="text-sm border-none bg-transparent font-medium text-gray-600 focus:ring-0 cursor-pointer">
+                        <option value="Score">Sort by: Score (High-Low)</option>
+                        <option value="Name">Sort by: Name (A-Z)</option>
+                        <option value="Progress">Sort by: Progress (High-Low)</option>
+                        <option value="Status">Sort by: Status</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback<string> OnSearchChanged { get; set; }
+    [Parameter] public EventCallback<string> OnTemperatureChanged { get; set; }
+    [Parameter] public EventCallback<string> OnSortChanged { get; set; }
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public int HotCount { get; set; }
+    [Parameter] public int WarmCount { get; set; }
+    [Parameter] public int ColdCount { get; set; }
+    [Parameter] public LeadKpiResponse? Kpis { get; set; }
+
+    private string SelectedTemp { get; set; } = "All";
+    private string _searchText = string.Empty;
+    private string _selectedSort = "Score";
+
+    private string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            _searchText = value;
+            OnSearchChanged.InvokeAsync(value);
+        }
+    }
+
+    private string SelectedSort
+    {
+        get => _selectedSort;
+        set
+        {
+            _selectedSort = value;
+            OnSortChanged.InvokeAsync(value);
+        }
+    }
+
+    private async Task OnTemperatureFilterChanged(string temp)
+    {
+        SelectedTemp = temp;
+        await OnTemperatureChanged.InvokeAsync(temp);
+    }
+    
+    // Velocity computed properties
+    private string VelocityColor => (Kpis?.LeadVelocityPercentage ?? 0) >= 0 ? "text-green-600" : "text-red-600";
+    private string VelocityIcon => (Kpis?.LeadVelocityPercentage ?? 0) >= 0 ? "fa-arrow-trend-up" : "fa-arrow-trend-down";
+    private string VelocityPercentageText {
+        get {
+            var pct = Kpis?.LeadVelocityPercentage ?? 0;
+            return pct >= 0 ? $"+{pct:F0}%" : $"{pct:F0}%";
+        }
+    }
+    private string VelocityDifferenceText {
+        get {
+            var diff = Kpis?.LeadsTodayVsYesterday ?? 0;
+            return diff >= 0 ? $"+{diff}" : $"{diff}";
+        }
+    }
+}

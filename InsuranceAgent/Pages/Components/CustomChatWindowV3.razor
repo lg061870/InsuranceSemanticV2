@@ -1,0 +1,680 @@
+@using System.Collections.Generic
+@using System.Text.Json
+@using ConversaCore.Events
+@using ConversaCore.Interfaces
+@using ConversaCore.Models
+@using ConversaCore.Services
+@using ConversaCore.TopicFlow
+@using InsuranceAgent.Models
+@using InsuranceAgent.Services
+
+@implements IDisposable
+
+@inject InsuranceAgentServiceV2 AgentService
+@inject IChatInteropService ChatInteropService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<CustomChatWindowV3> Logger
+
+<!-- ========== CHAT WINDOW LAYOUT ========== -->
+<div class="chat-window-container">
+
+    <!-- Header -->
+    <div class="chat-header">
+        <div class="chat-header-avatar">
+            <div class="avatar-circle">
+                <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-ai-1.jpg" alt="Sofia" />
+                <div class="avatar-status"></div>
+            </div>
+        </div>
+        <div class="chat-header-info">
+            <h3 class="chat-header-name">Sofia</h3>
+            <div class="chat-header-status">
+                <div class="status-indicator"></div>
+                <span>V3 -- Direct Agent • Online</span>
+            </div>
+        </div>
+        <div class="chat-header-actions">
+            <button class="chat-header-button" title="Reset conversation" @onclick="ConfirmReset">
+                <i class="fa-solid fa-rotate-left"></i>
+            </button>
+            <button class="chat-header-button" title="Clear chat" @onclick="ClearChat">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Message history -->
+    <div class="messages-container" @ref="messagesContainerRef">
+        @foreach (var message in Messages) {
+            @if (message.IsFromUser) {
+                <!-- User messages -->
+                <div class="message-group">
+                    <div class="message user-message">
+                        <div class="message-content">@message.Content</div>
+                        <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                        <div class="message-actions">
+                            <button class="message-action-button" title="Edit" @onclick="() => EditMessage(message)">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+            else {
+                <!-- Bot messages -->
+                <div class="message-group">
+                    <div class="message bot-message">
+
+                        @if (message.IsAdaptiveCard && !string.IsNullOrEmpty(message.AdaptiveCardJson)) {
+                            <!-- Adaptive Card -->
+                            <div class="adaptive-card-container @(message.IsActive ? "" : "readonly")">
+                                <AdaptiveCardRenderer CardJson="@message.AdaptiveCardJson"
+                                                      CardContainerId="@($"card-{message.Timestamp.Ticks}")"
+                                                      Disabled="@(!message.IsActive)"
+                                                      OnSubmit="OnAdaptiveCardSubmit"
+                                                      OnAction="HandleCardAction" />
+
+                            </div>
+
+                            <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                        }
+                        else {
+                            <!-- Plain text message -->
+                            <div class="message-content>@((MarkupString)FormatMessageContent(message.Content))</div>
+                            <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                            <div class="message-actions">
+                                <button class="message-action-button" title="Copy" @onclick="() => CopyMessageToClipboard(message)">
+                                    <i class="fa-solid fa-copy"></i>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+
+        <!-- Typing indicator -->
+        @if (IsTyping) {
+            <div class="message bot-message typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        }
+    </div>
+
+    <!-- Suggestion chips -->
+    <div class="chat-suggestions @( !IsPromptEnabled ? "disabled" : "" )">
+        @foreach (var suggestion in CurrentSuggestions) {
+            <div class="suggestion-chip"
+                 @onclick="() => UseSuggestion(suggestion)"
+                 disabled="@(!IsPromptEnabled)">
+                @suggestion
+            </div>
+        }
+    </div>
+
+    <!-- Message input -->
+    <div class="message-input-container" title="@(!IsPromptEnabled ? "Please complete the required card above before continuing." : null)">
+        <textarea @bind="CurrentMessage"
+                  @bind:event="oninput"
+                  @onkeydown="HandleKeyDown"
+                  placeholder="@(!IsPromptEnabled
+                                      ? "Please complete the required card above before continuing..."
+                                      : "Type your message...")"
+                  disabled="@(!IsPromptEnabled || IsProcessing)"
+                  class="message-input @( !IsPromptEnabled ? "disabled" : "" )"
+                  rows="1"
+                  @ref="messageInputRef"></textarea>
+
+        <button class="send-button"
+                @onclick="SendMessage"
+                disabled="@(!IsPromptEnabled || IsProcessing || string.IsNullOrWhiteSpace(CurrentMessage))">
+            <i class="fa-solid fa-paper-plane"></i>
+        </button>
+    </div>
+
+</div>
+
+<!-- Reset Confirmation Dialog -->
+@if (showResetConfirmation) {
+    <div class="modal-overlay" @onclick="HideResetConfirmation">
+        <div class="modal-dialog" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Reset Conversation</h3>
+                <button class="modal-close" @onclick="HideResetConfirmation">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to reset the entire conversation?</p>
+                <p><strong>This will:</strong></p>
+                <ul>
+                    <li>Clear all chat history</li>
+                    <li>Reset all form data and preferences</li>
+                    <li>Start a completely fresh conversation</li>
+                </ul>
+                <p class="text-warning">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button id="reset-cancel-btn" type="button" class="btn btn-secondary" @onclick="HideResetConfirmation">Cancel</button>
+                <button id="reset-confirm-btn" type="button" class="btn btn-danger" @onclick="ExecuteReset">Reset Conversation</button>
+            </div>
+        </div>
+    </div>
+}
+
+
+@code {
+    // ========== STATE ========== 
+    private ChatSessionState SessionState { get; set; } = new ChatSessionState();
+    private List<ChatMessage> Messages { get; set; } = new();
+    private string CurrentMessage { get; set; } = "";
+    private bool IsTyping { get; set; } = false;
+    private bool IsProcessing { get; set; } = false;
+    private ChatMessage? messageBeingEdited = null;
+    private bool _conversationStarted = false;
+    private bool showResetConfirmation = false;
+    private bool IsPromptEnabled { get; set; } = true;
+
+    private ElementReference messagesContainerRef;
+    private ElementReference messageInputRef;
+
+    private List<string> CurrentSuggestions { get; set; } = new() {
+        "California Resident",
+        "Beneficiary info",
+        "repeat demo"
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        if (firstRender && !_conversationStarted) {
+            Logger?.LogInformation("[ChatWindowV3] ? First render - initializing event-driven architecture");
+            
+            // ========== SUBSCRIBE AGENT TO UI EVENTS ==========
+            Logger?.LogInformation("[ChatWindowV3] Wiring agent event subscriptions");
+            AgentService.SubscribeToChatWindowEvents(this);
+            
+            // ========== SUBSCRIBE UI TO AGENT EVENTS ==========
+            Logger?.LogInformation("[ChatWindowV3] Subscribing to agent outbound events");
+            
+            // Bot messages
+            AgentService.ActivityMessageReady += (s, e) => {
+                Logger?.LogInformation("[ChatWindowV3] ActivityMessageReady: {Content}", e.Message.Content);
+                InvokeAsync(() => {
+                    Messages.Add(e.Message);
+                    StateHasChanged();
+                });
+            };
+
+            // Adaptive cards
+            AgentService.ActivityAdaptiveCardReady += (s, e) => {
+                Logger?.LogInformation("[ChatWindowV3] ActivityAdaptiveCardReady: CardId={CardId}, RenderMode={RenderMode}", 
+                    e.CardId, e.RenderMode);
+                InvokeAsync(() => {
+                    if (e.RenderMode == ConversaCore.Events.RenderMode.Replace && !string.IsNullOrEmpty(e.CardId)) {
+                        var existing = Messages.FirstOrDefault(m => m.IsAdaptiveCard && m.CardId == e.CardId);
+                        if (existing != null) {
+                            existing.AdaptiveCardJson = e.CardJson;
+                            existing.Timestamp = DateTime.Now;
+                            StateHasChanged();
+                            Logger?.LogInformation("[ChatWindowV3] AdaptiveCard replaced: CardId={CardId}", e.CardId);
+                            return;
+                        }
+                    }
+
+                    // Append new card
+                    Messages.Add(new ChatMessage {
+                        IsFromUser = false,
+                        IsAdaptiveCard = true,
+                        AdaptiveCardJson = e.CardJson,
+                        CardId = e.CardId,
+                        Timestamp = DateTime.Now
+                    });
+
+                    StateHasChanged();
+                    Logger?.LogInformation("[ChatWindowV3] AdaptiveCard appended: CardId={CardId}", e.CardId);
+                });
+            };
+
+            // Card state changes
+            AgentService.CardStateChanged += (s, e) => {
+                Logger?.LogInformation("[ChatWindowV3] Card state changed: {CardId} -> {State}", e.CardId, e.State);
+                InvokeAsync(async () => {
+                    var index = Messages.FindIndex(m => m.IsAdaptiveCard && m.CardId == e.CardId);
+                    if (index != -1) {
+                        var card = Messages[index];
+                        bool newIsActive = e.State == CardState.Active;
+
+                        if (card.IsActive != newIsActive) {
+                            Logger?.LogInformation("[ChatWindowV3] Updating card {CardId} active={IsActive}", e.CardId, newIsActive);
+                            card.IsActive = newIsActive;
+                            Messages[index] = card;
+                            StateHasChanged();
+
+                            if (newIsActive) {
+                                Logger?.LogInformation("[ChatWindowV3] Scrolling to bottom after activating {CardId}", e.CardId);
+                                await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+                            }
+                        }
+                    }
+                });
+            };
+
+            // Prompt state
+            AgentService.PromptInputStateChanged += (s, e) => {
+                Logger?.LogInformation("[ChatWindowV3] Prompt state changed: Enabled={IsEnabled} (CardId={CardId})", 
+                    e.IsEnabled, e.CardId);
+                InvokeAsync(() => {
+                    IsPromptEnabled = e.IsEnabled;
+                    StateHasChanged();
+                });
+            };
+
+            // Conversation reset
+            AgentService.ConversationReset += (s, e) => {
+                Logger?.LogInformation("[ChatWindowV3] ConversationReset at {ResetTime}", e.ResetTime);
+                Logger?.LogInformation("[ChatWindowV3] Clearing {Count} messages", Messages.Count);
+                InvokeAsync(() => {
+                    Messages.Clear();
+                    StateHasChanged();
+                    Logger?.LogInformation("[ChatWindowV3] Messages cleared");
+                });
+            };
+
+            // Lifecycle events (optional logging)
+            AgentService.ActivityCompleted += (s, e) => 
+                Logger?.LogDebug("[ChatWindowV3] ActivityCompleted");
+            
+            AgentService.TopicLifecycleChanged += (s, e) => 
+                Logger?.LogDebug("[ChatWindowV3] TopicLifecycleChanged: {TopicName} -> {State}", e.TopicName, e.State);
+            
+            AgentService.ActivityLifecycleChanged += (s, e) => 
+                Logger?.LogDebug("[ChatWindowV3] ActivityLifecycleChanged: {ActivityId} -> {State}", e.ActivityId, e.State);
+
+            // ========== START CONVERSATION ==========
+            Logger?.LogInformation("[ChatWindowV3] Raising ConversationStartRequested event");
+            ConversationStartRequested?.Invoke(this, new ConversationStartRequestedEventArgs(CancellationToken.None));
+
+            _conversationStarted = true;
+            Logger?.LogInformation("[ChatWindowV3] ? Event-driven initialization complete");
+        }
+    }
+
+    public void Dispose() {
+        Logger?.LogInformation("[ChatWindowV3] Disposing - unsubscribing from agent events");
+        // Events will be automatically unsubscribed when component disposes
+    }
+
+    // ========== CONVERSATION ========== 
+    private async Task SendMessage() {
+        if (string.IsNullOrWhiteSpace(CurrentMessage) || IsProcessing)
+            return;
+
+        Logger?.LogInformation("[ChatWindowV3] SendMessage: {Message}", CurrentMessage);
+        IsProcessing = true;
+
+        var userMessage = new ChatMessage {
+            Content = CurrentMessage,
+            IsFromUser = true,
+            Timestamp = DateTime.Now
+        };
+
+        Messages.Add(userMessage);
+
+        string userMessageText = CurrentMessage;
+        CurrentMessage = "";
+        StateHasChanged();
+        await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+
+        try {
+            Logger?.LogInformation("[ChatWindowV3] Raising UserMessageReceived event: {Message}", userMessageText);
+            UserMessageReceived?.Invoke(this, new UserMessageReceivedEventArgs(userMessageText, CancellationToken.None));
+        } catch (Exception ex) {
+            Logger?.LogError(ex, "[ChatWindowV3] Error processing message");
+            Messages.Add(new ChatMessage {
+                Content = "?? An error occurred. Please try again.",
+                IsFromUser = false,
+                Timestamp = DateTime.Now
+            });
+            StateHasChanged();
+        } finally {
+            IsProcessing = false;
+            Logger?.LogInformation("[ChatWindowV3] SendMessage completed");
+        }
+    }
+
+    // ========== UTILITY ========== 
+    private void ClearChat() {
+        Logger?.LogInformation("[ChatWindowV3] ClearChat: clearing {Count} messages", Messages.Count);
+        Messages.Clear();
+        StateHasChanged();
+    }
+
+    private void ConfirmReset() {
+        Logger?.LogInformation("[ChatWindowV3] ConfirmReset: showing confirmation dialog");
+        showResetConfirmation = true;
+        StateHasChanged();
+    }
+
+    private void HideResetConfirmation() {
+        Logger?.LogInformation("[ChatWindowV3] HideResetConfirmation: hiding dialog");
+        showResetConfirmation = false;
+        StateHasChanged();
+    }
+
+    private async Task ExecuteReset() {
+        Logger?.LogInformation("[ChatWindowV3] ExecuteReset: starting reset");
+        showResetConfirmation = false;
+        StateHasChanged();
+
+        try {
+            Messages.Clear();
+            StateHasChanged();
+            await Task.Delay(100);
+
+            Logger?.LogInformation("[ChatWindowV3] Raising ConversationResetRequested event");
+            ConversationResetRequested?.Invoke(this, new ConversationResetRequestedEventArgs(CancellationToken.None));
+
+            Logger?.LogInformation("[ChatWindowV3] Reset completed");
+            StateHasChanged();
+        } catch (Exception ex) {
+            Logger?.LogError(ex, "[ChatWindowV3] Error resetting conversation");
+            Messages.Add(new ChatMessage {
+                Content = "?? There was an error resetting the conversation. Please try again.",
+                IsFromUser = false,
+                Timestamp = DateTime.Now
+            });
+            StateHasChanged();
+        }
+    }
+
+    private async Task CopyMessageToClipboard(ChatMessage message) {
+        if (message == null || string.IsNullOrEmpty(message.Content)) return;
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", message.Content);
+        Logger?.LogInformation("[ChatWindowV3] Message copied to clipboard");
+    }
+
+    private void EditMessage(ChatMessage message) {
+        if (message == null) return;
+        messageBeingEdited = message;
+        CurrentMessage = message.Content;
+        StateHasChanged();
+    }
+
+    private string FormatMessageContent(string content) =>
+        string.IsNullOrEmpty(content) ? string.Empty : content;
+
+    private Task HandleCardAction(string actionId) {
+        Logger?.LogInformation("[ChatWindowV3] HandleCardAction: {ActionId}", actionId);
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e) {
+        if (e.Key == "Enter" && !e.ShiftKey) {
+            await SendMessage();
+        }
+    }
+
+    private async Task UseSuggestion(string suggestion) {
+        Logger?.LogInformation("[ChatWindowV3] UseSuggestion: {Suggestion}", suggestion);
+        CurrentMessage = suggestion;
+        await SendMessage();
+    }
+
+    private Task OnAdaptiveCardSubmit(Dictionary<string, object> data) {
+        Logger?.LogInformation("[ChatWindowV3] OnAdaptiveCardSubmit: {Keys}", string.Join(",", data.Keys));
+        Logger?.LogInformation("[ChatWindowV3] Raising CardSubmitted event");
+        CardSubmitted?.Invoke(this, new CardSubmittedEventArgs(data, CancellationToken.None));
+        return Task.CompletedTask;
+    }
+
+    // ========== PUBLIC EVENTS (UI ? Agent) ==========
+    
+    /// <summary>
+    /// Raised when the UI requests conversation start.
+    /// Agent service subscribes to this event.
+    /// </summary>
+    public event EventHandler<ConversationStartRequestedEventArgs>? ConversationStartRequested;
+    
+    /// <summary>
+    /// Raised when user sends a message.
+    /// Agent service subscribes to this event.
+    /// </summary>
+    public event EventHandler<UserMessageReceivedEventArgs>? UserMessageReceived;
+    
+    /// <summary>
+    /// Raised when user submits an adaptive card.
+    /// Agent service subscribes to this event.
+    /// </summary>
+    public event EventHandler<CardSubmittedEventArgs>? CardSubmitted;
+    
+    /// <summary>
+    /// Raised when user requests conversation reset.
+    /// Agent service subscribes to this event.
+    /// </summary>
+    public event EventHandler<ConversationResetRequestedEventArgs>? ConversationResetRequested;
+
+}
+
+<style>
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-dialog {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        max-width: 500px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #6c757d;
+        padding: 0;
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+        .modal-close:hover {
+            color: #dc3545;
+        }
+
+    .modal-body {
+        padding: 1.5rem;
+    }
+
+        .modal-body p {
+            margin-bottom: 1rem;
+        }
+
+        .modal-body ul {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }
+
+        .modal-body li {
+            margin-bottom: 0.5rem;
+        }
+
+    .text-warning {
+        color: #fd7e14;
+        font-weight: 500;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .btn-secondary {
+        background-color: #6c757d;
+        border-color: #6c757d;
+        color: white;
+    }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
+            border-color: #545b62;
+        }
+
+    .btn-danger {
+        background-color: #dc3545;
+        border-color: #dc3545;
+        color: white;
+    }
+
+        .btn-danger:hover {
+            background-color: #c82333;
+            border-color: #bd2130;
+        }
+
+    .adaptive-card-container.readonly {
+        opacity: 0.5;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+
+    .message-input.disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        background-color: #f4f4f4;
+        color: #999;
+    }
+
+    .message-input-container[title] {
+        position: relative;
+    }
+
+        .message-input-container[title]::after {
+            content: attr(title);
+            display: none;
+            position: absolute;
+            bottom: 120%;
+            left: 10px;
+            background: #333;
+            color: #fff;
+            font-size: 0.75rem;
+            padding: 6px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        .message-input-container[title]:hover::after {
+            display: block;
+            opacity: 1;
+        }
+
+    /* === Required Card Styling === */
+    .ac-required-card {
+        position: relative;
+        border: 2px dashed #d93025;
+        border-radius: 10px;
+        background: transparent;
+        padding: 16px 18px 20px 18px;
+        margin: 14px 0;
+    }
+
+    .ac-required-banner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fdecea;
+        color: #b71c1c;
+        border: 1px solid #f5c6cb;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 14px;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+    }
+
+        .ac-required-banner::before {
+            content: "??";
+            margin-right: 6px;
+        }
+
+    .ac-required-field label .ac-required-indicator {
+        color: #d93025;
+        font-weight: bold;
+    }
+
+    .ac-required-card .ac-input-container input,
+    .ac-required-card .ac-input-container select,
+    .ac-required-card .ac-input-container textarea {
+        border: 1px solid #f1a6a0;
+        transition: border-color 0.2s ease;
+    }
+
+        .ac-required-card .ac-input-container input:focus,
+        .ac-required-card .ac-input-container select:focus,
+        .ac-required-card .ac-input-container textarea:focus {
+            border-color: #d93025;
+            outline: none;
+        }
+
+    .ac-required-card .ac-pushButton {
+        background: linear-gradient(180deg, #0078d7 0%, #005fa3 100%);
+        border: none;
+        color: white;
+        font-weight: 600;
+        border-radius: 6px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        transition: background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+        .ac-required-card .ac-pushButton:hover {
+            background: linear-gradient(180deg, #008fee 0%, #006cc2 100%);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+
+</style>

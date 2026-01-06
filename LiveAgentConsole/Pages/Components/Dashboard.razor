@@ -1,0 +1,126 @@
+﻿@page "/"
+@using LiveAgentConsole.Pages.Components
+@using LiveAgentConsole.Services
+@using InsuranceSemanticV2.Core.DTO
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject KpiService KpiService
+@inject LeadHubConnection HubConnection
+@inject SessionService SessionService
+@layout EmptyLayout
+@implements IAsyncDisposable
+
+<Header />
+
+<div class="min-h-screen flex text-gray-800 overflow-hidden">
+    <!-- Main Console Layout -->
+
+    <!-- Left Panel: Active Call & Lead Queue -->
+    <section class="flex-1 flex flex-col min-w-0 bg-gray-50 border-r border-gray-200 overflow-y-auto">
+        <ActiveCallCard />
+        <KpiCards Kpis="@kpis" />
+        <DashboardKpiAndFilters OnSearchChanged="HandleSearchChanged"
+                                OnTemperatureChanged="HandleTemperatureChanged"
+                                OnSortChanged="HandleSortChanged"
+                                TotalCount="@totalCount"
+                                HotCount="@hotCount"
+                                WarmCount="@warmCount"
+                                ColdCount="@coldCount"
+                                Kpis="@kpis" />
+        <LiveLeadTable @ref="leadTable" />
+    </section>
+
+    <!-- Right Panel: Copilot Sidebar -->
+    <aside class="w-[400px] bg-white border-l border-gray-200 flex flex-col flex-shrink-0 z-10 shadow-lg">
+        <CopilotContext />
+        <TranscriptPanel />
+        <QuickActionsFooter />
+    </aside>
+</div>
+
+@code {
+    private LiveLeadTable? leadTable;
+    private LeadKpiResponse? kpis;
+    
+    // Keep these for backward compatibility with existing UI
+    private int totalCount => kpis?.TotalLeads ?? 0;
+    private int hotCount => kpis?.HotLeads ?? 0;
+    private int warmCount => kpis?.WarmLeads ?? 0;
+    private int coldCount => kpis?.ColdLeads ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshKpis();
+
+        // Subscribe to SignalR events
+        HubConnection.OnKpisChanged += HandleKpisChanged;
+
+        // Start SignalR connection
+        await HubConnection.StartAsync();
+
+        // Start agent session with SignalR connection ID
+        if (!string.IsNullOrEmpty(HubConnection.ConnectionId))
+        {
+            await SessionService.StartSessionAsync(HubConnection.ConnectionId);
+        }
+    }
+    
+    private async Task HandleKpisChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await RefreshKpis();
+            StateHasChanged();
+        });
+    }
+    
+    private async Task RefreshKpis()
+    {
+        kpis = await KpiService.GetKpisAsync();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && leadTable != null)
+        {
+            UpdateCounts();
+        }
+    }
+
+    private void HandleSearchChanged(string searchText)
+    {
+        leadTable?.OnSearchChanged(searchText);
+        UpdateCounts();
+    }
+
+    private void HandleTemperatureChanged(string temp)
+    {
+        leadTable?.OnTemperatureFilterChanged(temp);
+        UpdateCounts();
+    }
+
+    private void HandleSortChanged(string sort)
+    {
+        leadTable?.OnSortChanged(sort);
+    }
+
+    private void UpdateCounts()
+    {
+        if (leadTable != null)
+        {
+            // Note: These counts are now coming from KPI service, 
+            // but we keep the leadTable method calls for filtered counts
+            StateHasChanged();
+        }
+    }
+    
+    public async ValueTask DisposeAsync()
+    {
+        HubConnection.OnKpisChanged -= HandleKpisChanged;
+
+        // End the session before disconnecting
+        await SessionService.EndSessionAsync();
+
+        await HubConnection.StopAsync();
+    }
+}

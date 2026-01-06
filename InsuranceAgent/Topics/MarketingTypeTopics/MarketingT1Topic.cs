@@ -115,6 +115,14 @@ public class MarketingT1Topic : TopicFlow {
             )
         ));
 
+        // contact_info_submitted
+        Add(EventTriggerActivity.CreateFireAndForget(
+            eventName: "contact_info_submitted",
+            data: new { stage = "contact-info", progress = 10, message = "Contact info verified" },
+            logger: _logger,
+            conversationContext: _conversationContext
+        ));
+
         // lead_details_submitted
         Add(EventTriggerActivity.CreateFireAndForget(
             eventName: "lead_details_submitted",
@@ -336,6 +344,14 @@ public class MarketingT1Topic : TopicFlow {
             )
         ));
 
+        // beneficiaries_submitted (fire immediately after card submission)
+        Add(EventTriggerActivity.CreateFireAndForget(
+            eventName: "beneficiaries_submitted",
+            data: new { stage = "beneficiaries", progress = 87, message = "Beneficiary information collected" },
+            logger: _logger,
+            conversationContext: _conversationContext
+        ));
+
         var finalQuery = new SemanticQueryActivity<
             CombinedInsuranceRuleSet,
             LeadSummaryModel,
@@ -352,22 +368,16 @@ public class MarketingT1Topic : TopicFlow {
         // beneficiaries_submitted
         finalQuery.OnAsyncCompleted(
             AttachQueryPayloadAsync(
-                eventName: "beneficiaries_submitted",
+                eventName: "qualification_complete",
                 progress: 90,
-                message: "Beneficiaries recorded",
+                message: "Final qualification completed",
                 queryOutputKey: "output_query_finalqualificationquery"
             )
         );
 
         Add(finalQuery);
 
-        // contact_info_submitted
-        Add(EventTriggerActivity.CreateFireAndForget(
-            eventName: "contact_info_submitted",
-            data: new { stage = "contact-info", progress = 95, message = "Contact info verified" },
-            logger: _logger,
-            conversationContext: _conversationContext
-        ));
+
 
         // === SUMMARY ===
         Add(new SimpleActivity("T1Summary", (ctx, _) =>

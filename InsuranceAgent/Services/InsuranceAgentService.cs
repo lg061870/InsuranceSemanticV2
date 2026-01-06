@@ -8,7 +8,6 @@ using ConversaCore.TopicFlow;
 using ConversaCore.TopicFlow.Core.Interfaces;
 using ConversaCore.Topics;
 using InsuranceAgent.Cards;
-using InsuranceAgent.Models;
 using InsuranceAgent.Topics;
 using System.Reflection;
 using System.Text.Json;
@@ -125,7 +124,7 @@ public class InsuranceAgentService {
         LogInfo("0010007");
     }
 
-    public async Task StartConversationAsync(ChatSessionState sessionState, CancellationToken ct = default) {
+    public async Task StartConversationAsync(CancellationToken ct = default) {
         _pausedTopics.Clear();
 
         var topic = _topicRegistry.GetTopic("ConversationStart");
@@ -217,7 +216,7 @@ public class InsuranceAgentService {
         await Task.Delay(150, ct);
 
         LogInfo("0010017");
-        await StartConversationAsync(new ChatSessionState(), ct);
+        await StartConversationAsync(ct);
     }
 
     private void ForceTopicStateMachineToIdle(TopicFlow topic, string name) {
@@ -507,6 +506,8 @@ public class InsuranceAgentService {
 
     private async void OnCustomEventTriggered(object? sender, CustomEventTriggeredEventArgs e) {
         LogInfo("EVT_CE_0001");
+        _logger.LogWarning("[DEBUG] OnCustomEventTriggered called - EventName={EventName}, Sender={SenderType}, SubscriberCount={Count}",
+            e.EventName, sender?.GetType().Name ?? "null", CustomEventTriggered?.GetInvocationList().Length ?? 0);
 
         CustomEventTriggered?.Invoke(this, e);
 
@@ -905,6 +906,9 @@ public class InsuranceAgentService {
         _logger.LogInformation("[InsuranceAgentService] ✅ Unhooked topic and activity events for {FlowName}", flow.Name);
     }
     private void HookActivityEvents(TopicFlowActivity child) {
+        // ✅ Defensive: Unhook first to prevent duplicate subscriptions
+        UnhookActivityEvents(child);
+
         // --- Lifecycle ---
         child.ActivityLifecycleChanged += HandleActivityLifecycleChanged;
         child.MessageEmitted += HandleMessageEmitted;
@@ -925,8 +929,11 @@ public class InsuranceAgentService {
             topicTrigger.TopicTriggered += OnTopicTriggered;
 
         // --- Custom event-triggered events ---
-        if (child is ICustomEventTriggeredActivity customTrigger)
+        if (child is ICustomEventTriggeredActivity customTrigger) {
+            _logger.LogWarning("[DEBUG] Hooking CustomEventTriggered for activity '{ActivityId}' (Type: {Type})",
+                child.Id, child.GetType().Name);
             customTrigger.CustomEventTriggered += OnCustomEventTriggered;
+        }
 
         // --- Conditional containers ---
         if (child is ConditionalActivity<TriggerTopicActivity> conditional) {

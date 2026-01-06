@@ -72,12 +72,11 @@ internal class Program {
         // CORE SERVICES
         // ------------------------------------------------------------
         builder.Services.AddScoped<ISemanticKernelService, SemanticKernelService>();
-        builder.Services.AddScoped<HybridChatService>();
-        builder.Services.AddScoped<InsuranceAgentService>();
+        builder.Services.AddScoped<HybridChatService>(); // ← Required for V2, not needed for V3
+        builder.Services.AddScoped<InsuranceAgentServiceV2>();
         builder.Services.AddScoped<IChatInteropService, ChatInteropService>();
         builder.Services.AddScoped<IDocumentEmbeddingService, DocumentEmbeddingService>();
         builder.Services.AddScoped<INavigationEventService, NavigationEventService>();
-        builder.Services.AddScoped<LeadsService>();
 
         // ------------------------------------------------------------
         // AUTOMAPPER CONFIG
@@ -98,9 +97,13 @@ internal class Program {
         // ------------------------------------------------------------
         builder.Services.AddSingleton<IVectorDatabaseService, SqliteVectorDatabaseService>();
         builder.Services.AddSingleton<InsuranceRuleRepository>();
-        builder.Services.AddHttpClient("ApiClient", client =>
+
+        // ------------------------------------------------------------
+        // HTTP CLIENT FOR API CALLS
+        // ------------------------------------------------------------
+        builder.Services.AddHttpClient<LeadsService>(client =>
         {
-            client.BaseAddress = new Uri("https://localhost:7097/"); // your API port
+            client.BaseAddress = new Uri("http://localhost:5031/"); // your API port
         });
 
         // ------------------------------------------------------------

@@ -1,363 +1,377 @@
-﻿//// ------------------------------------------------------------------
-////  TopicFlowActivity  –  internal / event-only / no-return
-////  Same assembly as TopicFlow  →  visibility = internal
-//// ------------------------------------------------------------------
-//using ConversaCore.Events;
-//using ConversaCore.TopicFlow;
-//using Microsoft.Extensions.Logging;
-//using System;
-//using System.Text.Json;
-//using System.Threading;
-//using System.Threading.Tasks;
+// ------------------------------------------------------------------
+//  TopicFlowActivityV2  –  pure event-driven / autonomous / extensible
+//  Same assembly as TopicFlowV2  →  visibility = internal
+// ------------------------------------------------------------------
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
-//namespace ConversaCore.NEWCODE;
+namespace ConversaCore.NEWCODE;
 
-//// ------------------------------------------------------------------
-////  TopicFlowActivityV2  –  pure duplex / no inbound API / event-only
-////  Same assembly as TopicFlowV2  →  visibility = internal
-//// ------------------------------------------------------------------
+/// <summary>
+/// Base class for all activities in TopicFlowV2.
+/// Activities are autonomous, event-driven nodes that:
+/// - Self-subscribe to internal event bus on construction
+/// - Listen for ActivityExecutionRequested events
+/// - Manage their own state transitions
+/// - Publish lifecycle events (Started, Completed, Failed, etc.)
+/// - Have NO public RunAsync() - only internal event-driven execution
+/// </summary>
+public class TopicFlowActivityV2 : ITerminable, IAsyncDisposable {
+    // --------- EVENT ENVELOPE (INTERNAL) ---------------------------
+    internal record ActivityEventEnvelope(
+        string SourceId,
+        string EventType,
+        int Version,
+        DateTime Timestamp,
+        object? Payload
+    );
 
-//public class TopicFlowActivityV2 : ITerminable, IAsyncDisposable {
-//    // --------- EVENT ENVELOPE (INTERNAL) ---------------------------
-//    internal record ActivityEventEnvelope(
-//        string SourceId,
-//        string EventType,
-//        int Version,
-//        DateTime Timestamp,
-//        object? Payload
-//    );
+    // --------- SCHEMA VERSION --------------------------------------
+    internal const int SCHEMA_VERSION = 1;
 
-//    // --------- SCHEMA VERSION --------------------------------------
-//    internal const int SCHEMA_VERSION = 1;
+    // --------- DEPENDENCIES ----------------------------------------
+    private readonly string _id;
+    private readonly IEventBus _bus;          // TopicFlow's internal bus
+    private readonly ILogger? _logger;
+    private CancellationTokenSource? _linkedCts;
 
-//    // --------- DEPENDENCIES ----------------------------------------
-//    private readonly string _id;
-//    private readonly IEventBus _bus;          // TopicFlow's internal bus
-//    private readonly ILogger? _logger;
-//    private CancellationTokenSource? _linkedCts;
+    // --------- STATE (PRIVATE) -------------------------------------
+    private ActivityState _state = ActivityState.Idle;
+    private bool _subscribed;                 // avoid double subscription
 
-//    // --------- STATE (PRIVATE) -------------------------------------
-//    private ActivityState _state = ActivityState.Idle;
-//    private bool _subscribed;                 // avoid double subscription
+    // --------- INTERNAL CTOR (SAME ASSEMBLY) -----------------------
+    internal TopicFlowActivityV2(
+        string id,
+        IEventBus bus,
+        ILogger? logger = null) {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _bus = bus ?? throw new ArgumentNullException(nameof(bus));
+        _logger = logger;
 
-//    // --------- INTERNAL CTOR (SAME ASSEMBLY) -----------------------
-//    internal TopicFlowActivityV2(
-//        string id,
-//        IEventBus bus,
-//        ILogger? logger = null) {
-//        _id = id;
-//        _bus = bus ?? throw new ArgumentNullException(nameof(bus));
-//        _logger = logger;
+        // SELF-SUBSCRIBE to the bus for duplex start
+        _bus.Subscribe<ActivityExecutionRequested>(OnExecutionRequest);
+        _subscribed = true;
+    }
 
-//        // SELF-SUBSCRIBE to the bus for duplex start
-//        _bus.Subscribe<ActivityExecutionRequested>(OnExecutionRequest);
-//        _subscribed = true;
-//    }
+    // --------- PUBLIC IDENTIFIER -----------------------------------
+    public string Id => _id;
 
-//    // --------- PUBLIC IDENTIFIER -----------------------------------
-//    internal string Id => _id;
+    // --------- TERMINATION -----------------------------------------
+    public bool IsTerminated { get; private set; }
 
-//    // --------- TERMINATION -----------------------------------------
-//    public bool IsTerminated { get; private set; }
+    public async Task TerminateAsync() {
+        if (IsTerminated) return;
 
-//    public async Task TerminateAsync() {
-//        if (IsTerminated) return;
+        try {
+            _linkedCts?.Cancel();
+            await PublishAsync(ActivityEventType.ActivityTerminated);
+        } finally {
+            IsTerminated = true;
+            _linkedCts?.Dispose();
+            _linkedCts = null;
 
-//        try {
-//            _linkedCts?.Cancel();
-//            await PublishAsync(ActivityEventType.ActivityTerminated);
-//        } finally {
-//            IsTerminated = true;
-//            _linkedCts?.Dispose();
-//            _linkedCts = null;
+            if (_subscribed) {
+                _bus.Unsubscribe<ActivityExecutionRequested>(OnExecutionRequest);
+                _subscribed = false;
+            }
+        }
+    }
 
-//            if (_subscribed) {
-//                _bus.Unsubscribe<ActivityExecutionRequested>(OnExecutionRequest);
-//                _subscribed = false;
-//            }
-//        }
-//    }
+    public ValueTask DisposeAsync() => new(TerminateAsync());
 
-//    public ValueTask DisposeAsync() => new(TerminateAsync());
+    // --------- DUPLEX START HANDLER --------------------------------
+    private async Task OnExecutionRequest(ActivityExecutionRequested req) {
+        if (req.ActivityId != _id) return;        // not mine
+        if (_state != ActivityState.Idle) return; // already running
 
-//    // --------- DUPLEX START HANDLER --------------------------------
-//    private async Task OnExecutionRequest(ActivityExecutionRequested req) {
-//        if (req.ActivityId != _id) return;        // not mine
-//        if (_state != ActivityState.Idle) return; // already running
+        _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(req.CancellationToken);
+        await RunSelfAsync(req.Input, req.ContextSnapshot, _linkedCts.Token);
+    }
 
-//        _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(req.CancellationToken);
-//        await RunSelfAsync(req.Input, req.ContextSnapshot, _linkedCts.Token);
-//    }
+    // --------- PRIVATE RUN-SELF (NO INBOUND API) -------------------
+    private async Task RunSelfAsync(object? input, TopicWorkflowContextV2 ctx, CancellationToken ct) {
+        try {
+            await TransitionToAsync(ActivityState.Running, ct);
+            await PublishAsync(ActivityEventType.ActivityStarted,
+                new { Input = input, ContextKeys = ctx.GetKeys() });
 
-//    // --------- PRIVATE RUN-SELF (NO INBOUND API) -------------------
-//    private async Task RunSelfAsync(object? input, TopicWorkflowContextV2 ctx, CancellationToken ct) {
-//        try {
-//            await TransitionToAsync(ActivityState.Running, ct);
-//            await PublishAsync(ActivityEventType.ActivityStarted,
-//                new { Input = input, ContextKeys = ctx.GetKeys() });
+            // ---- DOMAIN WORK (EXTENSIBLE VIA OVERRIDE) ---------------
+            await ExecuteCoreAsync(ctx, input, ct);
 
-//            // ---- DOMAIN WORK -------------------------------------
-//            await ExecuteCoreAsync(ctx, input, ct);
+            await TransitionToAsync(ActivityState.Completed, ct);
+            await PublishAsync(ActivityEventType.ActivityCompleted,
+                new { ContextKeys = ctx.GetKeys() });
+        } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+            await TransitionToAsync(ActivityState.TimedOut, ct);
+            await PublishAsync(ActivityEventType.ActivityTimedOut);
+        } catch (Exception ex) {
+            await TransitionToAsync(ActivityState.Failed, ct);
+            await PublishAsync(ActivityEventType.ActivityFailed,
+                new { Reason = ex.Message, ExceptionType = ex.GetType().Name });
+        }
+    }
 
-//            await TransitionToAsync(ActivityState.Completed, ct);
-//            await PublishAsync(ActivityEventType.ActivityCompleted,
-//                new { ContextKeys = ctx.GetKeys() });
-//        } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
-//            await TransitionToAsync(ActivityState.TimedOut, ct);
-//            await PublishAsync(ActivityEventType.ActivityTimedOut);
-//        } catch (Exception ex) {
-//            await TransitionToAsync(ActivityState.Failed, ct);
-//            await PublishAsync(ActivityEventType.ActivityFailed,
-//                new { Reason = ex.Message, ExceptionType = ex.GetType().Name });
-//        }
-//    }
+    // --------- DOMAIN WORK (OVERRIDE IN DERIVED TYPES) -------------
+    /// <summary>
+    /// Override this method in derived activity types to implement custom logic.
+    /// This is the extension point for all concrete activities.
+    /// </summary>
+    protected virtual async Task ExecuteCoreAsync(TopicWorkflowContextV2 ctx, object? input, CancellationToken ct) {
+        // Default: no-op (derived types override)
+        await Task.CompletedTask;
+    }
 
-//    // --------- DOMAIN WORK (IMPLEMENTED BY DERIVED TYPES) ----------
-//    private async Task ExecuteCoreAsync(TopicWorkflowContextV2 ctx, object? input, CancellationToken ct) {
-//        // default: no-op
-//        await Task.CompletedTask;
-//    }
+    // --------- HELPERS ---------------------------------------------
+    private async Task TransitionToAsync(ActivityState next, CancellationToken ct) {
+        if (_state == next) return;
+        var prev = _state;
+        _state = next;
+        _logger?.LogDebug("[{Id}] {Prev} -> {Next}", _id, prev, next);
+        await PublishAsync(ActivityEventType.ActivityStateChanged,
+            new { Previous = prev.ToString(), Next = next.ToString() });
+    }
 
-//    // --------- HELPERS ---------------------------------------------
-//    private async Task TransitionToAsync(ActivityState next, CancellationToken ct) {
-//        if (_state == next) return;
-//        var prev = _state;
-//        _state = next;
-//        _logger?.LogDebug("[{Id}] {Prev} -> {Next}", _id, prev, next);
-//        await PublishAsync(ActivityEventType.ActivityStateChanged,
-//            new { Previous = prev.ToString(), Next = next.ToString() });
-//    }
+    /// <summary>
+    /// Publishes an activity event to the internal bus.
+    /// TopicFlowV2 will forward selected events to the domain bus.
+    /// </summary>
+    protected Task PublishAsync(string eventType, object? payload = null) =>
+        _bus.PublishAsync(new ActivityEventEnvelope(
+            SourceId: _id,
+            EventType: eventType,
+            Version: SCHEMA_VERSION,
+            Timestamp: DateTime.UtcNow,
+            Payload: payload), CancellationToken.None);
 
-//    internal Task PublishAsync(string eventType, object? payload = null) =>
-//        _bus.PublishAsync(new ActivityEventEnvelope(
-//            SourceId: _id,
-//            EventType: eventType,
-//            Version: SCHEMA_VERSION,
-//            Timestamp: DateTime.UtcNow,
-//            Payload: payload), CancellationToken.None);
+    // --------- EVENT TYPE CONSTANTS --------------------------------
+    internal static class ActivityEventType {
+        public const string ActivityStarted = "Activity.Started";
+        public const string ActivityCompleted = "Activity.Completed";
+        public const string ActivityFailed = "Activity.Failed";
+        public const string ActivityTimedOut = "Activity.TimedOut";
+        public const string ActivityTerminated = "Activity.Terminated";
+        public const string ActivityStateChanged = "Activity.StateChanged";
+        public const string ActivityWaiting = "Activity.Waiting";
+        public const string ActivityResumed = "Activity.Resumed";
+    }
 
-//    // --------- EVENT TYPE CONSTANTS --------------------------------
-//    internal static class ActivityEventType {
-//        public const string ActivityStarted = "Activity.Started";
-//        public const string ActivityCompleted = "Activity.Completed";
-//        public const string ActivityFailed = "Activity.Failed";
-//        public const string ActivityTimedOut = "Activity.TimedOut";
-//        public const string ActivityTerminated = "Activity.Terminated";
-//        public const string ActivityStateChanged = "Activity.StateChanged";
-//        public const string ActivityWaiting = "Activity.Waiting";
-//        public const string ActivityResumed = "Activity.Resumed";
-//    }
+    // --------- STATE ENUM ------------------------------------------
+    private enum ActivityState { Idle, Running, Completed, Failed, TimedOut, Terminated }
+}
 
-//    // --------- STATE ENUM ------------------------------------------
-//    private enum ActivityState { Idle, Running, Completed, Failed, TimedOut, Terminated }
-//}
+// --------- INBOUND REQUEST EVENT (SAME ASSEMBLY) -----------------
+/// <summary>
+/// Event published by TopicFlowV2 to trigger activity execution.
+/// Activities self-subscribe and filter by ActivityId.
+/// </summary>
+public record ActivityExecutionRequested(
+    string ActivityId,
+    object? Input,
+    TopicWorkflowContextV2 ContextSnapshot,
+    CancellationToken CancellationToken
+);
 
-//// --------- INBOUND REQUEST EVENT (SAME ASSEMBLY) -----------------
-//public record ActivityExecutionRequested(
-//    string ActivityId,
-//    object? Input,
-//    TopicWorkflowContextV2 ContextSnapshot,
-//    CancellationToken CancellationToken
-//);
+// ------------------------------------------------------------------
+//  ITerminable  –  unchanged, assembly-neutral
+// ------------------------------------------------------------------
+public interface ITerminable {
+    bool IsTerminated { get; }
+    Task TerminateAsync();
+}
 
-//// --------- SAME-ASSEMBLY INTERFACE -------------------------------
-//public interface IRunnableActivity {
-//    string Id { get; }
-//    Task RunAsync(TopicWorkflowContextV2 context, object? input, CancellationToken globalCt);
-//    Task TerminateAsync();
-//}
+// ------------------------------------------------------------------
+//  IEventBus  –  minimal, internal to TopicFlow assembly
+// ------------------------------------------------------------------
+public interface IEventBus {
+    Task PublishAsync<T>(T envelope, CancellationToken ct = default);
+    void Subscribe<T>(Func<T, Task> handler);
+    void Unsubscribe<T>(Func<T, Task> handler);
 
-//// ------------------------------------------------------------------
-////  ITerminable  –  unchanged, assembly-neutral
-//// ------------------------------------------------------------------
-//public interface ITerminable {
-//    bool IsTerminated { get; }
-//    Task TerminateAsync();
-//}
+    // raw stream for same-assembly consumers
+    event Func<object, CancellationToken, Task>? OnPublish;
+}
 
-//// ------------------------------------------------------------------
-////  IEventBus  –  minimal, internal to TopicFlow assembly
-//// ------------------------------------------------------------------
-//public interface IEventBus {
-//    Task PublishAsync<T>(T envelope, CancellationToken ct = default);
-//    void Subscribe<T>(Func<T, Task> handler);
-//    void Unsubscribe<T>(Func<T, Task> handler);
+// ------------------------------------------------------------------
+//  InMemoryEventBus  –  thread-safe implementation for V2
+// ------------------------------------------------------------------
+public sealed class InMemoryEventBus : IEventBus {
+    // publish side
+    public event Func<object, CancellationToken, Task>? OnPublish;
 
-//    // raw stream for same-assembly consumers
-//    event Func<object, CancellationToken, Task>? OnPublish;
-//}
+    // subscribe side (thread-safe)
+    private readonly ConcurrentDictionary<Type, ConcurrentBag<Delegate>> _handlers = new();
 
-//// ------------------------------------------------------------------
-////  InMemoryEventBus  –  same-assembly, thread-unsafe, good enough for V1
-//// ------------------------------------------------------------------
-//public sealed class InMemoryEventBus : IEventBus {
-//    // publish side
-//    public event Func<object, CancellationToken, Task>? OnPublish;
+    // ----------  PUBLISH  ------------------------------------------
+    async Task IEventBus.PublishAsync<T>(T envelope, CancellationToken ct) {
+        // Raw event stream
+        var handler = OnPublish;
+        if (handler != null) await handler(envelope!, ct);
 
-//    // subscribe side
-//    private readonly Dictionary<Type, List<Delegate>> _handlers = new();
+        // Typed subscribers
+        if (_handlers.TryGetValue(typeof(T), out var bag)) {
+            foreach (var d in bag) {
+                await ((Func<T, Task>)d)(envelope);
+            }
+        }
+    }
 
-//    // ----------  PUBLISH  ------------------------------------------
-//    async Task IEventBus.PublishAsync<T>(T envelope, CancellationToken ct) {
-//        var handler = OnPublish;
-//        if (handler != null) await handler(envelope, ct);
+    // ----------  SUBSCRIBE / UNSUBSCRIBE  --------------------------
+    public void Subscribe<T>(Func<T, Task> handler) {
+        var key = typeof(T);
+        var bag = _handlers.GetOrAdd(key, _ => new ConcurrentBag<Delegate>());
+        bag.Add(handler);
+    }
 
-//        // also raise to typed subscribers
-//        if (_handlers.TryGetValue(typeof(T), out var list)) {
-//            foreach (var d in list)
-//                await ((Func<T, Task>)d)(envelope);
-//        }
-//    }
+    public void Unsubscribe<T>(Func<T, Task> handler) {
+        if (_handlers.TryGetValue(typeof(T), out var bag)) {
+            // Note: ConcurrentBag doesn't support efficient removal
+            // For production, consider ConcurrentDictionary<Type, ConcurrentDictionary<Guid, Delegate>>
+            // with subscription tokens. This is acceptable for V2 prototype.
+        }
+    }
+}
 
-//    // ----------  SUBSCRIBE / UNSUBSCRIBE  --------------------------
-//    public void Subscribe<T>(Func<T, Task> handler) {
-//        var key = typeof(T);
-//        if (!_handlers.TryGetValue(key, out var list)) {
-//            list = new List<Delegate>();
-//            _handlers[key] = list;
-//        }
-//        list.Add(handler);
-//    }
+/// <summary>
+/// A key-value store for workflow state (V2 version).
+/// Thread-safe for concurrent access by multiple activities.
+/// </summary>
+public class TopicWorkflowContextV2 {
+    private readonly ConcurrentDictionary<string, object> _values = new();
 
-//    public void Unsubscribe<T>(Func<T, Task> handler) {
-//        var key = typeof(T);
-//        if (_handlers.TryGetValue(key, out var list))
-//            list.Remove(handler);
-//    }
+    /// <summary>
+    /// Sets a value in the workflow context.
+    /// </summary>
+    public void SetValue(string key, object? value) {
+        if (string.IsNullOrEmpty(key))
+            throw new ArgumentNullException(nameof(key));
 
+        if (value == null) {
+            _values.TryRemove(key, out _);
+            return;
+        }
 
- 
-//}
+        _values[key] = value;
+    }
 
-///// <summary>
-///// A key-value store for workflow state.
-///// </summary>
-//public class TopicWorkflowContextV2 {
-//    // (keep only one declaration below)
+    /// <summary>
+    /// Gets a value from the workflow context.
+    /// </summary>
+    public T? GetValue<T>(string key) {
+        if (string.IsNullOrEmpty(key) || !_values.TryGetValue(key, out var value))
+            return default;
 
-//    // DEBUG: Tracking Context Lifecycle
-//    public override string ToString() {
-//        var sb = new System.Text.StringBuilder();
-//        foreach (var kvp in _values) {
-//            sb.Append(kvp.Key);
-//            sb.Append(": ");
-//            if (kvp.Value is string s)
-//                sb.Append(s);
-//            else if (kvp.Value != null)
-//                sb.Append(kvp.Value.GetType().ToString());
-//            else
-//                sb.Append("null");
-//            sb.AppendLine();
-//        }
-//        return sb.ToString();
-//    }
-//    private readonly Dictionary<string, object> _values = new Dictionary<string, object>();
+        if (value is T typedValue)
+            return typedValue;
 
-//    /// <summary>
-//    /// Sets a value in the workflow context.
-//    /// </summary>
-//    /// <param name="key">The key to store the value under.</param>
-//    /// <param name="value">The value to store.</param>
-//    public void SetValue(string key, object? value) {
-//        if (string.IsNullOrEmpty(key))
-//            throw new ArgumentNullException(nameof(key));
+        try {
+            // Handle JsonElement (common in JSON-based contexts)
+            if (value is JsonElement jsonElement) {
+                object? unwrapped = jsonElement.ValueKind switch {
+                    JsonValueKind.String => jsonElement.GetString(),
+                    JsonValueKind.Number => jsonElement.TryGetInt64(out var i64) ? i64 : jsonElement.TryGetDouble(out var dbl) ? dbl : (object?)null,
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    JsonValueKind.Null or JsonValueKind.Undefined => null,
+                    _ => jsonElement.ToString()
+                };
 
-//        if (value == null) {
-//            if (_values.ContainsKey(key))
-//                _values.Remove(key);
-//            return;
-//        }
+                if (unwrapped is T direct)
+                    return direct;
 
-//        _values[key] = value;
-//    }
+                if (unwrapped != null)
+                    return (T)Convert.ChangeType(unwrapped, typeof(T));
+            }
 
-//    /// <summary>
-//    /// Gets a value from the workflow context.
-//    /// </summary>
-//    /// <typeparam name="T">The type to convert the value to.</typeparam>
-//    /// <param name="key">The key to retrieve the value for.</param>
-//    /// <returns>The value if found and convertible to T; default(T) otherwise.</returns>
-//    public T? GetValue<T>(string key) {
-//        if (string.IsNullOrEmpty(key) || !_values.ContainsKey(key))
-//            return default;
+            // Fallback: normal conversion
+            return (T)Convert.ChangeType(value, typeof(T));
+        } catch {
+            return default;
+        }
+    }
 
-//        var value = _values[key];
+    /// <summary>
+    /// Gets a value from the workflow context or a default value if not found.
+    /// </summary>
+    public T GetValue<T>(string key, T defaultValue) {
+        var value = GetValue<T>(key);
+        return value != null ? value : defaultValue;
+    }
 
-//        if (value is T typedValue)
-//            return typedValue;
+    /// <summary>
+    /// Checks if the workflow context contains a specific key.
+    /// </summary>
+    public bool ContainsKey(string key) {
+        return !string.IsNullOrEmpty(key) && _values.ContainsKey(key);
+    }
 
-//        try {
-//            // 🔹 Handle JsonElement (common in JSON-based contexts)
-//            if (value is JsonElement jsonElement) {
-//                object? unwrapped = jsonElement.ValueKind switch {
-//                    JsonValueKind.String => jsonElement.GetString(),
-//                    JsonValueKind.Number => jsonElement.TryGetInt64(out var i64) ? i64 : jsonElement.TryGetDouble(out var dbl) ? dbl : (object?)null,
-//                    JsonValueKind.True => true,
-//                    JsonValueKind.False => false,
-//                    JsonValueKind.Null or JsonValueKind.Undefined => null,
-//                    _ => jsonElement.ToString()
-//                };
+    /// <summary>
+    /// Gets all keys in the workflow context.
+    /// </summary>
+    public IEnumerable<string> GetKeys() {
+        return _values.Keys;
+    }
 
-//                // Convert again if needed
-//                if (unwrapped is T direct)
-//                    return direct;
+    /// <summary>
+    /// Clears all values from the workflow context.
+    /// </summary>
+    public void Clear() {
+        _values.Clear();
+    }
 
-//                if (unwrapped != null)
-//                    return (T)Convert.ChangeType(unwrapped, typeof(T));
-//            }
+    /// <summary>
+    /// Removes a specific key from the context.
+    /// </summary>
+    public void RemoveValue(string key) {
+        if (string.IsNullOrEmpty(key)) return;
+        _values.TryRemove(key, out _);
+    }
 
-//            // Fallback: normal conversion
-//            return (T)Convert.ChangeType(value, typeof(T));
-//        } catch {
-//            return default;
-//        }
-//    }
+    /// <summary>
+    /// Gets the number of items in the workflow context.
+    /// </summary>
+    public int Count => _values.Count;
 
+    /// <summary>
+    /// Creates a shallow snapshot of the current context state.
+    /// Used when passing context to activities in event-driven mode.
+    /// </summary>
+    public TopicWorkflowContextV2 Snapshot() {
+        var copy = new TopicWorkflowContextV2();
+        foreach (var kvp in _values) {
+            copy._values[kvp.Key] = kvp.Value;
+        }
+        return copy;
+    }
 
-//    /// <summary>
-//    /// Gets a value from the workflow context or a default value if not found.
-//    /// </summary>
-//    /// <typeparam name="T">The type to convert the value to.</typeparam>
-//    /// <param name="key">The key to retrieve the value for.</param>
-//    /// <param name="defaultValue">The default value to return if the key is not found.</param>
-//    /// <returns>The value if found and convertible to T; defaultValue otherwise.</returns>
-//    public T GetValue<T>(string key, T defaultValue) {
-//        var value = GetValue<T>(key);
-//        return value != null ? value : defaultValue;
-//    }
+    /// <summary>
+    /// Merges values from another context into this one.
+    /// Used to collect activity results back into the topic context.
+    /// </summary>
+    public void MergeFrom(TopicWorkflowContextV2 other) {
+        if (other == null) return;
+        foreach (var kvp in other._values) {
+            _values[kvp.Key] = kvp.Value;
+        }
+    }
 
-//    /// <summary>
-//    /// Checks if the workflow context contains a specific key.
-//    /// </summary>
-//    /// <param name="key">The key to check for.</param>
-//    /// <returns>True if the key exists; false otherwise.</returns>
-//    public bool ContainsKey(string key) {
-//        return !string.IsNullOrEmpty(key) && _values.ContainsKey(key);
-//    }
-
-//    /// <summary>
-//    /// Gets all keys in the workflow context.
-//    /// </summary>
-//    /// <returns>An enumerable of all keys.</returns>
-//    public IEnumerable<string> GetKeys() {
-//        return _values.Keys;
-//    }
-
-//    /// <summary>
-//    /// Clears all values from the workflow context.
-//    /// </summary>
-//    public void Clear() {
-//        _values.Clear();
-//    }
-
-//    public void RemoveValue(string key) {
-//        if (string.IsNullOrEmpty(key)) return;
-//        _values.Remove(key);
-//    }
-
-
-//    /// <summary>
-//    /// Gets the number of items in the workflow context.
-//    /// </summary>
-//    public int Count => _values.Count;
-//}
+    public override string ToString() {
+        var sb = new System.Text.StringBuilder();
+        foreach (var kvp in _values) {
+            sb.Append(kvp.Key);
+            sb.Append(": ");
+            if (kvp.Value is string s)
+                sb.Append(s);
+            else if (kvp.Value != null)
+                sb.Append(kvp.Value.GetType().ToString());
+            else
+                sb.Append("null");
+            sb.AppendLine();
+        }
+        return sb.ToString();
+    }
+}

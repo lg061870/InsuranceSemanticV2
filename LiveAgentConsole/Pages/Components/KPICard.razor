@@ -1,0 +1,25 @@
+﻿@* KpiCard.razor *@
+<div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow">
+    <div class="w-12 h-12 rounded-full flex items-center justify-center text-xl @Bg @Color">
+        <i class="@Icon"></i>
+    </div>
+    <div>
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">@Label</p>
+        <h3 class="text-2xl font-bold text-gray-800">@Value</h3>
+        <p class="text-xs font-medium @TrendColor">
+            <i class="@TrendIcon"></i> @TrendText
+        </p>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Icon { get; set; } = "fa-solid fa-users";
+    [Parameter] public string Label { get; set; } = "Label";
+    [Parameter] public string Value { get; set; } = "0";
+    [Parameter] public string TrendText { get; set; } = "Trend";
+    [Parameter] public string TrendColor { get; set; } = "text-green-600";
+    [Parameter] public string TrendIcon { get; set; } = "fa-solid fa-arrow-up";
+
+    [Parameter] public string Color { get; set; } = "text-primary";
+    [Parameter] public string Bg { get; set; } = "bg-blue-50";
+}

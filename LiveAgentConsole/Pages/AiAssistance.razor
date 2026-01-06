@@ -1,0 +1,76 @@
+@page "/ai-assistance"
+@using LiveAgentConsole.Pages.Components
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@layout EmptyLayout
+
+<Header />
+
+<div class="min-h-screen flex text-gray-800 overflow-hidden">
+    <!-- Main Console Layout -->
+
+    <!-- Left Panel: Active Call & Lead Queue -->
+    <section class="flex-1 flex flex-col min-w-0 bg-gray-50 border-r border-gray-200 overflow-y-auto">
+        <ActiveCallCard />
+        <DashboardKpiAndFilters OnSearchChanged="HandleSearchChanged"
+                                OnTemperatureChanged="HandleTemperatureChanged"
+                                OnSortChanged="HandleSortChanged"
+                                TotalCount="@totalCount"
+                                HotCount="@hotCount"
+                                WarmCount="@warmCount"
+                                ColdCount="@coldCount" />
+        <LiveLeadTable @ref="leadTable" />
+    </section>
+
+    <!-- Right Panel: Copilot Sidebar -->
+    <aside class="w-[400px] bg-white border-l border-gray-200 flex flex-col flex-shrink-0 z-10 shadow-lg">
+        <CopilotContext />
+        <TranscriptPanel />
+        <QuickActionsFooter />
+    </aside>
+</div>
+
+@code {
+    private LiveLeadTable? leadTable;
+    private int totalCount = 0;
+    private int hotCount = 0;
+    private int warmCount = 0;
+    private int coldCount = 0;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && leadTable != null)
+        {
+            UpdateCounts();
+        }
+    }
+
+    private void HandleSearchChanged(string searchText)
+    {
+        leadTable?.OnSearchChanged(searchText);
+        UpdateCounts();
+    }
+
+    private void HandleTemperatureChanged(string temp)
+    {
+        leadTable?.OnTemperatureFilterChanged(temp);
+        UpdateCounts();
+    }
+
+    private void HandleSortChanged(string sort)
+    {
+        leadTable?.OnSortChanged(sort);
+    }
+
+    private void UpdateCounts()
+    {
+        if (leadTable != null)
+        {
+            totalCount = leadTable.GetCountByTemperature("All");
+            hotCount = leadTable.GetCountByTemperature("Hot");
+            warmCount = leadTable.GetCountByTemperature("Warm");
+            coldCount = leadTable.GetCountByTemperature("Cold");
+            StateHasChanged();
+        }
+    }
+}

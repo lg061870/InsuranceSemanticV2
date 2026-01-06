@@ -98,7 +98,7 @@ public class HybridChatServiceV2 {
     // ------------------------------------------------------
     public void StartConversation(ChatSessionState session) {
         _logger.LogInformation("[HybridChatServiceV2] Starting conversation (delegated to Agent)");
-        _ = _agentService.StartConversationAsync(session);
+        _ = _agentService.StartConversationAsync(CancellationToken.None);
     }
 
     public async Task ResetConversationAsync(CancellationToken ct = default) {

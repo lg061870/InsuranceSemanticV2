@@ -1,0 +1,353 @@
+﻿@using LiveAgentConsole.ViewModels
+@using LiveAgentConsole.Services
+@inject LeadService LeadService
+@inject LeadHubConnection HubConnection
+@inject SelectedLeadService SelectedLeadService
+@implements IAsyncDisposable
+
+@* Live table with real data and polling *@
+<div class="flex-1 px-6 pb-6 overflow-hidden">
+    <div class="bg-white border border-gray-200 rounded-lg shadow-sm h-full overflow-hidden flex flex-col">
+        @if (isLoading && !leads.Any())
+        {
+            <div class="flex items-center justify-center h-full">
+                <div class="text-gray-500">Loading leads...</div>
+            </div>
+        }
+        else if (!leads.Any())
+        {
+            <div class="flex items-center justify-center h-full">
+                <div class="text-gray-500">No leads found</div>
+            </div>
+        }
+        else
+        {
+            <div class="overflow-y-auto flex-1">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50 sticky top-0 z-10">
+                        <tr>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">Lead Name</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">Product</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center">Score</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">Progress</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">Status</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        @foreach (var lead in leads)
+                        {
+                            <tr class="@(SelectedLeadService.IsLeadSelected(lead.Id) ? "bg-blue-100/80" : "hover:bg-blue-50/50") transition-colors group cursor-pointer" @onclick="() => HandleLeadClick(lead)">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center gap-3">
+                                        <img src="@lead.AvatarUrl" alt="@lead.Name" class="w-8 h-8 rounded-full" />
+                                        <div>
+                                            <div class="font-medium text-gray-900">@lead.Name</div>
+                                            <div class="text-xs text-gray-500">@lead.Email</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center gap-2">
+                                        <i class="@lead.ProductIcon text-blue-600"></i>
+                                        <span class="text-sm">@lead.Product</span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-center">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium @lead.ScoreLabelColor bg-opacity-10">
+                                        @lead.ScoreLabel
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center gap-2">
+                                        <div class="flex-1 bg-gray-200 rounded-full h-2 w-24">
+                                            <div class="bg-blue-600 h-2 rounded-full" style="width: @(lead.ProgressPercentage)%"></div>
+                                        </div>
+                                        <span class="text-xs text-gray-600">@(lead.ProgressPercentage)%</span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium @GetStatusTextColor(lead.Status) @GetStatusBgColor(lead.Status)">
+                                        @lead.Status
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <button class="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded transition-colors mr-2">Call</button>
+                                    <button class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @* Pagination Controls *@
+            <div class="border-t border-gray-200 px-6 py-4 flex items-center justify-between bg-gray-50">
+                <div class="flex items-center gap-4 text-sm text-gray-600">
+                    <span>Showing <span class="font-medium">@startIndex</span> to <span class="font-medium">@endIndex</span> of <span class="font-medium">@totalCount</span> leads</span>
+                    <div class="flex items-center gap-2 ml-4">
+                        <label for="pageSize" class="text-sm text-gray-600">Rows per page:</label>
+                        <select id="pageSize" @bind="pageSize" @bind:after="HandlePageSizeChange" class="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="5">5</option>
+                            <option value="10">10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button @onclick="GoToFirstPage" disabled="@(currentPage == 1)" class="px-3 py-1 rounded border @(currentPage == 1 ? "border-gray-200 text-gray-400 cursor-not-allowed" : "border-gray-300 text-gray-700 hover:bg-gray-100")">
+                        <i class="fa-solid fa-angles-left"></i>
+                    </button>
+                    <button @onclick="GoToPreviousPage" disabled="@(currentPage == 1)" class="px-3 py-1 rounded border @(currentPage == 1 ? "border-gray-200 text-gray-400 cursor-not-allowed" : "border-gray-300 text-gray-700 hover:bg-gray-100")">
+                        <i class="fa-solid fa-angle-left"></i>
+                    </button>
+
+                    @for (int i = Math.Max(1, currentPage - 2); i <= Math.Min(totalPages, currentPage + 2); i++)
+                    {
+                        var pageNum = i; // Capture for lambda
+                        <button @onclick="() => GoToPage(pageNum)" class="px-3 py-1 rounded border @(currentPage == pageNum ? "bg-blue-500 text-white border-blue-500" : "border-gray-300 text-gray-700 hover:bg-gray-100")">
+                            @pageNum
+                        </button>
+                    }
+
+                    <button @onclick="GoToNextPage" disabled="@(currentPage == totalPages)" class="px-3 py-1 rounded border @(currentPage == totalPages ? "border-gray-200 text-gray-400 cursor-not-allowed" : "border-gray-300 text-gray-700 hover:bg-gray-100")">
+                        <i class="fa-solid fa-angle-right"></i>
+                    </button>
+                    <button @onclick="GoToLastPage" disabled="@(currentPage == totalPages)" class="px-3 py-1 rounded border @(currentPage == totalPages ? "border-gray-200 text-gray-400 cursor-not-allowed" : "border-gray-300 text-gray-700 hover:bg-gray-100")">
+                        <i class="fa-solid fa-angles-right"></i>
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<LeadRowView> allLeads = new();
+    private List<LeadRowView> filteredLeads = new(); // All leads after filtering/sorting
+    private List<LeadRowView> leads = new(); // Current page of leads
+    private bool isLoading = true;
+
+    // Filter and sort state
+    private string searchText = string.Empty;
+    private string temperatureFilter = "All";
+    private string sortBy = "Score";
+
+    // Pagination state
+    private int currentPage = 1;
+    private int pageSize = 5;
+    private int totalPages => (int)Math.Ceiling(filteredLeads.Count / (double)pageSize);
+    private int totalCount => filteredLeads.Count;
+    private int startIndex => totalCount == 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
+    private int endIndex => Math.Min(currentPage * pageSize, totalCount);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLeads();
+
+        // Subscribe to SignalR events
+        HubConnection.OnLeadCreated += HandleLeadChanged;
+        HubConnection.OnLeadUpdated += HandleLeadChanged;
+        HubConnection.OnProfileUpdated += HandleLeadChanged;
+        
+        // Start SignalR connection (if not already started by Dashboard)
+        if (HubConnection.State == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Disconnected)
+        {
+            await HubConnection.StartAsync();
+        }
+    }
+
+    private async Task HandleLeadChanged(int leadId)
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadLeads();
+        });
+    }
+
+    private async Task LoadLeads()
+    {
+        try
+        {
+            allLeads = await LeadService.GetAllLeadsAsync();
+            ApplyFiltersAndSort();
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading leads: {ex.Message}");
+            isLoading = false;
+        }
+    }
+
+    private void ApplyFiltersAndSort()
+    {
+        var filtered = allLeads.AsEnumerable();
+
+        // Apply search filter
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var search = searchText.ToLowerInvariant();
+            filtered = filtered.Where(l =>
+                l.Name.ToLowerInvariant().Contains(search) ||
+                l.Email.ToLowerInvariant().Contains(search) ||
+                l.Product.ToLowerInvariant().Contains(search));
+        }
+
+        // Apply temperature filter
+        if (temperatureFilter != "All")
+        {
+            filtered = filtered.Where(l => l.ScoreLabel == temperatureFilter);
+        }
+
+        // Apply sorting
+        filtered = sortBy switch
+        {
+            "Score" => filtered.OrderByDescending(l => l.Score),
+            "Name" => filtered.OrderBy(l => l.Name),
+            "Progress" => filtered.OrderByDescending(l => l.ProgressPercentage),
+            "Status" => filtered.OrderBy(l => l.Status),
+            _ => filtered.OrderByDescending(l => l.Score)
+        };
+
+        // Store filtered results
+        filteredLeads = filtered.ToList();
+
+        // Reset to first page if current page is out of range
+        if (currentPage > totalPages && totalPages > 0)
+        {
+            currentPage = totalPages;
+        }
+        else if (currentPage < 1)
+        {
+            currentPage = 1;
+        }
+
+        // Apply pagination
+        leads = filteredLeads
+            .Skip((currentPage - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+    }
+
+    public void OnSearchChanged(string search)
+    {
+        searchText = search;
+        currentPage = 1; // Reset to first page when search changes
+        ApplyFiltersAndSort();
+        StateHasChanged();
+    }
+
+    public void OnTemperatureFilterChanged(string temp)
+    {
+        temperatureFilter = temp;
+        currentPage = 1; // Reset to first page when filter changes
+        ApplyFiltersAndSort();
+        StateHasChanged();
+    }
+
+    public void OnSortChanged(string sort)
+    {
+        sortBy = sort;
+        currentPage = 1; // Reset to first page when sort changes
+        ApplyFiltersAndSort();
+        StateHasChanged();
+    }
+
+    private void HandleLeadClick(LeadRowView lead)
+    {
+        SelectedLeadService.SelectLead(lead);
+    }
+
+    // Pagination navigation methods
+    private void GoToFirstPage()
+    {
+        currentPage = 1;
+        ApplyFiltersAndSort();
+        StateHasChanged();
+    }
+
+    private void GoToPreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            ApplyFiltersAndSort();
+            StateHasChanged();
+        }
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page >= 1 && page <= totalPages)
+        {
+            currentPage = page;
+            ApplyFiltersAndSort();
+            StateHasChanged();
+        }
+    }
+
+    private void GoToNextPage()
+    {
+        if (currentPage < totalPages)
+        {
+            currentPage++;
+            ApplyFiltersAndSort();
+            StateHasChanged();
+        }
+    }
+
+    private void GoToLastPage()
+    {
+        currentPage = totalPages;
+        ApplyFiltersAndSort();
+        StateHasChanged();
+    }
+
+    private void HandlePageSizeChange()
+    {
+        // Reset to first page when page size changes
+        currentPage = 1;
+        ApplyFiltersAndSort();
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        HubConnection.OnLeadCreated -= HandleLeadChanged;
+        HubConnection.OnLeadUpdated -= HandleLeadChanged;
+        HubConnection.OnProfileUpdated -= HandleLeadChanged;
+    }
+
+    private string GetStatusTextColor(string? status)
+    {
+        return status?.ToLowerInvariant() switch
+        {
+            "active" or "live" or "new" => "text-green-700",
+            "on-hold" => "text-yellow-700",
+            "to-rescue" => "text-orange-700",
+            "abandoned" => "text-gray-500",
+            _ => "text-blue-700"
+        };
+    }
+
+    private string GetStatusBgColor(string? status)
+    {
+        return status?.ToLowerInvariant() switch
+        {
+            "active" or "live" or "new" => "bg-green-100",
+            "on-hold" => "bg-yellow-100",
+            "to-rescue" => "bg-orange-100",
+            "abandoned" => "bg-gray-100",
+            _ => "bg-blue-100"
+        };
+    }
+
+    public int GetCountByTemperature(string temp)
+    {
+        return temp == "All" ? allLeads.Count : allLeads.Count(l => l.ScoreLabel == temp);
+    }
+}

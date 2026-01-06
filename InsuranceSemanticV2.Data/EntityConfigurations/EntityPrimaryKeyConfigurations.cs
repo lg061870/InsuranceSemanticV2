@@ -44,7 +44,49 @@ public class AgentSessionConfiguration : IEntityTypeConfiguration<AgentSession>
 {
     public void Configure(EntityTypeBuilder<AgentSession> builder)
     {
-        builder.HasKey(e => e.SessionId);
+        // Primary key
+        builder.HasKey(s => s.AgentSessionId);
+
+        // Foreign key to Agent
+        builder.HasOne(s => s.Agent)
+            .WithMany(a => a.Sessions)
+            .HasForeignKey(s => s.AgentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // String length constraints
+        builder.Property(s => s.ConnectionId)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        builder.Property(s => s.Status)
+            .HasMaxLength(20)
+            .IsRequired();
+
+        builder.Property(s => s.IpAddress)
+            .HasMaxLength(50);
+
+        builder.Property(s => s.UserAgent)
+            .HasMaxLength(500);
+
+        // Required fields
+        builder.Property(s => s.LoginTime)
+            .IsRequired();
+
+        builder.Property(s => s.LastActivityTime)
+            .IsRequired();
+
+        builder.Property(s => s.IsActive)
+            .IsRequired();
+
+        // Indexes for performance
+        builder.HasIndex(s => s.AgentId)
+            .HasDatabaseName("IX_AgentSessions_AgentId");
+
+        builder.HasIndex(s => s.ConnectionId)
+            .HasDatabaseName("IX_AgentSessions_ConnectionId");
+
+        builder.HasIndex(s => s.IsActive)
+            .HasDatabaseName("IX_AgentSessions_IsActive");
     }
 }
 

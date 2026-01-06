@@ -1,0 +1,90 @@
+﻿@* LeadFilters.razor *@
+<div class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between bg-gray-50/50 p-4 border-b border-gray-200 rounded-t-xl">
+
+    <!-- Search & Quick Filters -->
+    <div class="flex flex-1 items-center gap-3 w-full lg:w-auto">
+        <div class="relative w-full max-w-sm">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            <input type="text"
+                   value="@SearchText"
+                   @oninput="OnInputChanged"
+                   placeholder="Search by name, email, or policy..."
+                   class="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm">
+        </div>
+
+        <div class="h-8 w-[1px] bg-gray-300 hidden sm:block"></div>
+
+        <div class="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 hide-scrollbar">
+            @foreach (var option in QuickFilters)
+            {
+                var isSelected = SelectedQuickFilter == option;
+                <button class="px-3 py-1.5 rounded-full transition-colors whitespace-nowrap @(isSelected
+                            ? "bg-primary text-white font-bold"
+                            : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-medium")"
+                        @onclick="() => SelectQuickFilter(option)">
+                    @option
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Advanced Filters & Sort -->
+    <div class="flex items-center gap-3 w-full lg:w-auto overflow-x-auto">
+        @foreach (var filter in AdvancedFilters)
+        {
+            <div class="relative group">
+                <button class="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm">
+                    <i class="@filter.Icon text-gray-400"></i> @filter.Label
+                    <i class="fa-solid fa-chevron-down text-xs text-gray-400 ml-1"></i>
+                </button>
+                @* Optional dropdown *@
+            </div>
+        }
+
+        <div class="h-8 w-[1px] bg-gray-300"></div>
+
+        <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-500 font-medium whitespace-nowrap">Sort by:</span>
+            <select @bind="SortOption"
+                    class="bg-transparent text-sm font-bold text-gray-700 border-none focus:ring-0 cursor-pointer p-0 pr-6">
+                <option>Last Interaction</option>
+                <option>Lead Score (High-Low)</option>
+                <option>Value (High-Low)</option>
+                <option>Created Date</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback<string> OnSearchChanged { get; set; }
+
+    private string SearchText { get; set; } = string.Empty;
+    private string SelectedQuickFilter { get; set; } = "All Leads";
+    private string SortOption { get; set; } = "Last Interaction";
+
+    private static readonly string[] QuickFilters = { "All Leads", "My Leads", "Unassigned" };
+
+    private readonly List<FilterItem> AdvancedFilters = new()
+    {
+        new("Source", "fa-solid fa-bullhorn"),
+        new("Temp", "fa-solid fa-temperature-half"),
+        new("Status", "fa-solid fa-list-check")
+    };
+
+    private void SelectQuickFilter(string filter) {
+        SelectedQuickFilter = filter;
+        // Optional: trigger parent callback if needed
+    }
+
+    private async Task OnInputChanged(ChangeEventArgs e) {
+        SearchText = e.Value?.ToString() ?? string.Empty;
+
+        if (OnSearchChanged.HasDelegate) {
+            await OnSearchChanged.InvokeAsync(SearchText);
+        }
+    }
+
+    private record FilterItem(string Label, string Icon);
+}
+

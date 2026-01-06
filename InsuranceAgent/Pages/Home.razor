@@ -23,7 +23,7 @@
 @inject IJSRuntime JS
 @inject ILogger<Home> Logger
 @inject INavigationEventService NavEvents
-@inject InsuranceAgentService InsuranceAgentService
+@inject InsuranceAgentServiceV2 InsuranceAgentService
 @inject HybridChatService ChatService
 @inject AutoMapper.IMapper _mapper
 @inject LeadsService LeadsService
@@ -96,7 +96,7 @@
          =========================== -->
     <div class="w-1/3 h-full relative flex">
         <div class="flex-1 mx-4 my-2">
-            <CustomChatWindowV2 />
+            <CustomChatWindowV3 />
         </div>
     </div>
 </div>
@@ -141,6 +141,11 @@
 
     #region --- Lifecycle ---
     protected override void OnInitialized() {
+        // Unsubscribe first to prevent duplicate subscriptions
+        NavEvents.NavigateRequested -= OnNavigateRequested;
+        InsuranceAgentService.CustomEventTriggered -= OnCustomEventReceived;
+
+        // Now subscribe
         NavEvents.NavigateRequested += OnNavigateRequested;
         InsuranceAgentService.CustomEventTriggered += OnCustomEventReceived;
         Logger.LogInformation("[Home] Initialized and subscribed to events");
@@ -183,7 +188,7 @@
 
                 case "lead_details_submitted":
                     HandleProgressUpdate(e.EventData);
-                    await SaveLeadDetailsAsync(e);
+                    await SaveLeadWithContactInfoAsync(e);
                     break;
 
                 case "life_goals_submitted":
@@ -218,7 +223,7 @@
 
                 case "contact_info_submitted":
                     HandleProgressUpdate(e.EventData);
-                    await SaveContactInfoAsync(e);
+                    // await SaveContactInfoAsync(e);
                     break;
 
                 case "qualification_complete":
@@ -390,26 +395,54 @@
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private async Task SaveLeadDetailsAsync(CustomEventTriggeredEventArgs e) {
+    private async Task SaveLeadWithContactInfoAsync(CustomEventTriggeredEventArgs e) {
         try {
+            // Extract both models from context
             var leadModel = e.Context?.GetValue<LeadDetailsModel>("LeadDetailsModel");
+            var contactModel = e.Context?.GetValue<ContactInfoModel>("ContactInfoModel");
+
             if (leadModel is null) {
                 Logger.LogWarning("[Home] LeadDetailsModel not found in context.");
                 return;
             }
 
-            var dto = _mapper.Map<LeadRequest>(leadModel);
+            // Step 1: Create Lead with basic contact info from ContactInfoModel
+            var leadDto = _mapper.Map<LeadRequest>(leadModel);
+
+            // Populate Lead contact fields from ContactInfoModel if available
+            if (contactModel != null) {
+                leadDto.FullName = contactModel.FullName;
+                leadDto.Email = contactModel.EmailAddress;
+                leadDto.Phone = contactModel.PhoneNumber;
+            }
 
             // // Only assign AgentId if it's been selected
             // if (InsuranceAgentService.CurrentAgentId is int agentId)
-            //     dto.AssignedAgentId = agentId;
+            //     leadDto.AssignedAgentId = agentId;
 
-            var result = await LeadsService.CreateLeadAsync(dto);
-            Logger.LogInformation("[Home] Lead saved with ID: {LeadId}", result);
+            // Create Lead and store the auto-generated ID
+            var leadId = await LeadsService.CreateLeadAsync(leadDto);
+            if (!leadId.HasValue) {
+                Logger.LogError("[Home] Failed to create lead - no ID returned.");
+                return;
+            }
+
+            currentLeadId = leadId.Value;
+            Logger.LogInformation("[Home] Lead created with ID: {LeadId}", leadId.Value);
+
+            // Step 2: Save detailed ContactInfo to profile (if available)
+            if (contactModel != null) {
+                var contactDto = _mapper.Map<ContactInfoRequest>(contactModel);
+                contactDto.LeadId = leadId.Value;
+                await LeadsService.SaveContactInfoAsync(contactDto);
+                Logger.LogInformation("[Home] ContactInfo saved for LeadId: {LeadId}", leadId.Value);
+            }
+
         } catch (Exception ex) {
-            Logger.LogError(ex, "[Home] Failed to save lead details.");
+            Logger.LogError(ex, "[Home] Failed to save lead with contact info.");
         }
     }
+
     private async Task SaveLifeGoalsAsync(CustomEventTriggeredEventArgs e) {
         var model = e.Context?.GetValue<LifeGoalsModel>("LifeGoalsModel");
         if (model is null) {
@@ -417,7 +450,13 @@
             return;
         }
 
+        if (!currentLeadId.HasValue) {
+            Logger.LogWarning("[Home] Cannot save LifeGoals: LeadId not available.");
+            return;
+        }
+
         var dto = _mapper.Map<LifeGoalsRequest>(model);
+        dto.LeadId = currentLeadId.Value;
         await LeadsService.SaveLifeGoalsAsync(dto);
     }
 
@@ -428,7 +467,13 @@
             return;
         }
 
+        if (!currentLeadId.HasValue) {
+            Logger.LogWarning("[Home] Cannot save CoverageIntent: LeadId not available.");
+            return;
+        }
+
         var dto = _mapper.Map<CoverageIntentRequest>(model);
+        dto.LeadId = currentLeadId.Value;
         await LeadsService.SaveCoverageIntentAsync(dto);
     }
 
@@ -439,7 +484,13 @@
             return;
         }
 
+        if (!currentLeadId.HasValue) {
+            Logger.LogWarning("[Home] Cannot save HealthInfo: LeadId not available.");
+            return;
+        }
+
         var dto = _mapper.Map<HealthInfoRequest>(model);
+        dto.LeadId = currentLeadId.Value;
         await LeadsService.SaveHealthInfoAsync(dto);
     }
 
@@ -450,7 +501,13 @@
             return;
         }
 
+        if (!currentLeadId.HasValue) {
+            Logger.LogWarning("[Home] Cannot save Dependents: LeadId not available.");
+            return;
+        }
+
         var dto = _mapper.Map<DependentsRequest>(model);
+        dto.LeadId = currentLeadId.Value;
         await LeadsService.SaveDependentsAsync(dto);
     }
 
@@ -461,31 +518,49 @@
             return;
         }
 
+        if (!currentLeadId.HasValue) {
+            Logger.LogWarning("[Home] Cannot save Employment: LeadId not available.");
+            return;
+        }
+
         var dto = _mapper.Map<EmploymentRequest>(model);
+        dto.LeadId = currentLeadId.Value;
         await LeadsService.SaveEmploymentAsync(dto);
     }
 
     private async Task SaveBeneficiariesAsync(CustomEventTriggeredEventArgs e) {
-        var model = e.Context?.GetValue<BeneficiaryInfoModel>("BeneficiariesModel");
+        var model = e.Context?.GetValue<BeneficiaryInfoModel>("BeneficiaryInfoModel");
         if (model is null) {
-            Logger.LogWarning("[Home] BeneficiariesModel not found in context.");
+            Logger.LogWarning("[Home] BeneficiaryInfoModel not found in context.");
+            return;
+        }
+
+        if (!currentLeadId.HasValue) {
+            Logger.LogWarning("[Home] Cannot save Beneficiaries: LeadId not available.");
             return;
         }
 
         var dto = _mapper.Map<BeneficiaryInfoRequest>(model);
+        dto.LeadId = currentLeadId.Value;
         await LeadsService.SaveBeneficiariesAsync(dto);
     }
 
-    private async Task SaveContactInfoAsync(CustomEventTriggeredEventArgs e) {
-        var model = e.Context?.GetValue<ContactInfoModel>("ContactInfoModel");
-        if (model is null) {
-            Logger.LogWarning("[Home] ContactInfoModel not found in context.");
-            return;
-        }
+    // private async Task SaveContactInfoAsync(CustomEventTriggeredEventArgs e) {
+    //     var model = e.Context?.GetValue<ContactInfoModel>("ContactInfoModel");
+    //     if (model is null) {
+    //         Logger.LogWarning("[Home] ContactInfoModel not found in context.");
+    //         return;
+    //     }
 
-        var dto = _mapper.Map<ContactInfoRequest>(model);
-        await LeadsService.SaveContactInfoAsync(dto);
-    }
+    //     if (!currentLeadId.HasValue) {
+    //         Logger.LogWarning("[Home] Cannot save ContactInfo: LeadId not available.");
+    //         return;
+    //     }
+
+    //     var dto = _mapper.Map<ContactInfoRequest>(model);
+    //     dto.LeadId = currentLeadId.Value;
+    //     await LeadsService.SaveContactInfoAsync(dto);
+    // }
 
 
 
@@ -513,5 +588,6 @@
     #region --- Data Models ---
     private TopicWorkflowContext? lastKnownContext;
     private LeadDetailsModel? leadDetailsModel;
+    private int? currentLeadId;
     #endregion
 }

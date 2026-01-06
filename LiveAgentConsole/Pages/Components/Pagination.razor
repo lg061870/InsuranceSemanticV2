@@ -1,0 +1,44 @@
+﻿@* Pagination.razor *@
+<nav class="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-200">
+    <button class="w-8 h-8 rounded border border-gray-300 bg-white text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            @onclick="PrevPage" disabled="@(!HasPrev)">
+        <i class="fa-solid fa-chevron-left text-xs"></i>
+    </button>
+
+    @for (int p = 1; p <= PageCount; p++) {
+        <button class="w-8 h-8 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 font-medium flex items-center justify-center
+                           @(p == CurrentPage ? "bg-primary text-white border-primary" : "")"
+                @onclick="() => OnPageClick(p)">
+            @p
+        </button>
+    }
+
+    <button class="w-8 h-8 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 flex items-center justify-center"
+            @onclick="NextPage" disabled="@(!HasNext)">
+        <i class="fa-solid fa-chevron-right text-xs"></i>
+    </button>
+</nav>
+
+@code {
+    [Parameter] public int CurrentPage { get; set; } = 1;
+    [Parameter] public int PageCount { get; set; } = 1;
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+
+    private bool HasPrev => CurrentPage > 1;
+    private bool HasNext => CurrentPage < PageCount;
+
+    private async Task PrevPage() {
+        if (HasPrev)
+            await OnPageChanged.InvokeAsync(CurrentPage - 1);
+    }
+
+    private async Task NextPage() {
+        if (HasNext)
+            await OnPageChanged.InvokeAsync(CurrentPage + 1);
+    }
+
+    private async Task OnPageClick(int page) {
+        if (page != CurrentPage)
+            await OnPageChanged.InvokeAsync(page);
+    }
+}

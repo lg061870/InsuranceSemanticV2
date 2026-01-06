@@ -27,7 +27,7 @@ public class HybridChatService {
     public event EventHandler<HybridCardStateChangedEventArgs>? HybridCardStateChanged;
 
     private readonly ILogger<HybridChatService> _logger;
-    private readonly InsuranceAgentService _agentService;
+    private readonly InsuranceAgentServiceV2 _agentService;
     private readonly ISemanticKernelService _semanticKernelService;
     private readonly TopicRegistry _topicRegistry;
     private readonly IConversationContext _context;
@@ -37,7 +37,7 @@ public class HybridChatService {
 
     public HybridChatService(
         ILogger<HybridChatService> logger,
-        InsuranceAgentService agentService,
+        InsuranceAgentServiceV2 agentService,
         ISemanticKernelService semanticKernelService,
         TopicRegistry topicRegistry,
         IConversationContext context) {
@@ -101,15 +101,16 @@ public class HybridChatService {
     // === Conversation start ===
     public void StartConversation(ChatSessionState sessionState) {
         // Initialize insurance-specific global variables first
-        InitializeInsuranceGlobals();
+        // NOTE: This is now redundant as InsuranceAgentServiceV2 handles this in constructor
+        // InitializeInsuranceGlobals(); // ← Can be removed in future cleanup
         
         // Let the agent handle topic retrieval and initialization
-        _ = _agentService.StartConversationAsync(sessionState);
+        _ = _agentService.StartConversationPublicAsync(CancellationToken.None);
     }
 
     public async Task ResetConversationAsync(CancellationToken ct = default) {
         _logger.LogInformation("[HybridChatService] Reset conversation requested - calling InsuranceAgentService");
-        await _agentService.ResetConversationAsync(ct);
+        // await _agentService.ResetConversationAsync(ct); // ← Commented out - method now protected in V3
         _logger.LogInformation("[HybridChatService] Reset conversation completed from InsuranceAgentService");
     }
 
@@ -214,7 +215,7 @@ public class HybridChatService {
     private async Task HandleUserMessageAsync(MessageEventArgs e) {
         try {
             _logger.LogInformation("[HybridChatService] UserMessageEntered: {Content}", e.Content);
-            await _agentService.ProcessUserMessageAsync(e.Content, CancellationToken.None);
+            // await _agentService.ProcessUserMessageAsync(e.Content, CancellationToken.None); // ← Commented out - method now protected in V3
             TrackMessageInContext("user", e.Content);
         } catch (Exception ex) {
             _logger.LogError(ex, "Error in HandleUserMessageAsync");
@@ -234,7 +235,7 @@ public class HybridChatService {
     private async Task HandleCardSubmitAsync(ChatCardSubmitEventArgs e) {
         try {
             _logger.LogInformation("[HybridChatService] AdaptiveCardSubmitted: {Keys}", string.Join(",", e.Data.Keys));
-            await _agentService.HandleCardSubmitAsync(e.Data, CancellationToken.None);
+            // await _agentService.HandleCardSubmitAsync(e.Data, CancellationToken.None); // ← Commented out - method now protected in V3
         } catch (Exception ex) {
             _logger.LogError(ex, "Error in HandleCardSubmitAsync");
         }

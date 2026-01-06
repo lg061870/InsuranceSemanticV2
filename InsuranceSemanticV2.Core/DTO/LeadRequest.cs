@@ -1,6 +1,7 @@
 ﻿namespace InsuranceSemanticV2.Core.DTO;
 
 public class LeadRequest {
+    public int LeadId { get; set; }
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
@@ -24,4 +25,14 @@ public class LeadRequest {
 
     public string? LeadUrl { get; set; }
     public string? Notes { get; set; }
+
+    // Progress tracking flags (for LiveAgentConsole)
+    public bool HasContactInfo { get; set; }
+    public bool HasHealthInfo { get; set; }
+    public bool HasLifeGoals { get; set; }
+    public bool HasCoverageIntent { get; set; }
+    public bool HasDependents { get; set; }
+    public bool HasEmployment { get; set; }
+    public bool HasBeneficiaryInfo { get; set; }
+    public bool HasAssetsLiabilities { get; set; }
 }

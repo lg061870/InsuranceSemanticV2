@@ -1,7 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dotnet build:*)"
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test InsuranceSemanticV2.IntegrationTests/InsuranceSemanticV2.IntegrationTests.csproj --logger \"console;verbosity=detailed\" --no-build)",
+      "Bash(sqlcmd:*)",
+      "Bash(taskkill:*)",
+      "Bash(timeout:*)",
+      "Bash(dotnet run:*)",
+      "Bash(curl:*)",
+      "Bash(ConvertFrom-Json)",
+      "Bash(Select-Object -First 1)",
+      "Bash(ConvertTo-Json -Depth 3)",
+      "Bash(dotnet ef migrations add:*)",
+      "Bash(rm:*)",
+      "Bash(Select-String -Pattern \"error|Build succeeded|Build failed\")",
+      "Bash(Select-Object -First 5)",
+      "Bash(dotnet ef database update:*)"
     ],
     "deny": [],
     "ask": []
