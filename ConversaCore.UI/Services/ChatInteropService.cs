@@ -1,10 +1,10 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using ConversaCore.Interfaces;
 
-namespace InsuranceAgent.Services;
+namespace ConversaCore.UI.Services;
 
 /// <summary>
 /// Provides Blazor ↔ JavaScript interop utilities for the chat window UI,

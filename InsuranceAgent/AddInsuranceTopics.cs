@@ -18,26 +18,26 @@ public static class InsuranceTopicRegistrationExtensions {
         void AddLogger<T>() where T : class =>
             services.AddScoped(sp => sp.GetRequiredService<ILoggerFactory>().CreateLogger<T>());
 
-        AddLogger<ConversationStartTopic>();
-        AddLogger<BeneficiaryInfoDemoTopic>();
-        AddLogger<CaliforniaResidentTopic>();
-        AddLogger<BeneficiaryRepeatDemoTopic>();
-        AddLogger<BeneficiaryUserDrivenTopic>();
-        AddLogger<ComplianceTopic>();
-        AddLogger<ContactHealthTopic>();
-        AddLogger<ContactInfoTopic>();
-        AddLogger<CoverageIntentTopic>();
-        AddLogger<EmploymentTopic>();
-        AddLogger<DependentsTopic>();
-        AddLogger<HealthInfoTopic>();
-        AddLogger<InsuranceContextTopic>();
-        AddLogger<LeadDetailsTopic>();
-        AddLogger<LifeGoalsTopic>();
-        AddLogger<HandDownDemoTopic>();
-        AddLogger<RadioButtonDemoTopic>();
+        //AddLogger<ConversationStartTopic>();
+        //AddLogger<BeneficiaryInfoDemoTopic>();
+        //AddLogger<CaliforniaResidentTopic>();
+        //AddLogger<BeneficiaryRepeatDemoTopic>();
+        //AddLogger<BeneficiaryUserDrivenTopic>();
+        //AddLogger<ComplianceTopic>();
+        //AddLogger<ContactHealthTopic>();
+        //AddLogger<ContactInfoTopic>();
+        //AddLogger<CoverageIntentTopic>();
+        //AddLogger<EmploymentTopic>();
+        //AddLogger<DependentsTopic>();
+        //AddLogger<HealthInfoTopic>();
+        //AddLogger<InsuranceContextTopic>();
+        //AddLogger<LeadDetailsTopic>();
+        //AddLogger<LifeGoalsTopic>();
+        //AddLogger<HandDownDemoTopic>();
+        //AddLogger<RadioButtonDemoTopic>();
         AddLogger<MarketingT1Topic>();
-        AddLogger<SemanticActivitiesDemoTopic>();
-        AddLogger<EventTriggerDemoTopic>();
+        //AddLogger<SemanticActivitiesDemoTopic>();
+        //AddLogger<EventTriggerDemoTopic>();
 
 
         // ─────────────────────────────

@@ -5,16 +5,14 @@
 @using ConversaCore.Models
 @using ConversaCore.Services
 @using ConversaCore.TopicFlow
-@using InsuranceAgent.Models
-@using InsuranceAgent.Services
+@using ConversaCore.Agentic
 
 @implements IDisposable
 
-@inject InsuranceAgentServiceV2 AgentService
-@inject IChatInteropService ChatInteropService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject ILogger<CustomChatWindowV3> Logger
+@inject IChatInteropService ChatInteropService
 
 <!-- ========== CHAT WINDOW LAYOUT ========== -->
 <div class="chat-window-container">
@@ -31,11 +29,11 @@
             <h3 class="chat-header-name">Sofia</h3>
             <div class="chat-header-status">
                 <div class="status-indicator"></div>
-                <span>V3 -- Direct Agent � Online</span>
+                <span>V3 -- Direct Agent • Online</span>
             </div>
         </div>
         <div class="chat-header-actions">
-            <button class="chat-header-button" title="Reset conversation" @onclick="ConfirmReset">
+            <button class="chat-header-button" title="Reset conversation" @onclick="ExecuteReset">
                 <i class="fa-solid fa-rotate-left"></i>
             </button>
             <button class="chat-header-button" title="Clear chat" @onclick="ClearChat">
@@ -139,8 +137,9 @@
 
 <!-- Reset Confirmation Dialog -->
 @if (showResetConfirmation) {
-    <div class="modal-overlay" @onclick="HideResetConfirmation">
-        <div class="modal-dialog" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-backdrop" @onclick="HideResetConfirmation"></div>
+        <div class="modal-dialog">
             <div class="modal-header">
                 <h3>Reset Conversation</h3>
                 <button class="modal-close" @onclick="HideResetConfirmation">
@@ -165,10 +164,15 @@
     </div>
 }
 
-
 @code {
+    // ========== PARAMETERS ========== 
+    [Parameter] public required DomainAgentService AgentService { get; set; }
+    
+    // Allow consumer to provide a subscribe method via parameter
+    [Parameter] public Action<CustomChatWindowV3>? SubscribeToEvents { get; set; }
+
     // ========== STATE ========== 
-    private ChatSessionState SessionState { get; set; } = new ChatSessionState();
+    private ChatSessionStateBase SessionState { get; set; } = new DefaultChatSessionState();
     private List<ChatMessage> Messages { get; set; } = new();
     private string CurrentMessage { get; set; } = "";
     private bool IsTyping { get; set; } = false;
@@ -177,6 +181,7 @@
     private bool _conversationStarted = false;
     private bool showResetConfirmation = false;
     private bool IsPromptEnabled { get; set; } = true;
+    private readonly string resetButtonLogMessage = "Button clicked";
 
     private ElementReference messagesContainerRef;
     private ElementReference messageInputRef;
@@ -189,11 +194,16 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender) {
         if (firstRender && !_conversationStarted) {
-            Logger?.LogInformation("[ChatWindowV3] ? First render - initializing event-driven architecture");
+            Logger?.LogInformation("[ChatWindowV3] 🔄 First render - initializing event-driven architecture");
             
             // ========== SUBSCRIBE AGENT TO UI EVENTS ==========
             Logger?.LogInformation("[ChatWindowV3] Wiring agent event subscriptions");
-            AgentService.SubscribeToChatWindowEvents(this);
+            
+            // Call the consumer-provided subscription method if available
+            if (SubscribeToEvents != null)
+            {
+                SubscribeToEvents(this);
+            }
             
             // ========== SUBSCRIBE UI TO AGENT EVENTS ==========
             Logger?.LogInformation("[ChatWindowV3] Subscribing to agent outbound events");
@@ -297,7 +307,7 @@
             ConversationStartRequested?.Invoke(this, new ConversationStartRequestedEventArgs(CancellationToken.None));
 
             _conversationStarted = true;
-            Logger?.LogInformation("[ChatWindowV3] ? Event-driven initialization complete");
+            Logger?.LogInformation("[ChatWindowV3] ✅ Event-driven initialization complete");
         }
     }
 
@@ -333,7 +343,7 @@
         } catch (Exception ex) {
             Logger?.LogError(ex, "[ChatWindowV3] Error processing message");
             Messages.Add(new ChatMessage {
-                Content = "?? An error occurred. Please try again.",
+                Content = "⚠️ An error occurred. Please try again.",
                 IsFromUser = false,
                 Timestamp = DateTime.Now
             });
@@ -381,7 +391,7 @@
         } catch (Exception ex) {
             Logger?.LogError(ex, "[ChatWindowV3] Error resetting conversation");
             Messages.Add(new ChatMessage {
-                Content = "?? There was an error resetting the conversation. Please try again.",
+                Content = "⚠️ There was an error resetting the conversation. Please try again.",
                 IsFromUser = false,
                 Timestamp = DateTime.Now
             });
@@ -429,252 +439,9 @@
         return Task.CompletedTask;
     }
 
-    // ========== PUBLIC EVENTS (UI ? Agent) ==========
-    
-    /// <summary>
-    /// Raised when the UI requests conversation start.
-    /// Agent service subscribes to this event.
-    /// </summary>
-    public event EventHandler<ConversationStartRequestedEventArgs>? ConversationStartRequested;
-    
-    /// <summary>
-    /// Raised when user sends a message.
-    /// Agent service subscribes to this event.
-    /// </summary>
+    // ========== PUBLIC EVENTS (UI → Agent) ==========
     public event EventHandler<UserMessageReceivedEventArgs>? UserMessageReceived;
-    
-    /// <summary>
-    /// Raised when user submits an adaptive card.
-    /// Agent service subscribes to this event.
-    /// </summary>
-    public event EventHandler<CardSubmittedEventArgs>? CardSubmitted;
-    
-    /// <summary>
-    /// Raised when user requests conversation reset.
-    /// Agent service subscribes to this event.
-    /// </summary>
+    public event EventHandler<ConversationStartRequestedEventArgs>? ConversationStartRequested;
     public event EventHandler<ConversationResetRequestedEventArgs>? ConversationResetRequested;
-
+    public event EventHandler<CardSubmittedEventArgs>? CardSubmitted;
 }
-
-<style>
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-    }
-
-    .modal-dialog {
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        max-width: 500px;
-        width: 90%;
-        max-height: 90vh;
-        overflow-y: auto;
-    }
-
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem 1.5rem;
-        border-bottom: 1px solid #e9ecef;
-    }
-
-        .modal-header h3 {
-            margin: 0;
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-
-    .modal-close {
-        background: none;
-        border: none;
-        font-size: 1.5rem;
-        cursor: pointer;
-        color: #6c757d;
-        padding: 0;
-        width: 2rem;
-        height: 2rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-        .modal-close:hover {
-            color: #dc3545;
-        }
-
-    .modal-body {
-        padding: 1.5rem;
-    }
-
-        .modal-body p {
-            margin-bottom: 1rem;
-        }
-
-        .modal-body ul {
-            margin-bottom: 1rem;
-            padding-left: 1.5rem;
-        }
-
-        .modal-body li {
-            margin-bottom: 0.5rem;
-        }
-
-    .text-warning {
-        color: #fd7e14;
-        font-weight: 500;
-    }
-
-    .modal-footer {
-        display: flex;
-        justify-content: flex-end;
-        gap: 0.5rem;
-        padding: 1rem 1.5rem;
-        border-top: 1px solid #e9ecef;
-    }
-
-    .btn {
-        padding: 0.5rem 1rem;
-        border: 1px solid transparent;
-        border-radius: 4px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .btn-secondary {
-        background-color: #6c757d;
-        border-color: #6c757d;
-        color: white;
-    }
-
-        .btn-secondary:hover {
-            background-color: #5a6268;
-            border-color: #545b62;
-        }
-
-    .btn-danger {
-        background-color: #dc3545;
-        border-color: #dc3545;
-        color: white;
-    }
-
-        .btn-danger:hover {
-            background-color: #c82333;
-            border-color: #bd2130;
-        }
-
-    .adaptive-card-container.readonly {
-        opacity: 0.5;
-        pointer-events: none;
-        transition: opacity 0.3s ease;
-    }
-
-    .message-input.disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        background-color: #f4f4f4;
-        color: #999;
-    }
-
-    .message-input-container[title] {
-        position: relative;
-    }
-
-        .message-input-container[title]::after {
-            content: attr(title);
-            display: none;
-            position: absolute;
-            bottom: 120%;
-            left: 10px;
-            background: #333;
-            color: #fff;
-            font-size: 0.75rem;
-            padding: 6px 8px;
-            border-radius: 4px;
-            white-space: nowrap;
-            z-index: 200;
-            opacity: 0;
-            transition: opacity 0.2s ease-in-out;
-        }
-
-        .message-input-container[title]:hover::after {
-            display: block;
-            opacity: 1;
-        }
-
-    /* === Required Card Styling === */
-    .ac-required-card {
-        position: relative;
-        border: 2px dashed #d93025;
-        border-radius: 10px;
-        background: transparent;
-        padding: 16px 18px 20px 18px;
-        margin: 14px 0;
-    }
-
-    .ac-required-banner {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #fdecea;
-        color: #b71c1c;
-        border: 1px solid #f5c6cb;
-        border-radius: 6px;
-        padding: 6px 12px;
-        font-size: 13px;
-        font-weight: 600;
-        margin-bottom: 14px;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
-    }
-
-        .ac-required-banner::before {
-            content: "??";
-            margin-right: 6px;
-        }
-
-    .ac-required-field label .ac-required-indicator {
-        color: #d93025;
-        font-weight: bold;
-    }
-
-    .ac-required-card .ac-input-container input,
-    .ac-required-card .ac-input-container select,
-    .ac-required-card .ac-input-container textarea {
-        border: 1px solid #f1a6a0;
-        transition: border-color 0.2s ease;
-    }
-
-        .ac-required-card .ac-input-container input:focus,
-        .ac-required-card .ac-input-container select:focus,
-        .ac-required-card .ac-input-container textarea:focus {
-            border-color: #d93025;
-            outline: none;
-        }
-
-    .ac-required-card .ac-pushButton {
-        background: linear-gradient(180deg, #0078d7 0%, #005fa3 100%);
-        border: none;
-        color: white;
-        font-weight: 600;
-        border-radius: 6px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-        transition: background 0.2s ease, box-shadow 0.2s ease;
-    }
-
-        .ac-required-card .ac-pushButton:hover {
-            background: linear-gradient(180deg, #008fee 0%, #006cc2 100%);
-            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        }
-
-</style>

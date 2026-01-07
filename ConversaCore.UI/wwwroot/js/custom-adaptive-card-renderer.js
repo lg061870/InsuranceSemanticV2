@@ -297,7 +297,7 @@
             return wrap;
         },
 
-        renderInputDate({ id, value, min, max }) {
+        renderInputDate({ id, value, min, max, isEnabled = true }) {
             const wrap = el("div", "ac-input-container");
             const input = el("input", "ac-input ac-dateInput", {
                 type: "date",
@@ -305,6 +305,9 @@
                 min, max
             });
             if (value) input.value = value;
+            if (isEnabled === false) {
+                input.disabled = true;
+            }
             wrap.appendChild(input);
             return wrap;
         },
@@ -369,6 +372,9 @@
                 // compact or unspecified
                 const select = el("select", "ac-input", { id: id || "" });
                 if (isMultiSelect) select.multiple = true;
+                if (isEnabled === false) {
+                    select.disabled = true;
+                }
                 (choices || []).forEach((c) => {
                     const opt = el("option", null, { value: c.value, text: c.title });
                     if (vals.includes(c.value)) opt.selected = true;
@@ -381,7 +387,7 @@
         },
 
         // Toggle (checkbox) with valueOn/valueOff mapping
-        renderInputToggle({ id, title, text, value, valueOn, valueOff }) {
+        renderInputToggle({ id, title, text, value, valueOn, valueOff, isEnabled = true }) {
             const wrap = el("div", "ac-input-container ac-toggleInput");
 
             const on = valueOn ?? "true";
@@ -402,6 +408,9 @@
             input.dataset.valueOn = on;
             input.dataset.valueOff = off;
             input.checked = initial;
+            if (isEnabled === false) {
+                input.disabled = true;
+            }
 
             // Use text property (from CardElement) or fallback to title
             const labelText = text || title || "";
@@ -420,7 +429,7 @@
 
         // TagSelect: Single-select chips with optional custom input
         renderTagSelect(element) {
-            const { id, choices, value, allowCustom, customPlaceholder } = element;
+            const { id, choices, value, allowCustom, customPlaceholder, isEnabled = true } = element;
             const shouldAllowCustom = allowCustom === true;
             const placeholder = customPlaceholder || "Or enter other...";
             const maxVisible = 3; // Show only 3 chips initially
@@ -428,6 +437,13 @@
             const wrap = el("div", "ac-input-container ac-tagSelect");
             const group = el("div", "ac-tagSelect-group");
             group.setAttribute("data-tag-select-id", id || "");
+            
+            // Disable entire group if isEnabled is false
+            if (isEnabled === false) {
+                wrap.classList.add("disabled");
+                wrap.style.pointerEvents = "none";
+                wrap.style.opacity = "0.6";
+            }
             
             // Chips container
             const chipsContainer = el("div", "ac-tagSelect-chips");
@@ -509,6 +525,10 @@
                     type: "text",
                     placeholder: placeholder
                 });
+                
+                if (isEnabled === false) {
+                    customInput.disabled = true;
+                }
                 
                 // If current value is not in choices, put it in custom input
                 const hasMatchingChoice = choices && choices.some(choice => choice.value === value);

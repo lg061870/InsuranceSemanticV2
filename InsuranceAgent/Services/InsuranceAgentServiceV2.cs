@@ -229,7 +229,7 @@ public class InsuranceAgentServiceV2 : DomainAgentService  {
     /// Wires up event subscriptions between UI and agent service.
     /// MUST be called after both ChatWindow and AgentService are created.
     /// </summary>
-    public void SubscribeToChatWindowEvents(InsuranceAgent.Pages.Components.CustomChatWindowV3 chatWindow)
+    public void SubscribeToChatWindowEvents(ConversaCore.UI.Components.CustomChatWindowV3 chatWindow)
     {
         _logger.LogInformation("[InsuranceAgentServiceV2] Subscribing to CustomChatWindowV3 events");
         

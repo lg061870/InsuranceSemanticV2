@@ -74,7 +74,7 @@ internal class Program {
         builder.Services.AddScoped<ISemanticKernelService, SemanticKernelService>();
         builder.Services.AddScoped<HybridChatService>(); // ← Required for V2, not needed for V3
         builder.Services.AddScoped<InsuranceAgentServiceV2>();
-        builder.Services.AddScoped<IChatInteropService, ChatInteropService>();
+        builder.Services.AddScoped<IChatInteropService, ConversaCore.UI.Services.ChatInteropService>();
         builder.Services.AddScoped<IDocumentEmbeddingService, DocumentEmbeddingService>();
         builder.Services.AddScoped<INavigationEventService, NavigationEventService>();
 
@@ -119,6 +119,7 @@ internal class Program {
 
         app.UseHttpsRedirection();
         app.UseStaticFiles();
+        
         app.UseRouting();
         app.MapBlazorHub();
         app.MapFallbackToPage("/_Host");
