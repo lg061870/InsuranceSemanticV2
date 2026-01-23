@@ -38,6 +38,11 @@ artifacts/
 InsuranceAgent/appsettings.json
 InsuranceAgent/appsettings.Development.json
 
+# Publish profiles (contain deployment credentials)
+**/*.pubxml
+**/*.pubxml.user
+**/PublishProfiles/
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 

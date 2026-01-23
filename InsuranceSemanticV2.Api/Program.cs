@@ -74,7 +74,12 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowBlazorWasm", policy =>
     {
-        policy.WithOrigins("http://localhost:5033", "https://localhost:7089")
+        policy.WithOrigins(
+            "http://localhost:5033",
+            "https://localhost:7089",
+            "https://win8118.site4now.net",
+            "https://win8118.site4now.net/livenagent"
+        )
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials(); // Required for SignalR
@@ -95,6 +100,13 @@ else
 }
 
 var app = builder.Build();
+
+// Configure base path for virtual directory deployment
+var pathBase = app.Configuration.GetValue<string>("PathBase");
+if (!string.IsNullOrEmpty(pathBase))
+{
+    app.UsePathBase(pathBase);
+}
 
 if (app.Environment.IsDevelopment()) {
     app.MapOpenApi();

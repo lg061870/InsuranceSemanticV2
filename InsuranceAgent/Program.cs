@@ -4,6 +4,8 @@ using ConversaCore;
 using ConversaCore.Interfaces;
 using ConversaCore.Services;
 using ConversaCore.Topics;
+using ConversaCore.Integrations.Core;
+using ConversaCore.Integrations.Models;
 using InsuranceAgent.Configuration;
 using InsuranceAgent.Extensions;
 using InsuranceAgent.Mappings;
@@ -60,6 +62,15 @@ internal class Program {
         );
 
         // ------------------------------------------------------------
+        // INTEGRATIONS
+        // ------------------------------------------------------------
+        Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🔗 Registering Integrations...");
+        builder.Services.Configure<IntegrationsConfiguration>(
+            configuration.GetSection("Integrations"));
+        builder.Services.AddHttpClient();
+        builder.Services.AddScoped<IIntegrationService, IntegrationService>();
+
+        // ------------------------------------------------------------
         // INSURANCE TOPICS
         // ------------------------------------------------------------
         Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 💬 Registering InsuranceTopics...");
@@ -71,11 +82,11 @@ internal class Program {
         // ------------------------------------------------------------
         // CORE SERVICES
         // ------------------------------------------------------------
-        builder.Services.AddScoped<ISemanticKernelService, SemanticKernelService>();
+        builder.Services.AddScoped<ISemanticKernelService, InsuranceSemanticKernelService>();
         builder.Services.AddScoped<HybridChatService>(); // ← Required for V2, not needed for V3
         builder.Services.AddScoped<InsuranceAgentServiceV2>();
         builder.Services.AddScoped<IChatInteropService, ConversaCore.UI.Services.ChatInteropService>();
-        builder.Services.AddScoped<IDocumentEmbeddingService, DocumentEmbeddingService>();
+        builder.Services.AddScoped<IDocumentEmbeddingService, InsuranceDocumentEmbeddingService>();
         builder.Services.AddScoped<INavigationEventService, NavigationEventService>();
 
         // ------------------------------------------------------------
@@ -99,11 +110,24 @@ internal class Program {
         builder.Services.AddSingleton<InsuranceRuleRepository>();
 
         // ------------------------------------------------------------
+        // RULE INDEXER / STORE (sample implementations for developer testing)
+        // ------------------------------------------------------------
+        builder.Services.AddSingleton<ConversaCore.TopicFlow.Rules.IRuleIndexer, InsuranceAgent.Services.RuleIndexerSample>();
+        builder.Services.AddSingleton<ConversaCore.TopicFlow.Rules.IRuleStore>(sp => {
+            var env = sp.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
+            var path = System.IO.Path.Combine(env.ContentRootPath, "InsuranceAgent", "jsonrules", "TERM_INS_RULES_canonical.jsonl");
+            return new InsuranceAgent.Services.RuleStoreSample(path);
+        });
+
+        // ------------------------------------------------------------
         // HTTP CLIENT FOR API CALLS
         // ------------------------------------------------------------
+        string apiBaseUrl = builder.Configuration["ApiSettings:BaseUrl"] 
+            ?? "http://localhost:5031/"; // Default to local development
+        
         builder.Services.AddHttpClient<LeadsService>(client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5031/"); // your API port
+            client.BaseAddress = new Uri(apiBaseUrl);
         });
 
         // ------------------------------------------------------------
