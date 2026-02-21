@@ -78,3 +78,4 @@ Thumbs.db
 # MCP Server Configuration (contains secrets)
 # Note: .mcp.json should be committed, but create .mcp.local.json for local overrides with tokens
 .mcp.local.json 
+nul
