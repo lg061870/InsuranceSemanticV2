@@ -1,0 +1,18 @@
+@* TranscriptPanel.razor *@
+<div class="flex-1 overflow-y-auto p-4 bg-white" id="transcript-container">
+    <div class="text-center text-sm text-gray-400">No messages yet</div>
+</div>
+
+@*
+@code {
+    public class ChatMessage {
+        public bool IsBot { get; set; }
+        public string Content { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; } = DateTime.Now;
+        public string? AvatarUrl { get; set; }
+    }
+
+    [Parameter]
+    public List<ChatMessage>? Messages { get; set; }
+}
+*@

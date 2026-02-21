@@ -132,17 +132,31 @@
             if (Array.isArray(cardJson.body)) {
                 cardJson.body.forEach((element) => {
                     const node = this.renderElement(element);
-                    
+
                     // Apply validation errors if present
                     if (element.id && validationErrors[element.id]) {
                         const errorMsg = validationErrors[element.id];
-                        // Add error styling
+
+                        // Mark the field/container as having an error
                         if (node.classList) {
                             node.classList.add("has-error");
                         }
-                        
-                        // Add error message
+
+                        // Create pill-shaped error badge with inline styles for guaranteed rendering
                         const errorDiv = el("div", "ac-error-message", { text: errorMsg });
+                        // Apply inline styles to ensure pill-shaped badge appears
+                        errorDiv.style.display = "inline-block";
+                        errorDiv.style.color = "#ffffff";
+                        errorDiv.style.backgroundColor = "#d13438";
+                        errorDiv.style.fontSize = "10px";
+                        errorDiv.style.fontWeight = "600";
+                        errorDiv.style.padding = "2px 8px";
+                        errorDiv.style.borderRadius = "999px";
+                        errorDiv.style.marginTop = "4px";
+                        errorDiv.style.marginLeft = "0";
+                        errorDiv.style.lineHeight = "1.2";
+                        errorDiv.style.whiteSpace = "nowrap";
+                        
                         const wrapper = el("div", "ac-field-with-error");
                         wrapper.appendChild(node);
                         wrapper.appendChild(errorDiv);
@@ -550,7 +564,7 @@
             return wrap;
         },
 
-        renderAction({ type, title, style, data }, onSubmit) {
+        renderAction({ type, title, style, data, isEnabled = true }, onSubmit) {
             if (type === 'Action.Submit') {
                 const button = document.createElement('button');
                 let className = 'ac-pushButton';
@@ -560,9 +574,19 @@
                 button.className = className;
                 button.textContent = title || 'Submit';
 
+                // If the action is explicitly disabled or already completed, render as inert
+                const isCompleted = data && data.action === 'completed';
+                if (isEnabled === false || isCompleted) {
+                    button.disabled = true;
+                    button.classList.add('is-disabled');
+                    return button;
+                }
+
                 button.addEventListener('click', () => {
+                    if (button.disabled) return;
                     button.disabled = true;
                     button.classList.add('is-busy');
+                    button.classList.add('was-clicked');
 
                     try {
                         // 🟢 Use collectInputs instead of manual query
@@ -588,8 +612,20 @@
                     } catch (err) {
                         console.error("Submit error:", err);
                     } finally {
-                        button.disabled = false;
-                        button.classList.remove('is-busy');
+                        // After any submit attempt, hard-disable all submit buttons
+                        // in this adaptive-card-host so the handler cannot be
+                        // triggered repeatedly.
+                        try {
+                            const host = button.closest('.adaptive-card-host');
+                            if (host) {
+                                host.querySelectorAll('button.ac-pushButton').forEach((b) => {
+                                    b.disabled = true;
+                                    b.classList.add('is-disabled');
+                                });
+                            }
+                        } catch (lockErr) {
+                            console.warn('[AdaptiveCards] Failed to lock submit buttons:', lockErr);
+                        }
                     }
                 });
 

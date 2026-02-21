@@ -1,0 +1,60 @@
+@page "/chat-demo"
+@using ConversaCore.UI.Components
+@using ConversaCore.UI.Models
+@using InsuranceAgent.Services
+
+@inject InsuranceAgentServiceV2 InsuranceAgentService
+
+<div class="demo-container">
+    <div class="demo-header">
+        <h1>Insurance Agent Chat</h1>
+    </div>
+
+    <div class="demo-content" @key="componentKey">
+        <div class="chatwindow-demo-layout">
+            <CustomChatWindowV3 @ref="chatWindowRef"
+                              AgentService="@InsuranceAgentService"
+                              Style="@currentStyle"
+                              SubscribeToEvents="@(w => InsuranceAgentService.SubscribeToChatWindowEvents(w))" />
+        </div>
+    </div>
+</div>
+
+<style>
+    .demo-container {
+        min-height: 100vh;
+        background: #f5f7fa;
+        padding: 2rem;
+    }
+
+    .demo-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .demo-header h1 {
+        font-size: 2rem;
+        color: #2d3748;
+        margin-bottom: 0.5rem;
+    }
+
+    .demo-content {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        min-height: 600px;
+    }
+
+    /* ChatWindow Layout */
+    .chatwindow-demo-layout {
+        height: 700px;
+        overflow: hidden;
+    }
+</style>
+
+@code {
+    private ChatStyle currentStyle = ChatStyle.ChatWindow;
+    private int componentKey = 0; // Force component recreation
+    private CustomChatWindowV3? chatWindowRef;
+}

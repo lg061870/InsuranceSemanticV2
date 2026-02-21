@@ -66,8 +66,7 @@ public abstract class DomainAgentService {
     /// Handles conversation start request from UI.
     /// Domain implementations should override StartConversationAsync for startup logic.
     /// </summary>
-    protected virtual async Task OnConversationStartRequestedAsync(CancellationToken ct)
-    {
+    protected virtual async Task OnConversationStartRequestedAsync(CancellationToken ct) {
         await StartConversationAsync(ct);
     }
 
@@ -99,6 +98,8 @@ public abstract class DomainAgentService {
     }
 
     #endregion
+
+    // NOTE: SubscribeToChatWindowEvents is UI-specific and must live in app projects.
 
     #region Domain Agent Plumbing
     /// <summary>
@@ -268,12 +269,55 @@ public abstract class DomainAgentService {
 
     protected void OnActivityCreated(object? sender, ActivityCreatedEventArgs e) {
         LogInfo("EVT_AC_0001");
+        // If activity returned a ChoicePayload, emit a ChatMessage with Options
+        try {
+            if (e.Content is ConversaCore.TopicFlow.ChoiceActivity.ChoicePayload cp) {
+                ActivityMessageReady?.Invoke(this,
+                    new ActivityMessageEventArgs(
+                        new ChatMessage {
+                            Content = cp.Question,
+                            IsFromUser = false,
+                            Timestamp = DateTime.Now,
+                            Options = cp.Options?.ToList()
+                        }
+                    )
+                );
 
-        switch (e.Content) {
-            default:
-                LogTrace("EVT_AC_0002");
-                break;
+                return;
+            }
+
+            // If activity returned an anonymous/object payload with a `card` property (e.g., QuickAnswerActivity),
+            // forward it as an adaptive-card-ready event so the UI can render it.
+            if (e.Content != null) {
+                var t = e.Content.GetType();
+                var cardProp = t.GetProperty("card");
+                if (cardProp != null) {
+                    try {
+                        var cardVal = cardProp.GetValue(e.Content) as string;
+                        var idProp = t.GetProperty("activityId") ?? t.GetProperty("ActivityId");
+                        var actId = idProp?.GetValue(e.Content) as string ?? Guid.NewGuid().ToString();
+
+                        _logger.LogInformation("[DomainAgentService] Forwarding inline card payload from ActivityCreated (ActivityId={ActivityId})", actId);
+                        ActivityAdaptiveCardReady?.Invoke(this,
+                            new ActivityAdaptiveCardEventArgs(
+                                cardVal ?? "{}",
+                                actId,
+                                RenderMode.Replace,
+                                false));
+
+                        return;
+                    } catch (Exception ex) {
+                        LogWarn("EVT_AC_0004");
+                        _logger.LogWarning(ex, "Failed to forward inline card payload from ActivityCreated");
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            LogWarn("EVT_AC_0003");
+            _logger.LogWarning(ex, "Failed to handle ActivityCreated payload");
         }
+
+        LogTrace("EVT_AC_0002");
     }
 
     protected async void OnTopicTriggered(object? sender, TopicTriggeredEventArgs e) {
@@ -303,6 +347,16 @@ public abstract class DomainAgentService {
         var nextTopic = _topicRegistry.GetTopic(e.TopicName);
 
         if (nextTopic is TopicFlow.TopicFlow nextFlow) {
+
+            // Disallow triggering a topic that is already in a terminal state
+            if (nextFlow.State == TopicFlow.TopicFlow.FlowState.Completed ||
+                nextFlow.State == TopicFlow.TopicFlow.FlowState.Failed) {
+                _logger.LogWarning(
+                    "[DomainAgentService] Topic '{Topic}' is in terminal state {State}; trigger ignored. Call Reset() before reusing this topic.",
+                    nextFlow.Name,
+                    nextFlow.State);
+                return;
+            }
 
             // Prevent duplicate activation
             if (_activeTopic != null && _activeTopic.Name == e.TopicName) {
@@ -481,7 +535,7 @@ public abstract class DomainAgentService {
 
             LogTrace("EVT_LF_0006");
 
-        } catch (Exception ex) {
+        } catch (Exception) {
             LogError("EVT_LF_0007");
         }
     }
@@ -515,9 +569,12 @@ public abstract class DomainAgentService {
             if (current is IAdaptiveCardActivity cardAct) {
 
                 LogInfo("EVT_HC_0001"); // Deliver card input
+                _logger.LogInformation(
+                    "[DomainAgentService] HandleCardSubmitAsync routing card submission to activity {ActivityId} ({ActivityType}) in topic '{TopicName}'",
+                    current.Id,
+                    current.GetType().Name,
+                    flow.Name);
                 cardAct.OnInputCollected(new AdaptiveCardInputCollectedEventArgs(data));
-
-                await flow.StepAsync(null, ct);
             }
             else {
                 LogWarn("EVT_HC_0002"); // Not adaptive card activity
@@ -622,12 +679,28 @@ public abstract class DomainAgentService {
 
                 if (parentTopic is TopicFlow.TopicFlow parentFlow) {
                     LogTrace("EVT_TH_0007");
+
+                    try {
+                        var currentActivity = parentFlow.GetCurrentActivity();
+
+                        // SAFE RESUME: if the flow was waiting for input, resume it.
+                        if (currentActivity != null &&
+                            parentFlow.State == TopicFlow.TopicFlow.FlowState.WaitingForInput) {
+                            await parentFlow.ResumeAsync("Sub-topic completed", CancellationToken.None);
+                        }
+
+                        // SAFE STEP: if the flow is already running, advance a step.
+                        if (parentFlow.State == TopicFlow.TopicFlow.FlowState.Running) {
+                            await parentFlow.StepAsync(null, CancellationToken.None);
+                        }
+                    }
+                    catch (Exception ex) {
+                        LogError("EVT_TH_0010", ex);
+                    }
                 }
 
                 LogInfo("EVT_TH_0008");
-                await parentTopic.RunAsync();
 
-                LogInfo("EVT_TH_0009");
             } catch (Exception ex) {
                 LogError("EVT_TH_0010", ex);
             }
@@ -636,6 +709,32 @@ public abstract class DomainAgentService {
     private void HandleActivityCompleted(object? sender, ActivityCompletedEventArgs e) {
         LogInfo("EVT_ACM_0001");
         ActivityCompleted?.Invoke(this, e);
+
+        // If the currently active TopicFlow was waiting for input and the
+        // activity that just completed is that same current activity, this
+        // indicates that an async container (e.g., RepeatActivity or
+        // CompositeActivity) has finished its internal work after a card
+        // submission. In that case, advance the flow by stepping it once.
+        if (_activeTopic is TopicFlow.TopicFlow flow &&
+            flow.State == TopicFlow.TopicFlow.FlowState.WaitingForInput)
+        {
+            var current = flow.GetCurrentActivity();
+            if (current != null && current.Id == e.ActivityId)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        _logger.LogInformation("[DomainAgentService] Advancing flow '{FlowName}' after ActivityCompleted for current activity {ActivityId}", flow.Name, e.ActivityId);
+                        await flow.StepAsync(null, CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[DomainAgentService] Error advancing flow after ActivityCompleted for {ActivityId}", e.ActivityId);
+                    }
+                });
+            }
+        }
     }
     private void HandleTopicInserted(object? sender, TopicInsertedEventArgs e)
         => TopicInserted?.Invoke(this, e);
@@ -656,6 +755,14 @@ public abstract class DomainAgentService {
     private void HandleCardJsonSent(object? sender, CardJsonEventArgs e) {
 
         LogInfo("EVT_CJS_0001");
+
+        _logger.LogInformation("[DomainAgentService] HandleCardJsonSent invoked (CardId={CardId}, IsRequired={IsRequired}, RenderMode={RenderMode})", e.CardId, e.IsRequired, e.RenderMode);
+        if (!string.IsNullOrEmpty(e.CardJson)) {
+            var preview = e.CardJson.Length > 200 ? e.CardJson.Substring(0, 200) + "..." : e.CardJson;
+            _logger.LogDebug("[DomainAgentService] CardJson preview: {Preview}", preview);
+        } else {
+            _logger.LogDebug("[DomainAgentService] CardJson is empty");
+        }
 
         try {
             if (_pausedTopics.Count > 0) {
@@ -911,66 +1018,6 @@ public abstract class DomainAgentService {
             "[DomainAgentService] ✔ Unhooked runtime activity '{Id}' ({Type})",
             child.Id, child.GetType().Name);
     }
-    #endregion
-
-    #region Conditional Activity Helpers
-
-    protected TopicFlowActivity IfCase(
-        string id,
-        Func<TopicWorkflowContext, bool> condition,
-        TopicFlowActivity activity) {
-        return ConditionalActivity<TopicFlowActivity>.If(
-            id,
-            condition,
-            (yesId, ctx) => activity,
-            (noId, ctx) => Skip(id));
-    }
-
-    protected static TopicFlowActivity Skip(string id)
-        => new SimpleActivity($"{id}_SKIP", (c, d) => Task.FromResult<object?>(null));
-
-    protected static bool IsYes(TopicWorkflowContext ctx, string key) {
-        var value = ctx.GetValue<object?>(key);
-
-        if (value is null)
-            return false;
-
-        if (value is JsonElement jsonElement) {
-            if (jsonElement.ValueKind == JsonValueKind.String)
-                value = jsonElement.GetString();
-            else if (jsonElement.ValueKind == JsonValueKind.True)
-                return true;
-            else if (jsonElement.ValueKind == JsonValueKind.False)
-                return false;
-            else
-                return false;
-        }
-
-        return value switch {
-            bool b => b,
-            string s => s.Trim().ToLowerInvariant() switch {
-                "yes" or "y" or "true" or "1" => true,
-                _ => false
-            },
-            _ => false
-        };
-    }
-
-    protected static bool IsNo(TopicWorkflowContext ctx, string key) {
-        var value = ctx.GetValue<object?>(key);
-        return value switch {
-            bool b => !b,
-            string s => s.Trim().ToLowerInvariant() switch {
-                "no" or "n" or "false" or "0" => true,
-                _ => false
-            },
-            _ => false
-        };
-    }
-
-    protected static bool IsUnknown(TopicWorkflowContext ctx, string key)
-        => ctx.GetValue<bool?>(key) is null;
-
     #endregion
 
     #region Logging Helpers

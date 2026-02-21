@@ -50,12 +50,54 @@ div[data-error-style="error"] .ac-choiceSet-expanded {
     box-shadow: 0 0 0 1px rgba(209, 52, 56, 0.2);
 }
 
+/* Validation error message styled like screenshot */
 .ac-error-message {
-    color: #d13438;
-    font-size: 13px;
-    margin-top: 4px;
-    margin-left: 8px;
-    font-weight: 500;
+    position: relative;
+    display: inline-block;
+
+    background-color: #d13438; /* Fluent red */
+    color: #ffffff;
+
+    font-size: 12px;
+    font-weight: 600;
+
+    padding: 6px 10px;
+    border-radius: 4px; /* small rounded corners, not pill */
+
+    margin-top: 6px;
+    margin-left: 6px;
+
+    white-space: nowrap;
+
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.ac-error-message::before {
+    content: "";
+    position: absolute;
+    left: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+
+    width: 0;
+    height: 0;
+
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-right: 6px solid #d13438;
+}
+
+/* Layout wrapper for a field that has an error badge */
+.ac-field-with-error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+/* Tighten spacing for the input container when an error badge is present */
+.ac-field-with-error > .ac-input-container {
+    margin-bottom: 4px;
 }
 
 /* Improved focus state for accessibility */

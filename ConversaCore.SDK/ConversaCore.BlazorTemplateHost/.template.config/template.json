@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "ConversaCore",
+  "classifications": [ "Web", "Blazor", "ConversaCore" ],
+  "identity": "ConversaCore.BlazorTemplateHost.Template",
+  "name": "ConversaCore Blazor Template Host",
+  "shortName": "conversacore-blazor",
+  "sourceName": "ConversaCore.BlazorTemplateHost",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "exclude": [
+        "Directory.Build.props",
+        "**/*.vstemplate",
+        "**/templates/**",
+        "**/tools/**",
+        "**/artifacts/**",
+        "**/[Bb]in/**",
+        "**/[Oo]bj/**",
+        "**/.vs/**",
+        "**/*.user",
+        "**/*.suo",
+        "**/*.cache",
+        "**/*.db",
+        "**/*.nupkg",
+        "**/*.snupkg",
+        "**/.template.config/**",
+        "**/logs/**",
+        "**/node_modules/**"
+      ]
+    }
+  ]
+}

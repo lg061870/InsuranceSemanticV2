@@ -7,7 +7,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class AgentsEndpoints {
     public static RouteGroupBuilder MapAgentEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/agents")
+        var group = routes.MapGroup("/agents")
                           .WithTags("Agents");
 
         // ============================================================
@@ -99,7 +99,7 @@ public static class AgentsEndpoints {
             db.Agents.Add(entity);
             await db.SaveChangesAsync();
 
-            return Results.Created($"/api/agents/{entity.AgentId}",
+            return Results.Created($"/agents/{entity.AgentId}",
                 new AgentResponse {
                     AgentId = entity.AgentId,
                     Payload = new List<AgentRequest> { dto }

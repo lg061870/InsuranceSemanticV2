@@ -54,9 +54,21 @@ public static class AdaptiveCardValidationHelper {
                 if (!errors.ContainsKey(jsonFieldName)) {
                     errors[jsonFieldName] = new List<string>();
                 }
-                errors[jsonFieldName].Add(result.ErrorMessage ?? "Validation error");
+                // Add just the error message string, not an object
+                errors[jsonFieldName].Add(result.ErrorMessage ?? "Invalid value");
             }
         }
+
+        // ✅ Convert errors to validationErrors object for JS renderer upfront
+        // JS expects { fieldId: "error message" } format
+        var validationErrors = new Dictionary<string, string>();
+        foreach (var kvp in errors) {
+            // Take first error message for each field (or join multiple with "; ")
+            validationErrors[kvp.Key] = string.Join("; ", kvp.Value);
+        }
+
+        // Track which error field IDs we actually matched to card elements
+        var matchedErrorIds = new HashSet<string>();
 
         var newBody = new List<object>();
 
@@ -100,16 +112,12 @@ public static class AdaptiveCardValidationHelper {
             }
             
             // Check for validation errors and apply styling BEFORE adding to body
-            bool hasErrors = false;
-            List<string>? fieldErrors = null;
-            string? errorId = null;
-            
             if (element.TryGetValue("id", out var errorIdObj)) {
-                errorId = errorIdObj?.ToString()?.ToLowerInvariant();
+                var errorId = errorIdObj?.ToString()?.ToLowerInvariant();
                 // Console.WriteLine($"[DEBUG] Checking card element ID: '{errorId}'");
                 if (!string.IsNullOrEmpty(errorId) && errors.ContainsKey(errorId)) {
-                    hasErrors = true;
-                    fieldErrors = errors[errorId].Where(e => e != null).ToList()!;
+                    // Track that we found this error field in the card
+                    matchedErrorIds.Add(errorId);
                     
                     // For ChoiceSet elements, we need to preserve the "expanded" style
                     if (element.TryGetValue("type", out var typeObj) && 
@@ -127,44 +135,31 @@ public static class AdaptiveCardValidationHelper {
             
             // Always add element (now with preserved user input AND error styling)
             newBody.Add(element);
-
-            // Attach error messages immediately after the input element
-            if (hasErrors && fieldErrors != null && !string.IsNullOrEmpty(errorId)) {
-                // add error messages below
-                foreach (var msg in fieldErrors) {
-                    newBody.Add(new Dictionary<string, object> {
-                        ["type"] = "TextBlock",
-                        ["text"] = $"⚠ {msg}",
-                        ["wrap"] = true,
-                        ["color"] = "Attention",
-                        ["size"] = "Small",
-                        ["spacing"] = "None",
-                        ["id"] = $"{errorId}_error",
-                        ["isSubtle"] = true
-                    });
-                }
-
-                // remove from errors so we can later detect leftovers
-                errors.Remove(errorId);
-            }
         }
 
-        // If some errors could not be matched to a card element → throw hard error
-        if (errors.Any()) {
+        // Check if any validation errors could not be matched to card elements
+        var unmatchedErrors = errors.Keys.Except(matchedErrorIds).ToList();
+        if (unmatchedErrors.Any()) {
             var unmatched = string.Join(", ",
-                errors.Select(kv => $"{kv.Key}: {string.Join(" | ", kv.Value)}"));
+                unmatchedErrors.Select(id => $"{id}: {string.Join(" | ", errors[id])}"));
             throw new InvalidOperationException(
                 $"Validation produced errors for fields not found in AdaptiveCard JSON: {unmatched}. " +
                 $"Make sure property names match card element ids (case-insensitive).");
         }
 
         root["body"] = newBody;
+        
+        // ✅ Add validationErrors to root for JS renderer
+        if (validationErrors.Any()) {
+            root["validationErrors"] = validationErrors;
+        }
+        
         return JsonSerializer.Serialize(root);
     }
 
     /// <summary>
     /// Creates a "success" version of the card with user data preserved,
-    /// all inputs disabled, and submit button changed to "Done".
+    /// all inputs disabled, and actions marked as completed/disabled.
     /// </summary>
     public static string InjectSuccessState(string originalCardJson, Dictionary<string, object> userInputData) {
         var root = JsonSerializer.Deserialize<Dictionary<string, object>>(originalCardJson);
@@ -182,13 +177,7 @@ public static class AdaptiveCardValidationHelper {
         var newBody = new List<object>();
 
         foreach (var element in bodyElements) {
-            // Skip any existing error messages (TextBlocks with Attention color)
-            if (element.TryGetValue("type", out var elementTypeObj) &&
-                elementTypeObj?.ToString() == "TextBlock" &&
-                element.TryGetValue("color", out var colorObj) && 
-                colorObj?.ToString() == "Attention") {
-                continue; // Skip error TextBlocks only
-            }
+            // Note: No need to skip error TextBlocks since we're now rendering errors via JS validationErrors object
 
             // Preserve user input and disable all input elements
             if (element.TryGetValue("id", out var idObj)) {
@@ -265,22 +254,37 @@ public static class AdaptiveCardValidationHelper {
             newBody.Add(element);
         }
 
-        // Update actions to show "Done" instead of "Submit"
+        // Update actions to reflect completed state (disable further interaction)
         if (root.ContainsKey("actions")) {
             var actions = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(
                 JsonSerializer.Serialize(root["actions"])
             );
             
             if (actions != null) {
+                // Try to detect which action was triggered, if any (e.g., QuickAnswerActivity "answer")
+                string? selectedAnswer = null;
+                if (userInputData != null && userInputData.TryGetValue("answer", out var selectedAnswerObj)) {
+                    selectedAnswer = selectedAnswerObj?.ToString();
+                }
+
                 foreach (var action in actions) {
                     if (action.TryGetValue("type", out var actionType) && 
                         actionType?.ToString() == "Action.Submit") {
-                        action["title"] = "Done";
-                        action["style"] = "positive";
-                        // Optionally disable the action or change its data
-                        if (action.ContainsKey("data")) {
-                            if (action["data"] is Dictionary<string, object> actionData) {
-                                actionData["action"] = "completed";
+                        // Mark the action as disabled so the renderer can gray it out
+                        action["isEnabled"] = false;
+
+                        // If we know which answer was selected, visually highlight that button
+                        if (!string.IsNullOrEmpty(selectedAnswer) && action.TryGetValue("data", out var dataObj)) {
+                            try {
+                                var dataJson = JsonSerializer.Serialize(dataObj);
+                                var dataDict = JsonSerializer.Deserialize<Dictionary<string, object>>(dataJson);
+                                if (dataDict != null &&
+                                    dataDict.TryGetValue("answer", out var answerObj) &&
+                                    string.Equals(answerObj?.ToString(), selectedAnswer, StringComparison.Ordinal)) {
+                                    action["style"] = "positive";
+                                }
+                            } catch {
+                                // If anything goes wrong, just skip highlighting.
                             }
                         }
                     }

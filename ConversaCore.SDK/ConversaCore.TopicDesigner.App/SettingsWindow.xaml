@@ -1,0 +1,37 @@
+<Window x:Class="ConversaCore.TopicDesigner.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="TopicDesigner Settings" Height="320" Width="520" WindowStartupLocation="CenterOwner">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="AI Provider" FontWeight="Bold" />
+            <ComboBox x:Name="ProviderComboBox" Width="260" Margin="0,4,0,0" SelectionChanged="OnProviderChanged" />
+        </StackPanel>
+
+        <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" Padding="8">
+            <StackPanel>
+                <TextBlock Text="API Key Setup" FontWeight="Bold" Margin="0,0,0,6" />
+                <TextBlock x:Name="EnvVarTextBlock" TextWrapping="Wrap" Margin="0,0,0,4" />
+                <TextBlock x:Name="ExtraHintTextBlock" TextWrapping="Wrap" Margin="0,0,0,4" />
+                <TextBlock Text="Example (PowerShell):" FontWeight="Bold" Margin="0,8,0,2" />
+                <TextBox x:Name="PowershellExampleTextBox" IsReadOnly="True" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap" />
+                <TextBlock Text="Docs:" FontWeight="Bold" Margin="0,8,0,2" />
+                <TextBlock x:Name="DocsLinkTextBlock" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="OK" Width="80" Margin="0,0,6,0" IsDefault="True" Click="OnOkClicked" />
+            <Button Content="Cancel" Width="80" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

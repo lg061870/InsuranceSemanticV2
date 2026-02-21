@@ -12,6 +12,9 @@ namespace ConversaCore.TopicFlow
     {
     // (keep only one declaration below)
 
+        // Reserved root key for aggregated data intelligence
+        private const string IntelligenceRootKey = "Intelligence";
+
         // DEBUG: Tracking Context Lifecycle
         public override string ToString()
         {
@@ -240,6 +243,222 @@ namespace ConversaCore.TopicFlow
                 result = null;
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Attempts to read a named property from a model stored in the context under <paramref name="modelKey"/>.
+        /// Supports values stored as IDictionary&lt;string, object&gt;, Dictionary&lt;string, object&gt;, JsonElement (object),
+        /// or plain CLR objects (via reflection). Returns false if the model or property is not present or cannot be converted.
+        /// </summary>
+        public bool TryGetModelProperty<T>(string modelKey, string propertyName, out T? value) {
+            value = default;
+            if (string.IsNullOrWhiteSpace(modelKey) || string.IsNullOrWhiteSpace(propertyName))
+                return false;
+
+            if (!_values.TryGetValue(modelKey, out var rawModel) || rawModel == null)
+                return false;
+
+            try {
+                // IDictionary<string, object> case
+                if (rawModel is IDictionary<string, object> dict) {
+                    if (dict.TryGetValue(propertyName, out var v) && v != null) {
+                        if (v is T tv) { value = tv; return true; }
+                        if (v is System.Text.Json.JsonElement je) {
+                            // unwrap JsonElement
+                            if (je.ValueKind == JsonValueKind.String) {
+                                var s = je.GetString();
+                                if (s != null) { value = (T)Convert.ChangeType(s, typeof(T)); return true; }
+                            }
+                            if (je.ValueKind == JsonValueKind.Number) {
+                                if (je.TryGetInt64(out var i64)) { value = (T)Convert.ChangeType(i64, typeof(T)); return true; }
+                                if (je.TryGetDouble(out var d)) { value = (T)Convert.ChangeType(d, typeof(T)); return true; }
+                            }
+                            if (je.ValueKind == JsonValueKind.True || je.ValueKind == JsonValueKind.False) {
+                                value = (T)Convert.ChangeType(je.GetBoolean(), typeof(T)); return true;
+                            }
+                            // fallback to string
+                            var raw = je.ToString();
+                            if (raw != null) { value = (T)Convert.ChangeType(raw, typeof(T)); return true; }
+                        }
+
+                        // Try direct conversion
+                        value = (T)Convert.ChangeType(v, typeof(T));
+                        return true;
+                    }
+                    return false;
+                }
+
+                // JsonElement representing an object
+                if (rawModel is JsonElement modelEl && modelEl.ValueKind == JsonValueKind.Object) {
+                    if (modelEl.TryGetProperty(propertyName, out var prop)) {
+                        if (prop.ValueKind == JsonValueKind.String) {
+                            var s = prop.GetString(); if (s != null) { value = (T)Convert.ChangeType(s, typeof(T)); return true; }
+                        }
+                        if (prop.ValueKind == JsonValueKind.Number) {
+                            if (prop.TryGetInt64(out var i64)) { value = (T)Convert.ChangeType(i64, typeof(T)); return true; }
+                            if (prop.TryGetDouble(out var d)) { value = (T)Convert.ChangeType(d, typeof(T)); return true; }
+                        }
+                        if (prop.ValueKind == JsonValueKind.True || prop.ValueKind == JsonValueKind.False) {
+                            value = (T)Convert.ChangeType(prop.GetBoolean(), typeof(T)); return true;
+                        }
+                        var raw = prop.ToString(); if (raw != null) { value = (T)Convert.ChangeType(raw, typeof(T)); return true; }
+                    }
+                    return false;
+                }
+
+                // Plain CLR object: use reflection
+                var modelType = rawModel.GetType();
+                var pi = modelType.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
+                if (pi != null) {
+                    var got = pi.GetValue(rawModel);
+                    if (got == null) return false;
+                    if (got is T tgot) { value = tgot; return true; }
+                    value = (T)Convert.ChangeType(got, typeof(T));
+                    return true;
+                }
+
+                return false;
+            } catch {
+                value = default;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Convenience getter that returns <paramref name="defaultValue"/> when property not found.
+        /// </summary>
+        public T GetModelProperty<T>(string modelKey, string propertyName, T defaultValue = default) {
+            return TryGetModelProperty<T>(modelKey, propertyName, out var v) ? v! : defaultValue;
+        }
+
+        // =======================================================
+        // DATA INTELLIGENCE SUPPORT
+        // =======================================================
+
+        /// <summary>
+        /// Represents a single intelligence signal with metadata.
+        /// </summary>
+        private sealed class IntelligenceEntry
+        {
+            public object? Value { get; set; }
+            public double Confidence { get; set; }
+            public string Source { get; set; } = string.Empty;
+            public string ActivityId { get; set; } = string.Empty;
+            public DateTime LastUpdatedAt { get; set; } = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Internal helper to get or create the intelligence dictionary
+        /// stored under the reserved Intelligence root key.
+        /// </summary>
+        private Dictionary<string, IntelligenceEntry> GetOrCreateIntelligenceStore()
+        {
+            if (_values.TryGetValue(IntelligenceRootKey, out var existing) &&
+                existing is Dictionary<string, IntelligenceEntry> dict)
+            {
+                return dict;
+            }
+
+            var store = new Dictionary<string, IntelligenceEntry>(StringComparer.OrdinalIgnoreCase);
+            _values[IntelligenceRootKey] = store;
+            return store;
+        }
+
+        /// <summary>
+        /// Merges an intelligence signal into the aggregated intelligence store.
+        /// If an entry already exists at the given path, the higher-confidence
+        /// value wins; ties keep the existing value.
+        /// </summary>
+        /// <param name="path">Logical intelligence path, e.g. "Person.FirstName".</param>
+        /// <param name="value">The inferred value to store.</param>
+        /// <param name="confidence">Confidence score in [0,1].</param>
+        /// <param name="source">Source label (e.g., "Semantic", "Card").</param>
+        /// <param name="activityId">Semantic or workflow activity that produced the value.</param>
+        public void MergeIntelligence(string path, object? value, double confidence, string source, string activityId)
+        {
+            if (string.IsNullOrWhiteSpace(path) || value == null)
+                return;
+
+            confidence = Math.Clamp(confidence, 0.0, 1.0);
+            var store = GetOrCreateIntelligenceStore();
+
+            if (store.TryGetValue(path, out var existing))
+            {
+                if (confidence > existing.Confidence)
+                {
+                    store[path] = new IntelligenceEntry
+                    {
+                        Value = value,
+                        Confidence = confidence,
+                        Source = source,
+                        ActivityId = activityId,
+                        LastUpdatedAt = DateTime.UtcNow
+                    };
+                }
+                return;
+            }
+
+            store[path] = new IntelligenceEntry
+            {
+                Value = value,
+                Confidence = confidence,
+                Source = source,
+                ActivityId = activityId,
+                LastUpdatedAt = DateTime.UtcNow
+            };
+        }
+
+        /// <summary>
+        /// Attempts to read an intelligence signal by logical path, enforcing
+        /// a minimum confidence threshold.
+        /// </summary>
+        /// <typeparam name="T">Expected CLR type of the value.</typeparam>
+        /// <param name="path">Logical intelligence path, e.g. "Person.FirstName".</param>
+        /// <param name="minConfidence">Minimum confidence required to accept the value.</param>
+        /// <param name="value">The output value when successful.</param>
+        /// <returns>True if a value was found and met the confidence threshold.</returns>
+        public bool TryGetIntelligence<T>(string path, double minConfidence, out T? value)
+        {
+            value = default;
+
+            if (string.IsNullOrWhiteSpace(path) ||
+                !_values.TryGetValue(IntelligenceRootKey, out var existing) ||
+                existing is not Dictionary<string, IntelligenceEntry> store ||
+                !store.TryGetValue(path, out var entry) ||
+                entry.Confidence < minConfidence)
+            {
+                return false;
+            }
+
+            try
+            {
+                if (entry.Value is T t)
+                {
+                    value = t;
+                    return true;
+                }
+
+                if (entry.Value != null)
+                {
+                    value = (T)Convert.ChangeType(entry.Value, typeof(T));
+                    return true;
+                }
+            }
+            catch
+            {
+                value = default;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Convenience method to get an intelligence signal or a default
+        /// when not present or below the desired confidence.
+        /// </summary>
+        public T GetIntelligence<T>(string path, double minConfidence = 0.0, T defaultValue = default)
+        {
+            return TryGetIntelligence<T>(path, minConfidence, out var v) ? v! : defaultValue;
         }
 
     }

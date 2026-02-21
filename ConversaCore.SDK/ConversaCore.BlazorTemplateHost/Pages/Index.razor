@@ -1,0 +1,43 @@
+﻿@page "/"
+
+@using ConversaCore.BlazorTemplateHost.Services
+@using ConversaCore.UI.Models
+
+@inject MyDomainAgentService AgentService
+
+<PageTitle>ConversaCore Template</PageTitle>
+
+<div class="cc-home">
+    <main class="cc-home-main">
+        <header class="cc-hero">
+            <h1 class="cc-title">ConversaCore Blazor Template</h1>
+            <p class="cc-subtitle">
+                Use this template as a thin host shell for ConversaCore topics and the ConversaCore UI.
+            </p>
+        </header>
+
+        <section class="cc-card">
+            <h2>Getting started</h2>
+            <ol>
+                <li>Run the app and use the chat in the right sidebar to start a conversation.</li>
+                <li>Add or replace topics in <code>Topics</code> and register them via <code>AddConversaCoreDomainTopics()</code>.</li>
+                <li>Customize the agent bridge in <code>Services/MyDomainAgentService.cs</code>.</li>
+            </ol>
+        </section>
+
+        <section class="cc-card">
+            <h2>Notes</h2>
+            <ul>
+                <li>The chat UI is rendered in a dedicated right sidebar to match <code>ChatStyle.SidebarChat</code>.</li>
+                <li>Static web assets (CSS/JS/images) are served from <code>/_content/ConversaCore.UI</code>.</li>
+            </ul>
+        </section>
+    </main>
+
+    <aside class="cc-home-sidebar" aria-label="Chat">
+        <CustomChatWindowV3
+            AgentService="AgentService"
+            Style="ChatStyle.SidebarChat"
+            SubscribeToEvents="@(w => AgentService.SubscribeToChatWindowEvents(w))" />
+    </aside>
+</div>

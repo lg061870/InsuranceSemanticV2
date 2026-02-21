@@ -6,7 +6,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class CarrierStateComplianceEndpoints {
     public static RouteGroupBuilder MapCarrierStateComplianceEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/carrier-state-compliance")
+        var group = routes.MapGroup("/carrier-state-compliance")
                           .WithTags("Carrier State Compliance");
 
         // GET all rules for a carrier

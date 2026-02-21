@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VSTemplate Version="3.0.0" Type="Project" xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
+  <TemplateData>
+    <Name>ConversaCore Blazor Server</Name>
+    <Description>Blazor Server starter project pre-wired with the ConversaCore SDK, a project-specific domain agent (named &quot;$safeprojectname$DomainAgentService&quot;), and a sample TopicFlow.</Description>
+    <ProjectType>CSharp</ProjectType>
+    <SortOrder>1000</SortOrder>
+    <CreateNewFolder>true</CreateNewFolder>
+    <DefaultName>ConversaCoreApp</DefaultName>
+    <ProvideDefaultName>true</ProvideDefaultName>
+    <LocationField>DevEnv</LocationField>
+    <EnableLocationBrowseButton>true</EnableLocationBrowseButton>
+  </TemplateData>
+  <TemplateContent>
+    <Project File="ConversaCore.BlazorTemplateHost.csproj" ReplaceParameters="true" />
+  </TemplateContent>
+</VSTemplate>

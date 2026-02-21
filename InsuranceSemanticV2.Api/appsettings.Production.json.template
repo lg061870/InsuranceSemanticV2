@@ -1,0 +1,20 @@
+{
+  "PathBase": "/api",
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "YOUR_PRODUCTION_CONNECTION_STRING_HERE"
+  },
+  "UseInMemoryDatabase": false,
+  "Jwt": {
+    "SecretKey": "YOUR_PRODUCTION_JWT_SECRET_KEY_MIN_32_CHARS",
+    "Issuer": "InsuranceSemanticV2.Api",
+    "Audience": "LiveAgentConsole",
+    "ExpirationMinutes": 480
+  },
+  "EnableSwagger": true
+}

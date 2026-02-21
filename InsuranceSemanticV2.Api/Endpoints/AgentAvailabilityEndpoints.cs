@@ -6,7 +6,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class AgentAvailabilityEndpoints {
     public static RouteGroupBuilder MapAgentAvailabilityEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/agent-availability")
+        var group = routes.MapGroup("/agent-availability")
                           .WithTags("Agent Availability");
 
         // GET weekly schedule for an agent

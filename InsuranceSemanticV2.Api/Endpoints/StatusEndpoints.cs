@@ -7,7 +7,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class StatusEndpoints {
     public static RouteGroupBuilder MapStatusEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/status")
+        var group = routes.MapGroup("/status")
                           .WithTags("Lead Status");
 
         // CHANGE status + WRITE HISTORY

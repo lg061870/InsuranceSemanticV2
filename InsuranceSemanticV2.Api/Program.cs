@@ -10,6 +10,8 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 builder.Services.AddAutoMapper(typeof(Program).Assembly);
 
 // Register SignalR
@@ -77,8 +79,10 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
             "http://localhost:5033",
             "https://localhost:7089",
-            "https://win8118.site4now.net",
-            "https://win8118.site4now.net/livenagent"
+            "http://localhost:5122",
+            "https://localhost:7058",
+            "http://origovs-001-site1.ntempurl.com",
+            "https://origovs-001-site1.ntempurl.com"
         )
               .AllowAnyHeader()
               .AllowAnyMethod()
@@ -101,6 +105,51 @@ else
 
 var app = builder.Build();
 
+// Create logs directory and write startup diagnostics (non-blocking)
+_ = Task.Run(async () =>
+{
+    try
+    {
+        await Task.Delay(1000); // Let app start first
+        
+        var logsDir = Path.Combine(AppContext.BaseDirectory, "logs");
+        Directory.CreateDirectory(logsDir);
+        var startupLog = Path.Combine(logsDir, $"startup-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+        
+        var logLines = new List<string>
+        {
+            "=== API Starting ===",
+            $"Time: {DateTime.UtcNow}",
+            $"Environment: {app.Environment.EnvironmentName}",
+            $"ContentRootPath: {app.Environment.ContentRootPath}",
+            $"BaseDirectory: {AppContext.BaseDirectory}",
+            $"PathBase: {app.Configuration["PathBase"]}",
+            $"UseInMemoryDatabase: {app.Configuration.GetValue<bool>("UseInMemoryDatabase")}",
+            $"ConnectionString: {app.Configuration.GetConnectionString("DefaultConnection")?.Split("Password=")[0]}...",
+        };
+        
+        // Test database connection (with timeout)
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var canConnect = await dbContext.Database.CanConnectAsync(cts.Token);
+            logLines.Add($"Database connection test: {(canConnect ? "SUCCESS" : "FAILED")}");
+        }
+        catch (Exception dbEx)
+        {
+            logLines.Add($"Database connection error: {dbEx.GetType().Name} - {dbEx.Message}");
+        }
+        
+        File.WriteAllLines(startupLog, logLines);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Failed to write startup log: {ex.Message}");
+    }
+});
+
 // Configure base path for virtual directory deployment
 var pathBase = app.Configuration.GetValue<string>("PathBase");
 if (!string.IsNullOrEmpty(pathBase))
@@ -108,7 +157,16 @@ if (!string.IsNullOrEmpty(pathBase))
     app.UsePathBase(pathBase);
 }
 
-if (app.Environment.IsDevelopment()) {
+var enableSwagger = app.Configuration.GetValue<bool>("EnableSwagger");
+if (app.Environment.IsDevelopment() || enableSwagger)
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        // Use path relative to /api/swagger so final URL is /api/swagger/v1/swagger.json
+        options.SwaggerEndpoint("../swagger/v1/swagger.json", "InsuranceSemanticV2 API v1");
+        options.RoutePrefix = "swagger";
+    });
     app.MapOpenApi();
 }
 
@@ -120,6 +178,31 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/", () => "InsuranceSemanticV2 API running.");
+
+// Health check endpoint with database test
+app.MapGet("/health", async (AppDbContext db) =>
+{
+    try
+    {
+        var canConnect = await db.Database.CanConnectAsync();
+        return Results.Ok(new
+        {
+            Status = "Healthy",
+            DatabaseConnection = canConnect ? "Connected" : "Failed",
+            Timestamp = DateTime.UtcNow
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new
+        {
+            Status = "Unhealthy",
+            DatabaseConnection = "Error",
+            Error = ex.Message,
+            Timestamp = DateTime.UtcNow
+        });
+    }
+});
 
 // Map SignalR hub
 app.MapHub<LeadsHub>("/hubs/leads");

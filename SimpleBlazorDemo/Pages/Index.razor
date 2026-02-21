@@ -1,0 +1,15 @@
+﻿@page "/"
+
+@using ConversaCore.Agentic
+@using ConversaCore.UI.Components
+@using ConversaCore.UI.Models
+@using SimpleBlazorDemo.Services
+
+@inject SimpleDomainAgentService AgentService
+
+<PageTitle>Simple Blazor Demo</PageTitle>
+
+<!-- Chat Window -->
+<CustomChatWindowV3 AgentService="AgentService"
+				  Style="ChatStyle.ChatWindow"
+				  SubscribeToEvents="@(w => AgentService.SubscribeToChatWindowEvents(w))" />

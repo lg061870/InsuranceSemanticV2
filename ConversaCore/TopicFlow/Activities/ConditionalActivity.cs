@@ -267,6 +267,21 @@ public class ConditionalActivity<TActivity> : TopicFlowActivity, IAdaptiveCardAc
 
         _activeContext = context;
 
+        // If the selected branch activity has already completed (for example,
+        // after a CompositeActivity resumed and finished following card input),
+        // avoid re-running the child. Treat this as a no-op continuation so the
+        // parent TopicFlow can advance to the next activity without causing an
+        // invalid state transition on the child.
+        if (_activityCompleted) {
+            _logger?.LogInformation(
+                "[ConditionalActivity] 🟢 Branch '{Branch}' for {Id} already completed; short-circuiting to Continue.",
+                _selectedBranch ?? "null",
+                Id);
+
+            var storedResult = context.GetValue<object?>($"{Id}_result");
+            return ActivityResult.Continue(storedResult ?? new object());
+        }
+
         // Evaluate condition once
         if (!_conditionEvaluated) {
             _logger?.LogInformation("[ConditionalActivity] ⚙️ Evaluating condition for {Id}", Id);
@@ -415,6 +430,18 @@ public class ConditionalActivity<TActivity> : TopicFlowActivity, IAdaptiveCardAc
             cardActivity.ModelBound += OnChildModelBound;
             cardActivity.ValidationFailed += OnChildValidationFailed;
         }
+
+        // Forward plain message events from the child so that any
+        // SimpleActivity or other activities emitting messages inside
+        // this ConditionalActivity are surfaced through the normal
+        // MessageEmitted → DomainAgentService → ChatWindow pipeline.
+        activity.MessageEmitted += (s, e) => OnMessageEmitted(e.Message);
+
+        // Track completion so we know when the selected branch has
+        // fully finished (including composites that resume after
+        // input). This lets RunActivity short-circuit instead of
+        // re-running a completed child and violating its FSM.
+        activity.ActivityCompleted += OnChildActivityCompleted;
         
         // Forward TriggerTopicActivity-specific events and ITopicTriggeredActivity events
         // EVENT BUBBLING: Child.TopicTriggered → ConditionalActivity.TopicTriggered → InsuranceAgentService
@@ -459,6 +486,8 @@ public class ConditionalActivity<TActivity> : TopicFlowActivity, IAdaptiveCardAc
         {
             customEventActivity.CustomEventTriggered -= OnChildCustomEventTriggered;
         }
+
+        activity.ActivityCompleted -= OnChildActivityCompleted;
     }
 
     // === Event Forwarding Methods (RepeatActivity Pattern) ===
@@ -552,5 +581,22 @@ public class ConditionalActivity<TActivity> : TopicFlowActivity, IAdaptiveCardAc
         Console.WriteLine($"[ConditionalActivity.OnChildCustomEventTriggered] About to forward CustomEventTriggered event to parent. Subscribers: {CustomEventTriggered?.GetInvocationList().Length ?? 0}");
         CustomEventTriggered?.Invoke(this, e);
         Console.WriteLine($"[ConditionalActivity.OnChildCustomEventTriggered] CustomEventTriggered event forwarded to parent");
+    }
+
+    /// <summary>
+    /// Handles completion of the selected branch activity. This is
+    /// especially important when the child is a CompositeActivity
+    /// that resumes itself after input; in that case completion
+    /// happens outside of our immediate RunActivity call.
+    /// </summary>
+    private void OnChildActivityCompleted(object? sender, ActivityCompletedEventArgs e)
+    {
+        _logger?.LogInformation(
+            "[ConditionalActivity] 🏁 Child activity '{ChildId}' completed for branch '{Branch}' in {Id}",
+            e.ActivityId,
+            _selectedBranch ?? "null",
+            Id);
+
+        _activityCompleted = true;
     }
 }

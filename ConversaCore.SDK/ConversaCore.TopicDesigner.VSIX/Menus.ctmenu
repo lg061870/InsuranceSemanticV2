@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2010/CommandTable">
+  <Extern href="stdidcmd.h" />
+  <Extern href="vsshlids.h" />
+
+  <Commands package="guidTopicToolPackage">
+    <Buttons>
+      <Button guid="guidTopicToolCmdSet" id="TopicToolWindowCommandId" priority="0x0100" type="Button">
+        <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1" />
+        <Strings>
+          <ButtonText>ConversaCore Topic Tool</ButtonText>
+        </Strings>
+      </Button>
+      <!-- Solution Explorer folder context menu command -->
+      <Button guid="guidTopicToolCmdSet" id="TopicManagerFolderCommandId" priority="0x0101" type="Button">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_FOLDERNODE" />
+        <Strings>
+          <ButtonText>Topic Manager Tool</ButtonText>
+        </Strings>
+      </Button>
+    </Buttons>
+  </Commands>
+
+  <Symbols>
+    <GuidSymbol name="guidTopicToolPackage" value="{b6b6b7e4-3c8e-4c2f-9f1a-4e6b2524f4c2}" />
+    
+    <GuidSymbol name="guidTopicToolCmdSet" value="{a0d5a85f-3f3a-4f62-9a3f-5a8e4e9b6b1f}">
+      <IDSymbol name="TopicToolWindowCommandId" value="0x0100" />
+      <IDSymbol name="TopicManagerFolderCommandId" value="0x0101" />
+    </GuidSymbol>
+  </Symbols>
+</CommandTable>

@@ -34,9 +34,17 @@ project.fragment.lock.json
 artifacts/
 **/Properties/launchSettings.json
 
-# Prevent committing secrets
+# Prevent committing secrets (passwords, API keys, connection strings, JWT secrets)
+# Production configs
+**/appsettings.Production.json
+**/appsettings.Staging.json
+# Development configs (may contain local secrets)
+**/appsettings.Development.json
+# User secrets
+**/secrets.json
+# API keys and connection strings
 InsuranceAgent/appsettings.json
-InsuranceAgent/appsettings.Development.json
+InsuranceSemanticV2.Api/appsettings.json
 
 # Publish profiles (contain deployment credentials)
 **/*.pubxml

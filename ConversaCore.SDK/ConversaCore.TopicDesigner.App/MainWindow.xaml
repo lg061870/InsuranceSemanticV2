@@ -1,0 +1,181 @@
+﻿<Window x:Class="ConversaCore.TopicDesigner.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="ConversaCore TopicDesigner" Height="650" Width="1100">
+    <Grid x:Name="RootGrid" Margin="8">
+        <Grid.RowDefinitions>
+            <!-- Icon toolbar -->
+            <RowDefinition Height="Auto" />
+            <!-- Topics / model toolbar -->
+            <RowDefinition Height="Auto" />
+            <!-- Main area -->
+            <RowDefinition Height="*" />
+            <!-- Bottom messages panel -->
+            <RowDefinition Height="200" />
+        </Grid.RowDefinitions>
+
+        <!-- Icon toolbar spanning full width -->
+        <ToolBarTray Grid.Row="0" Margin="0,0,0,4">
+            <ToolBar>
+                <Button ToolTip="Settings"
+                        Click="OnSettingsClicked">
+                    <TextBlock FontFamily="Segoe MDL2 Assets"
+                               Text=""
+                               FontSize="16"
+                               Margin="2,0,2,0" />
+                </Button>
+            </ToolBar>
+        </ToolBarTray>
+
+        <!-- Topics / model toolbar: topics folder + model -->
+        <DockPanel Grid.Row="1" Margin="0,0,0,8">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                <TextBlock Text="Topics Folder:" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBox x:Name="TopicsFolderTextBox"
+                         Width="400"
+                         Margin="0,0,4,0"
+                         IsReadOnly="True" />
+                <Button x:Name="BrowseTopicsFolderButton"
+                        Content="Browse..."
+                        Width="80"
+                        Margin="0,0,16,0"
+                        Click="OnBrowseTopicsFolderClicked" />
+                <Button x:Name="GeneratePlanButton"
+                        Content="Generate Plan"
+                        Margin="0,0,4,0"
+                        Padding="12,4"
+                        Click="OnGeneratePlanClicked" />
+                <Button x:Name="RefineButton"
+                        Content="Refine"
+                        Margin="0,0,4,0"
+                        Padding="12,4"
+                        Click="OnRefineClicked" />
+                <Button x:Name="ValidateButton"
+                        Content="Validate"
+                        Margin="0,0,4,0"
+                        Padding="12,4"
+                        Click="OnValidateClicked" />
+                <Button x:Name="GenerateCodeButton"
+                        Content="Generate Code ⚡"
+                        Padding="12,4"
+                        Click="OnGenerateCodeClicked" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                <TextBlock Text="Model:" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <ComboBox x:Name="ModelComboBox" Width="140" Margin="0,0,0,0">
+                    <ComboBoxItem Content="gpt-4o" IsSelected="True" />
+                    <ComboBoxItem Content="FAKE-MODEL-TEST" />
+                </ComboBox>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Main split area -->
+        <Grid x:Name="MainSplitGrid" Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="3*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Dialog Definition (left) -->
+            <Border x:Name="DialogDefinitionBorder" Grid.Column="0" BorderBrush="Gray" BorderThickness="1" Padding="8" Margin="0,0,4,0">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0,0,0,8">
+                        <TextBlock Text="Dialog Definition" FontWeight="Bold" VerticalAlignment="Center" />
+                        <Button Width="22" Height="22"
+                                DockPanel.Dock="Right"
+                                Margin="4,0,0,0"
+                                ToolTip="Maximize / restore Dialog Definition"
+                                Click="OnToggleLeftPanelClicked">
+                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Button>
+                    </DockPanel>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="5" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0"
+                                   Text="Describe the dialog you want the agent to implement."
+                                   Margin="0,0,0,4" />
+
+                        <TextBox Grid.Row="1"
+                                 x:Name="DialogDefinitionTextBox"
+                                 AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto"
+                                 TextWrapping="Wrap"
+                                 MinHeight="120"
+                                 Margin="0,0,0,2" />
+
+                        <!-- Vertical splitter to resize editor vs. options -->
+                        <GridSplitter Grid.Row="2"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Stretch"
+                                      Background="#808080"
+                                      ResizeDirection="Rows"
+                                      ResizeBehavior="PreviousAndNext" />
+
+                        <StackPanel Grid.Row="3" Margin="0,8,0,0">
+                            <CheckBox x:Name="StrictConversaCoreModeCheckBox" Content="Strict ConversaCore Mode" Margin="0,0,0,4" />
+                            <CheckBox x:Name="AllowApiActivitiesCheckBox" Content="Allow API Activities" Margin="0,0,0,4" />
+                            <CheckBox x:Name="AllowAdaptiveCardActivitiesCheckBox" Content="Allow AdaptiveCard Activities" />
+                        </StackPanel>
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <!-- Splitter -->
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#404040" />
+
+            <!-- Generated Topic Structure (right) -->
+            <Border x:Name="TopicStructureBorder" Grid.Column="2" BorderBrush="Gray" BorderThickness="1" Padding="8" Margin="4,0,0,0">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0,0,0,8">
+                        <TextBlock Text="Generated Topic Structure" FontWeight="Bold" VerticalAlignment="Center" />
+                        <Button Width="22" Height="22"
+                                DockPanel.Dock="Right"
+                                Margin="4,0,0,0"
+                                ToolTip="Maximize / restore Topic Structure"
+                                Click="OnToggleRightPanelClicked">
+                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Button>
+                    </DockPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <TreeView x:Name="TopicsTreeView" />
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- Bottom validation and messages panel -->
+        <Border x:Name="MessagesBorder" Grid.Row="3" BorderBrush="Gray" BorderThickness="1" Padding="8" Margin="0,8,0,0">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0,0,0,8">
+                    <TextBlock Text="Validation &amp; Messages" FontWeight="Bold" VerticalAlignment="Center" />
+                    <Button Width="22" Height="22"
+                            DockPanel.Dock="Right"
+                            Margin="4,0,0,0"
+                            ToolTip="Maximize / restore Validation &amp; Messages"
+                            Click="OnToggleBottomPanelClicked">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Button>
+                </DockPanel>
+                <ListView x:Name="MessagesListView">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Type" Width="100" DisplayMemberBinding="{Binding Severity}" />
+                            <GridViewColumn Header="Message" Width="700" DisplayMemberBinding="{Binding Message}" />
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

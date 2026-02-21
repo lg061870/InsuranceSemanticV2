@@ -2,19 +2,21 @@
 
 public static class EndpointExtensions {
     public static void MapApiEndpoints(this WebApplication app) {
-        app.MapLeadEndpoints();
-        app.MapProfileEndpoints();
-        app.MapAgentEndpoints();
-        app.MapStatusEndpoints();
-        app.MapInteractionEndpoints();
-        app.MapScoreEndpoints();
-        app.MapSchedulingEndpoints();
-        app.MapComplianceEndpoints();
-        app.MapCarrierEndpoints();
-        app.MapAuthEndpoints();
-        app.MapSessionEndpoints();
-        app.MapCarrierStateComplianceEndpoints();
-        app.MapAgentAvailabilityEndpoints();
-        app.MapContactPolicyEndpoints();
+        var apiGroup = app.MapGroup("/api");
+        
+        apiGroup.MapLeadEndpoints();
+        apiGroup.MapProfileEndpoints();
+        apiGroup.MapAgentEndpoints();
+        apiGroup.MapStatusEndpoints();
+        apiGroup.MapInteractionEndpoints();
+        apiGroup.MapScoreEndpoints();
+        apiGroup.MapSchedulingEndpoints();
+        apiGroup.MapComplianceEndpoints();
+        apiGroup.MapCarrierEndpoints();
+        apiGroup.MapAuthEndpoints();
+        apiGroup.MapSessionEndpoints();
+        apiGroup.MapCarrierStateComplianceEndpoints();
+        apiGroup.MapAgentAvailabilityEndpoints();
+        apiGroup.MapContactPolicyEndpoints();
     }
 }

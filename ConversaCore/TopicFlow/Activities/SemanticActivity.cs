@@ -37,6 +37,9 @@ public abstract class SemanticActivity : TopicFlowActivity, IAsyncNotifiableActi
     /// <summary> Raised when the semantic query completes asynchronously. </summary>
     public event EventHandler<AsyncQueryCompletedEventArgs>? AsyncCompleted;
 
+    /// <summary> Optional configuration for extracting structured data intelligence from responses. </summary>
+    private DataIntelligenceConfig? _dataIntelligenceConfig;
+
     protected SemanticActivity(
         string activityId,
         Kernel kernel,
@@ -212,6 +215,10 @@ public abstract class SemanticActivity : TopicFlowActivity, IAsyncNotifiableActi
             processed = await OnResponseReadyAsync(context, processed);
             await StoreResultsInContextAsync(context, processed);
 
+            // After storing the raw/JSON result, optionally project any
+            // configured intelligence signals into the aggregated store.
+            await ExtractAndMergeIntelligenceAsync(context, processed);
+
             return ActivityResult.Continue(processed, processed);
         } catch (OperationCanceledException) {
             stopwatch.Stop();
@@ -297,6 +304,257 @@ public abstract class SemanticActivity : TopicFlowActivity, IAsyncNotifiableActi
         } catch { }
         return text;
     }
+
+    // ============================================================
+    // DATA INTELLIGENCE CONFIGURATION & EXTRACTION
+    // ============================================================
+
+    /// <summary>
+    /// Enables data-intelligence extraction for this semantic activity
+    /// with an explicit configuration describing how to map JSON/text
+    /// fields into logical intelligence paths.
+    /// </summary>
+    public SemanticActivity WithDataIntelligence(Action<DataIntelligenceConfig> configure)
+    {
+        if (configure == null) return this;
+
+        _dataIntelligenceConfig ??= new DataIntelligenceConfig();
+        configure(_dataIntelligenceConfig);
+        return this;
+    }
+
+    /// <summary>
+    /// Enables generic data-intelligence extraction with no manual
+    /// mappings. The activity will treat the semantic response as a
+    /// single JSON object and, for each top-level property, store the
+    /// value directly into the workflow context using the property
+    /// name as the key.
+    /// </summary>
+    public SemanticActivity WithDataIntelligence()
+    {
+        _dataIntelligenceConfig ??= new DataIntelligenceConfig();
+        _dataIntelligenceConfig.AutoMapAllJsonProperties = true;
+        return this;
+    }
+
+    /// <summary>
+    /// Parses the semantic response according to the configured
+    /// DataIntelligence mappings and merges any extracted signals
+    /// into the TopicWorkflowContext intelligence store.
+    /// </summary>
+    private async Task ExtractAndMergeIntelligenceAsync(TopicWorkflowContext context, string response)
+    {
+        await Task.CompletedTask;
+
+        if (_dataIntelligenceConfig == null)
+            return;
+
+        JsonElement? rootJson = null;
+
+        // Prefer an already-parsed JSON result if available.
+        if (RequireJsonOutput || _dataIntelligenceConfig.PreferJson || _dataIntelligenceConfig.AutoMapAllJsonProperties)
+        {
+            if (context.TryGetValue($"{Id}_Result_Json", out object? jsonObj) && jsonObj is JsonDocument doc)
+            {
+                rootJson = doc.RootElement;
+            }
+            else
+            {
+                try
+                {
+                    using var parsed = JsonDocument.Parse(response);
+                    rootJson = parsed.RootElement.Clone();
+                }
+                catch
+                {
+                    // If JSON parsing fails, we silently skip JSON-based mappings.
+                    rootJson = null;
+                }
+            }
+        }
+
+        // If AutoMapAllJsonProperties is enabled and we have a
+        // JSON object, push each top-level property directly into
+        // the workflow context using its name as the key.
+        if (_dataIntelligenceConfig.AutoMapAllJsonProperties &&
+            rootJson is { ValueKind: JsonValueKind.Object } obj)
+        {
+            foreach (var prop in obj.EnumerateObject())
+            {
+                var raw = JsonElementToDotNet(prop.Value);
+                if (raw != null)
+                {
+                    context.SetValue(prop.Name, raw);
+                }
+            }
+        }
+
+        if (_dataIntelligenceConfig.Mappings.Count == 0)
+            return;
+
+        foreach (var mapping in _dataIntelligenceConfig.Mappings)
+        {
+            if (mapping.SourceKind == DataIntelligenceSourceKind.Json)
+            {
+                if (rootJson is null)
+                    continue;
+
+                if (TryExtractFromJson(rootJson.Value, mapping.JsonPath, out var raw))
+                {
+                    var value = mapping.Convert != null ? mapping.Convert(raw) : raw;
+                    if (value != null)
+                    {
+                        context.MergeIntelligence(
+                            mapping.IntelligencePath,
+                            value,
+                            mapping.DefaultConfidence,
+                            mapping.SourceLabel ?? "Semantic",
+                            Id);
+                    }
+                }
+            }
+            else if (mapping.SourceKind == DataIntelligenceSourceKind.Text)
+            {
+                if (string.IsNullOrWhiteSpace(response))
+                    continue;
+
+                var value = mapping.Convert != null ? mapping.Convert(response) : response;
+                if (value != null)
+                {
+                    context.MergeIntelligence(
+                        mapping.IntelligencePath,
+                        value,
+                        mapping.DefaultConfidence,
+                        mapping.SourceLabel ?? "Semantic",
+                        Id);
+                }
+            }
+        }
+    }
+
+    private static bool TryExtractFromJson(JsonElement root, string jsonPath, out object? value)
+    {
+        value = null;
+        if (string.IsNullOrWhiteSpace(jsonPath))
+            return false;
+
+        var segments = jsonPath.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var cursor = root;
+
+        foreach (var segment in segments)
+        {
+            if (cursor.ValueKind != JsonValueKind.Object)
+                return false;
+
+            if (!cursor.TryGetProperty(segment, out var next))
+                return false;
+
+            cursor = next;
+        }
+
+        value = JsonElementToDotNet(cursor);
+        return value != null;
+    }
+
+    private static object? JsonElementToDotNet(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String:
+                return element.GetString();
+            case JsonValueKind.Number:
+                if (element.TryGetInt64(out var i64))
+                    return i64;
+                if (element.TryGetDouble(out var dbl))
+                    return dbl;
+                return null;
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                return element.GetBoolean();
+            case JsonValueKind.Null:
+            case JsonValueKind.Undefined:
+                return null;
+            default:
+                return element.ToString();
+        }
+    }
+}
+
+/// <summary>
+/// Configuration for extracting structured data intelligence from
+/// semantic activity responses.
+/// </summary>
+public sealed class DataIntelligenceConfig
+{
+    /// <summary>
+    /// When true, the extractor will first attempt to parse the
+    /// semantic response as JSON even if RequireJsonOutput is false.
+    /// </summary>
+    public bool PreferJson { get; set; } = true;
+
+    /// <summary>
+    /// When true and no explicit mappings are provided, the extractor
+    /// will treat the response as a JSON object and write each
+    /// top-level property directly into the workflow context using
+    /// the property name as the key.
+    /// </summary>
+    public bool AutoMapAllJsonProperties { get; set; } = false;
+
+    /// <summary>
+    /// Collection of mapping rules describing how to transform
+    /// JSON or plain-text responses into intelligence signals.
+    /// </summary>
+    public List<DataIntelligenceMapping> Mappings { get; } = new();
+}
+
+public enum DataIntelligenceSourceKind
+{
+    Json,
+    Text
+}
+
+/// <summary>
+/// Describes how to map a fragment of a semantic response into a
+/// logical intelligence path inside TopicWorkflowContext.
+/// </summary>
+public sealed class DataIntelligenceMapping
+{
+    /// <summary>
+    /// Where to pull the source value from (JSON vs raw text).
+    /// </summary>
+    public DataIntelligenceSourceKind SourceKind { get; set; } = DataIntelligenceSourceKind.Json;
+
+    /// <summary>
+    /// JSON path expressed as dot-separated property names
+    /// (e.g., "person.first_name"). Ignored for text mappings.
+    /// </summary>
+    public string JsonPath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Logical intelligence path (e.g., "Person.FirstName").
+    /// </summary>
+    public string IntelligencePath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Default confidence score in [0,1] for this mapping.
+    /// </summary>
+    public double DefaultConfidence { get; set; } = 0.7;
+
+    /// <summary>
+    /// Human-readable label describing the source of this signal
+    /// (e.g., "SemanticExtraction", "Card").
+    /// </summary>
+    public string? SourceLabel { get; set; }
+        = "SemanticExtraction";
+
+    /// <summary>
+    /// Optional converter allowing custom transformation of the
+    /// raw extracted value before it is stored as intelligence.
+    /// For JSON mappings the input is the extracted fragment; for
+    /// text mappings the input is the full response string.
+    /// </summary>
+    public Func<object?, object?>? Convert { get; set; }
+        = null;
 }
 
 /// <summary>

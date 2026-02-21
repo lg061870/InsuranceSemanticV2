@@ -16,6 +16,7 @@
     
     <!-- ConversaCore.UI styles -->
     <link rel="stylesheet" href="_content/ConversaCore.UI/css/chat-enhanced.css" />
+    <link rel="stylesheet" href="_content/ConversaCore.UI/css/chat-styles.css" />
     <link rel="stylesheet" href="_content/ConversaCore.UI/css/adaptive-cards.css" />
     <link rel="stylesheet" href="_content/ConversaCore.UI/css/adaptive-cards-required.css" />
     
@@ -39,10 +40,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"
             crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-    <!-- Custom Adaptive Cards stack from ConversaCore.UI -->
-    <script src="_content/ConversaCore.UI/js/custom-adaptive-card-renderer.js"></script>
-    <script src="_content/ConversaCore.UI/js/chat-interop.js"></script>
-    <script src="_content/ConversaCore.UI/js/adaptive-cards-consolidated.js"></script>
+    <!-- Custom Adaptive Cards stack from ConversaCore.UI (cache-busted) -->
+    <script src="_content/ConversaCore.UI/js/custom-adaptive-card-renderer.js" asp-append-version="true"></script>
+    <script src="_content/ConversaCore.UI/js/chat-interop.js" asp-append-version="true"></script>
+    <script src="_content/ConversaCore.UI/js/adaptive-cards-consolidated.js" asp-append-version="true"></script>
     
     <!-- Document Explorer -->
     <script src="js/document-explorer.js" asp-append-version="true"></script>

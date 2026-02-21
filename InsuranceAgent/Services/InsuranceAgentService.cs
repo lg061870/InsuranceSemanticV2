@@ -5,7 +5,9 @@ using ConversaCore.Interfaces;
 using ConversaCore.Models;
 using ConversaCore.StateMachine;
 using ConversaCore.TopicFlow;
+using ConversaCore.TopicFlow.Core;
 using ConversaCore.TopicFlow.Core.Interfaces;
+using CoreContextExtensions = ConversaCore.TopicFlow.Core.TopicWorkflowContextExtensions;
 using ConversaCore.Topics;
 using InsuranceAgent.Cards;
 using InsuranceAgent.Topics;
@@ -305,12 +307,12 @@ public class InsuranceAgentService {
         // -------------------------------------------------------
         // TCPA = YES
         // -------------------------------------------------------
-        IfCase("TCPA_YES_BRANCH", ctx =>
-            IsYes(ctx, "tcpa_consent"),
+        FlowConditionHelpers.IfCase("TCPA_YES_BRANCH", ctx =>
+            CoreContextExtensions.IsYes(ctx, "tcpa_consent"),
 
             ConditionalActivity<TopicFlowActivity>.If(
                 "HAS_CA_INFO_YES_TCPA",
-                c => IsYes(c, "is_california_resident"),
+                c => CoreContextExtensions.IsYes(c, "is_california_resident"),
 
                 // California Resident
                 (id, c) => new CompositeActivity("ASK_CCPA_YES_CA", new List<TopicFlowActivity> {
@@ -319,7 +321,7 @@ public class InsuranceAgentService {
 
                     ConditionalActivity<TopicFlowActivity>.If(
                         "HAS_CCPA_ACK",
-                        cc => IsYes(cc, "ccpa_acknowledgment"),
+                        cc => CoreContextExtensions.IsYes(cc, "ccpa_acknowledgment"),
 
                         (id2, cc) => ToMarketingT1Topic("AFTER_CCPA_YES"),
                         (id2, cc) => ToMarketingT2Topic("AFTER_CCPA_NO")
@@ -334,8 +336,8 @@ public class InsuranceAgentService {
         // -------------------------------------------------------
         // TCPA = NO
         // -------------------------------------------------------
-        IfCase("TCPA_NO", ctx =>
-            IsNo(ctx, "tcpa_consent"),
+        FlowConditionHelpers.IfCase("TCPA_NO", ctx =>
+            CoreContextExtensions.IsNo(ctx, "tcpa_consent"),
             new TriggerTopicActivity(
                 "TO_MARKETING_T3_AFTER_TCPA_NO",
                 "MarketingT3Topic",
@@ -598,7 +600,8 @@ public class InsuranceAgentService {
                 LogInfo("EVT_HC_0001"); // Deliver card input
                 cardAct.OnInputCollected(new AdaptiveCardInputCollectedEventArgs(data));
 
-                await flow.StepAsync(null, ct);
+                // Resume the topic from WaitingForInput so the next activities run
+                await flow.ResumeAsync("CardSubmitted", ct);
             }
             else {
                 LogWarn("EVT_HC_0002"); // Not adaptive card activity
@@ -641,7 +644,48 @@ public class InsuranceAgentService {
             LogError("EVT_FB_0004", ex);
         }
     }
-    private void HandleAsyncActivityCompleted(object? sender, AsyncQueryCompletedEventArgs e) {
+    // ============================================================
+    // FIX: Background Semantic Activity Flow Continuation
+    // ============================================================
+    // PROBLEM:
+    // When a SemanticQueryActivity runs with RunInBackground=true, it completes asynchronously
+    // and triggers this handler with a follow-up activity (e.g., EventTriggerActivity to fire
+    // a custom event like "health_info_submitted"). The follow-up activity is inserted into the
+    // flow queue via flow.InsertNext(followup), but the flow remains stuck in WaitingForInput
+    // state and NEVER executes the inserted activity.
+    //
+    // ROOT CAUSE:
+    // InsertNext() only adds the activity to the queue - it does NOT advance the flow execution.
+    // The flow waits indefinitely for user input (or StepAsync to be called), so the inserted
+    // follow-up activity sits in the queue but never runs.
+    //
+    // SOLUTION:
+    // After InsertNext(), we manually execute ONLY the inserted follow-up activity by calling
+    // its RunAsync() method directly. This avoids triggering StepAsync which would cause the
+    // flow to cascade through all subsequent activities without waiting for user input at cards.
+    //
+    // CRITICAL: We do NOT call flow.StepAsync() because:
+    // 1. It would pass null as input to subsequent card activities
+    // 2. It would cause the flow to advance through multiple activities at once
+    // 3. Cards would appear one after another without waiting for user interaction
+    //
+    // Instead, we:
+    // 1. Execute only the inserted follow-up activity (typically EventTriggerActivity)
+    // 2. Let the activity complete and fire its events
+    // 3. The flow remains in WaitingForInput state for the next card activity
+    //
+    // WHEN THIS HAPPENS:
+    // - SemanticQueryActivity with RunInBackground=true completes
+    // - OnAsyncCompletedCallback creates a follow-up activity (e.g., EventTriggerActivity)
+    // - AsyncCompleted event is raised → HandleAsyncActivityCompleted is called
+    // - Follow-up activity is inserted but flow doesn't advance → USER SEES FLOW STALL
+    //
+    // IMPACT IF REMOVED:
+    // Background semantic queries will complete, but their follow-up activities (like firing
+    // custom events for UI updates or data persistence) will never execute, breaking the
+    // conversation flow and leaving the chat stuck waiting for input.
+    // ============================================================
+    private async void HandleAsyncActivityCompleted(object? sender, AsyncQueryCompletedEventArgs e) {
 
         LogInfo("EVT_AS_0001");
 
@@ -659,12 +703,94 @@ public class InsuranceAgentService {
             return;
         }
 
+        // 🔍 DEBUG: Log current flow state before insertion
+        _logger.LogWarning(
+            "[DEBUG-ASYNC] 🎯 HandleAsyncActivityCompleted START:\n" +
+            "  Follow-up Activity: {ActivityId} ({ActivityType})\n" +
+            "  Flow State: {FlowState}\n" +
+            "  Current Activity: {CurrentActivity}",
+            followup.Id,
+            followup.GetType().Name,
+            flow.State,
+            flow.GetCurrentActivity()?.Id ?? "<none>"
+        );
+
         LogInfo("EVT_AS_0004");
 
         HookActivityEvents(followup);
         flow.InsertNext(followup);
 
+        // 🔍 DEBUG: Log after insertion
+        _logger.LogWarning(
+            "[DEBUG-ASYNC] 📋 After InsertNext - follow-up activity '{ActivityId}' should be next in queue",
+            followup.Id
+        );
+
         AsyncActivityCompleted?.Invoke(this, e);
+
+        // ✅ FIX: Execute ONLY the inserted follow-up activity without advancing the entire flow
+        // Do NOT call flow.StepAsync() as it would cascade through all activities
+        if (flow.State == TopicFlow.FlowState.WaitingForInput) {
+            LogInfo("EVT_AS_0005", "Flow is waiting for input - executing inserted follow-up activity directly");
+            
+            _logger.LogWarning(
+                "[DEBUG-ASYNC] 🚀 Starting follow-up activity execution in background task"
+            );
+            
+            try {
+                // Execute only the inserted activity without triggering full flow advancement
+                _ = Task.Run(async () => {
+                    try {
+                        _logger.LogWarning(
+                            "[DEBUG-ASYNC] ⏳ Waiting 100ms before execution..."
+                        );
+                        
+                        await Task.Delay(100); // Small delay to ensure InsertNext completes
+                        
+                        _logger.LogWarning(
+                            "[DEBUG-ASYNC] ▶️ Calling followup.RunAsync() for activity '{ActivityId}' ({ActivityType})",
+                            followup.Id,
+                            followup.GetType().Name
+                        );
+                        
+                        // Execute the follow-up activity directly without calling StepAsync
+                        var result = await followup.RunAsync(flow.Context, null, CancellationToken.None);
+                        
+                        _logger.LogWarning(
+                            "[DEBUG-ASYNC] ✅ Follow-up activity '{ActivityId}' executed successfully\n" +
+                            "  Is Waiting: {IsWaiting}\n" +
+                            "  Is End: {IsEnd}\n" +
+                            "  Result Message: {ResultMessage}\n" +
+                            "  Flow State After: {FlowState}\n" +
+                            "  Current Activity After: {CurrentActivity}",
+                            followup.Id,
+                            result.IsWaiting,
+                            result.IsEnd,
+                            result.Message ?? "<none>",
+                            flow.State,
+                            flow.GetCurrentActivity()?.Id ?? "<none>"
+                        );
+                        
+                        LogInfo("EVT_AS_0007", $"Follow-up activity '{followup.Id}' executed successfully");
+                        
+                    } catch (Exception ex) {
+                        _logger.LogError(ex,
+                            "[DEBUG-ASYNC] ❌ Failed to execute follow-up activity '{ActivityId}'",
+                            followup.Id
+                        );
+                        LogError("EVT_AS_0006", ex, "Failed to execute follow-up activity after async completion");
+                    }
+                });
+            } catch (Exception ex) {
+                _logger.LogError(ex, "[DEBUG-ASYNC] ❌ Failed to trigger follow-up activity execution");
+                LogError("EVT_AS_0006", ex, "Failed to trigger follow-up activity execution");
+            }
+        } else {
+            _logger.LogWarning(
+                "[DEBUG-ASYNC] ⚠️ Flow state is NOT WaitingForInput (State={FlowState}), skipping follow-up execution",
+                flow.State
+            );
+        }
     }
     private async void HandleTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) {
 
@@ -993,64 +1119,6 @@ public class InsuranceAgentService {
     }
     #endregion
 
-    #region Conditional Activity Helpers
-    private TopicFlowActivity IfCase(string id, Func<TopicWorkflowContext, bool> condition, TopicFlowActivity activity) {
-        return ConditionalActivity<TopicFlowActivity>.If(
-            id,
-            condition,
-            (yesId, ctx) => activity,
-            (noId, ctx) => Skip(id));
-    }
-    private static TopicFlowActivity Skip(string id)
-        => new SimpleActivity($"{id}_SKIP", (c, d) => Task.FromResult<object?>(null));
-    private static bool IsYes(TopicWorkflowContext ctx, string key) {
-        var value = ctx.GetValue<object?>(key);
-
-        // Handle null
-        if (value is null)
-            return false;
-
-        // Handle JsonElement (common when context is populated from serialized JSON)
-        if (value is JsonElement jsonElement) {
-            // Try to unwrap underlying string or boolean
-            if (jsonElement.ValueKind == JsonValueKind.String)
-                value = jsonElement.GetString();
-            else if (jsonElement.ValueKind == JsonValueKind.True)
-                return true;
-            else if (jsonElement.ValueKind == JsonValueKind.False)
-                return false;
-            else
-                return false;
-        }
-
-        // Handle boolean or string values
-        return value switch {
-            bool b => b,
-            string s => s.Trim().ToLowerInvariant() switch {
-                "yes" or "y" or "true" or "1" => true,
-                _ => false
-            },
-            _ => false
-        };
-    }
-    private static bool IsNo(TopicWorkflowContext ctx, string key) {
-        var value = ctx.GetValue<object?>(key);
-        return value switch {
-            // Already a boolean
-            bool b => !b,
-            // Normalize strings
-            string s => s.Trim().ToLowerInvariant() switch {
-                "no" or "n" or "false" or "0" => true,
-                _ => false
-            },
-            // Null or unrecognized type
-            _ => false
-        };
-    }
-    private static bool IsUnknown(TopicWorkflowContext ctx, string key)
-        => ctx.GetValue<bool?>(key) is null;
-    #endregion
-
     #region Logging Helpers
     private string ResolveLogMessage(string codeOrMessage, params object[] args) {
         if (_logMessages.TryGetValue(codeOrMessage, out var template))
@@ -1168,6 +1236,9 @@ public class InsuranceAgentService {
     { "EVT_AS_0002", "[InsuranceAgentService] AsyncActivityCompleted: No follow-up activity returned" },
     { "EVT_AS_0003", "[InsuranceAgentService] Cannot InsertNext for async follow-up — no active TopicFlow." },
     { "EVT_AS_0004", "[InsuranceAgentService] Inserting async follow-up activity into topic" },
+    { "EVT_AS_0005", "[InsuranceAgentService] {0}" },
+    { "EVT_AS_0006", "[InsuranceAgentService] {0}" },
+    { "EVT_AS_0007", "[InsuranceAgentService] {0}" },
 
     // ============================================================
     // TOPIC LIFECYCLE (LOCAL HANDLER VARIATION)

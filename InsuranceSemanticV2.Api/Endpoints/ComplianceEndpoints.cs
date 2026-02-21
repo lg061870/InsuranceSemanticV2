@@ -6,7 +6,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class ComplianceEndpoints {
     public static RouteGroupBuilder MapComplianceEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/compliance")
+        var group = routes.MapGroup("/compliance")
                           .WithTags("Compliance");
 
         // ============================================================

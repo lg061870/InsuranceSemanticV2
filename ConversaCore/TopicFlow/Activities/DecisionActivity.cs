@@ -74,9 +74,9 @@ public class DecisionActivity<TInput, TEvidence, TResponse> : TopicFlowActivity
             var systemPrompt = await BuildSystemPromptAsync(context);
             var userPrompt = await BuildUserPromptAsync(context, evidence);
 
-            // Execute AI decision
-            var response = await ExecuteAIDecisionAsync(systemPrompt, userPrompt);
-            
+            // Execute AI decision (with stricter JSON enforcement and repair loop)
+            var response = await ExecuteAIDecisionAsync(systemPrompt, userPrompt, cancellationToken);
+
             // Process and store results
             await ProcessResponseAsync(context, response);
 
@@ -122,23 +122,51 @@ public class DecisionActivity<TInput, TEvidence, TResponse> : TopicFlowActivity
         return await Task.FromResult(userPrompt);
     }
 
-    protected virtual async Task<string> ExecuteAIDecisionAsync(string systemPrompt, string userPrompt)
+    protected virtual async Task<string> ExecuteAIDecisionAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken)
     {
         var chatService = _kernel.GetRequiredService<IChatCompletionService>();
-        
+
+        // Prepare strict JSON output guideline
+        var responseStructure = GetResponseStructure();
+        var jsonGuidelines = "You MUST respond with ONLY valid JSON that matches the schema below. Do not include any extra explanation, markdown, or surrounding text. If you cannot fill a field, use null or an empty array where appropriate.\n\nSchema:\n" + responseStructure;
+
         var chatHistory = new ChatHistory();
-        chatHistory.AddSystemMessage(systemPrompt);
+        chatHistory.AddSystemMessage(systemPrompt + "\n\n" + jsonGuidelines);
         chatHistory.AddUserMessage(userPrompt);
 
         var executionSettings = new OpenAIPromptExecutionSettings
         {
-            Temperature = _temperature,
+            Temperature = Math.Max(0f, Math.Min(0.2f, _temperature)),
             ModelId = _modelId,
             MaxTokens = 4000
         };
 
-        var response = await chatService.GetChatMessageContentAsync(chatHistory, executionSettings);
-        return response.Content ?? string.Empty;
+        var attempt = 0;
+        string lastResponse = string.Empty;
+
+        while (attempt < 3 && !cancellationToken.IsCancellationRequested)
+        {
+            attempt++;
+            var response = await chatService.GetChatMessageContentAsync(chatHistory, executionSettings, cancellationToken: cancellationToken);
+            lastResponse = response.Content ?? string.Empty;
+
+            var json = ExtractJsonFromResponse(lastResponse);
+            if (IsValidJson(json))
+            {
+                return json;
+            }
+
+            // Ask the model to extract and return only the JSON
+            var repairPrompt = "The previous response was not valid JSON. Extract the JSON object or array from the previous response and return ONLY the valid JSON that matches the schema. Do not include any extra text. Previous response:\n" + lastResponse;
+
+            chatHistory = new ChatHistory();
+            chatHistory.AddSystemMessage(systemPrompt + "\n\n" + jsonGuidelines);
+            chatHistory.AddUserMessage(repairPrompt);
+
+            await Task.Delay(250, cancellationToken).ContinueWith(_ => { });
+        }
+
+        return lastResponse;
     }
 
     protected virtual async Task ProcessResponseAsync(TopicWorkflowContext context, string response)
@@ -150,17 +178,39 @@ public class DecisionActivity<TInput, TEvidence, TResponse> : TopicFlowActivity
         {
             try
             {
-                // Extract JSON from response (handle cases where AI adds explanation)
-                var jsonContent = ExtractJsonFromResponse(response);
-                
-                // Parse as generic object first
+                var jsonContent = response; // ExecuteAIDecisionAsync should return cleaned JSON when possible
+
+                using var doc = JsonDocument.Parse(jsonContent);
                 var jsonObject = JsonSerializer.Deserialize<object>(jsonContent);
                 context.SetValue($"{Id}_JsonResult", jsonObject);
 
-                // Try to parse as specific response type
                 var typedResponse = JsonSerializer.Deserialize<TResponse>(jsonContent);
                 context.SetValue($"{Id}_TypedResponse", typedResponse);
                 context.SetValue($"{Id}_Response", typedResponse);
+
+                // Persist common fields for auditing
+                try
+                {
+                    if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                    {
+                        if (doc.RootElement.TryGetProperty("matched_rules", out var mr))
+                        {
+                            context.SetValue($"{Id}_MatchedRules", JsonSerializer.Deserialize<string[]>(mr.GetRawText()));
+                        }
+                        if (doc.RootElement.TryGetProperty("decision", out var dec))
+                        {
+                            context.SetValue($"{Id}_Decision", dec.ToString());
+                        }
+                        if (doc.RootElement.TryGetProperty("justification", out var just))
+                        {
+                            context.SetValue($"{Id}_Justification", just.ToString());
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Failed to extract standard fields from JSON response for {Id}", Id);
+                }
 
                 _logger.LogInformation($"Successfully parsed JSON response for {Id}");
             }
@@ -218,6 +268,20 @@ public class DecisionActivity<TInput, TEvidence, TResponse> : TopicFlowActivity
         
         // Return as-is if no JSON boundaries found
         return response;
+    }
+
+    private bool IsValidJson(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.ValueKind == JsonValueKind.Object || doc.RootElement.ValueKind == JsonValueKind.Array;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private string ReplaceContextVariables(string template, TopicWorkflowContext context)

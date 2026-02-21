@@ -6,7 +6,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class ContactPolicyEndpoints {
     public static RouteGroupBuilder MapContactPolicyEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/contact-policy")
+        var group = routes.MapGroup("/contact-policy")
                           .WithTags("Contact Policy");
 
         // GET policy for a state

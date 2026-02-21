@@ -23,6 +23,9 @@ public class CardElement {
     public string? Placeholder { get; set; }       // For text input hints
     public bool? IsRequired { get; set; }          // For marking required fields
     public string? Regex { get; set; }             // For validation hints (not evaluated client-side)
+    public bool? IsMultiline { get; set; }         // For Input.Text: allow multi-line editing
+    public int? Rows { get; set; }                 // For Input.Text: suggested number of rows
+    public string? Width { get; set; }             // Host-specific width hint (e.g., "100%")
     
     // 🆕 TagSelect specific properties
     public bool? AllowCustom { get; set; }         // For TagSelect: allow custom text input

@@ -1,4 +1,9 @@
-﻿namespace InsuranceSemanticV2.Core.DTO;
+﻿using System.Numerics;
+using static System.Net.Mime.MediaTypeNames;
+using static System.Net.WebRequestMethods;
+using static System.Reflection.Metadata.BlobBuilder;
+
+namespace InsuranceSemanticV2.Core.DTO;
 
 public class AgentCarrierAppointmentRequest {
     public int AgentId { get; set; }

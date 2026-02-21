@@ -72,9 +72,22 @@ public class SimpleActivity : TopicFlowActivity {
             if (_action != null) {
                 cancellationToken.ThrowIfCancellationRequested();
                 modelContext = await _action(context, input);
+
+                // If the async action returns a non-empty string, treat it as
+                // the activity's chat message and emit it through the standard
+                // MessageEmitted pipeline (e.g., for LLM-driven replies).
+                if (modelContext is string dynamicMessage && !string.IsNullOrWhiteSpace(dynamicMessage)) {
+                    OnMessageEmitted(dynamicMessage);
+                    TransitionTo(ActivityState.Completed, dynamicMessage);
+                    return ActivityResult.Continue(dynamicMessage, dynamicMessage);
+                }
             }
 
             if (!string.IsNullOrEmpty(_message)) {
+                // Surface the static message through the standard MessageEmitted
+                // pipeline so the DomainAgentService can relay it to the chat UI.
+                OnMessageEmitted(_message);
+
                 TransitionTo(ActivityState.Completed, _message);
                 return ActivityResult.Continue(_message, modelContext);
             }

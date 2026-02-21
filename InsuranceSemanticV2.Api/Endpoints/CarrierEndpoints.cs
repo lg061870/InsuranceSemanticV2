@@ -7,7 +7,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class CarrierEndpoints {
     public static RouteGroupBuilder MapCarrierEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/carriers")
+        var group = routes.MapGroup("/carriers")
                           .WithTags("Carriers & Products");
 
         // ============================================================

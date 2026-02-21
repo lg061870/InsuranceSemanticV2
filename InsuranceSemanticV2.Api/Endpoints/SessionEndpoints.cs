@@ -12,7 +12,7 @@ public static class SessionEndpoints
 {
     public static RouteGroupBuilder MapSessionEndpoints(this IEndpointRouteBuilder routes)
     {
-        var group = routes.MapGroup("/api/sessions").WithTags("Session Management");
+        var group = routes.MapGroup("/sessions").WithTags("Session Management");
 
         // POST /api/sessions/start - Create new agent session
         group.MapPost("/start", [Authorize] async (

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AspNetCoreHostingModel>OutOfProcess</AspNetCoreHostingModel>
+    <AspNetCoreModuleStdoutLogEnabled>true</AspNetCoreModuleStdoutLogEnabled>
+    <AspNetCoreModuleStdoutLogFile>.\logs\stdout</AspNetCoreModuleStdoutLogFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ConversaCore\ConversaCore.csproj" />
+    <ProjectReference Include="..\ConversaCore.UI\ConversaCore.UI.csproj" />
+  </ItemGroup>
+
+</Project>

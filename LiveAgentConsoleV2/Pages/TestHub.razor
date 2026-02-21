@@ -1,0 +1,245 @@
+@page "/test-hub"
+@using LiveAgentConsoleV2.Services
+@inject LeadHubConnection HubConnection
+@implements IAsyncDisposable
+
+<PageTitle>SignalR Hub Tester</PageTitle>
+
+<div class="container mx-auto p-8">
+    <div class="bg-white shadow-lg rounded-lg p-6">
+        <h3 class="text-2xl font-bold mb-6 text-gray-800">SignalR Hub Connection Tester</h3>
+
+        <!-- Connection Status -->
+        <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm text-gray-600">Connection State</p>
+                    <p class="text-lg font-semibold @GetStateColorClass()">@connectionState</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Connection ID</p>
+                    <p class="text-lg font-mono text-gray-800 break-all">@connectionId</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Buttons -->
+        <div class="mb-6 flex gap-3">
+            <button @onclick="TestConnection" 
+                    class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+                ?? Reconnect
+            </button>
+            <button @onclick="ClearEvents" 
+                    class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition">
+                ??? Clear Events
+            </button>
+            <button @onclick="RefreshStatus" 
+                    class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
+                ?? Refresh Status
+            </button>
+        </div>
+
+        <!-- Events Log -->
+        <div class="mb-4">
+            <h4 class="text-lg font-semibold mb-3 text-gray-700">
+                Events Received 
+                <span class="text-sm text-gray-500 font-normal">(@events.Count total)</span>
+            </h4>
+        </div>
+
+        @if (events.Count == 0)
+        {
+            <div class="p-8 text-center text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                <p class="text-lg mb-2">No events received yet</p>
+                <p class="text-sm">Try creating or updating a lead via the API (use Swagger)</p>
+            </div>
+        }
+        else
+        {
+            <div class="space-y-2 max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-4 bg-gray-50">
+                @foreach (var evt in events)
+                {
+                    <div class="@GetEventColorClass(evt) p-3 rounded-lg shadow-sm">
+                        <span class="font-mono text-sm">@evt</span>
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Instructions -->
+        <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h5 class="font-semibold text-blue-900 mb-2">?? Testing Instructions</h5>
+            <ol class="list-decimal list-inside text-sm text-blue-800 space-y-1">
+                <li>Keep this page open</li>
+                <li>Open Swagger UI: <code class="bg-white px-2 py-1 rounded">http://localhost:5031/swagger</code></li>
+                <li>Create a lead: <code class="bg-white px-2 py-1 rounded">POST /api/leads</code></li>
+                <li>Update a lead: <code class="bg-white px-2 py-1 rounded">PUT /api/leads/{'{id}'}</code></li>
+                <li>Update profile: <code class="bg-white px-2 py-1 rounded">PUT /api/leads/{'{id}'}/profile</code></li>
+                <li>Watch events appear here in real-time! ??</li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string connectionState = "Unknown";
+    private string connectionId = "Not connected";
+    private List<string> events = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Subscribe to all SignalR events
+        HubConnection.OnLeadCreated += HandleLeadCreated;
+        HubConnection.OnLeadUpdated += HandleLeadUpdated;
+        HubConnection.OnProfileUpdated += HandleProfileUpdated;
+        HubConnection.OnKpisChanged += HandleKpisChanged;
+        HubConnection.OnAgentConnected += HandleAgentConnected;
+        HubConnection.OnAgentDisconnected += HandleAgentDisconnected;
+        HubConnection.OnAgentStatusChanged += HandleAgentStatusChanged;
+
+        // Start connection if not already connected
+        await HubConnection.StartAsync();
+        UpdateConnectionInfo();
+    }
+
+    private async Task HandleLeadCreated(int leadId)
+    {
+        await InvokeAsync(() =>
+        {
+            events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ?? LeadCreated: Lead #{leadId}");
+            StateHasChanged();
+        });
+    }
+
+    private async Task HandleLeadUpdated(int leadId)
+    {
+        await InvokeAsync(() =>
+        {
+            events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ?? LeadUpdated: Lead #{leadId}");
+            StateHasChanged();
+        });
+    }
+
+    private async Task HandleProfileUpdated(int leadId)
+    {
+        await InvokeAsync(() =>
+        {
+            events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ?? ProfileUpdated: Lead #{leadId}");
+            StateHasChanged();
+        });
+    }
+
+    private async Task HandleKpisChanged()
+    {
+        await InvokeAsync(() =>
+        {
+            events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ?? KpisChanged");
+            StateHasChanged();
+        });
+    }
+
+    private async Task HandleAgentConnected(int agentId, string agentName)
+    {
+        await InvokeAsync(() =>
+        {
+            events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ? AgentConnected: {agentName} (#{agentId})");
+            StateHasChanged();
+        });
+    }
+
+    private async Task HandleAgentDisconnected(int agentId)
+    {
+        await InvokeAsync(() =>
+        {
+            events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ? AgentDisconnected: Agent #{agentId}");
+            StateHasChanged();
+        });
+    }
+
+    private async Task HandleAgentStatusChanged(int agentId, string status)
+    {
+        await InvokeAsync(() =>
+        {
+            events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ?? AgentStatusChanged: Agent #{agentId} -> {status}");
+            StateHasChanged();
+        });
+    }
+
+    private async Task TestConnection()
+    {
+        events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ?? Reconnecting...");
+        StateHasChanged();
+
+        try
+        {
+            await HubConnection.StopAsync();
+            await Task.Delay(500);
+            await HubConnection.StartAsync();
+            UpdateConnectionInfo();
+            events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ? Reconnected successfully");
+        }
+        catch (Exception ex)
+        {
+            events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ? Reconnection failed: {ex.Message}");
+        }
+
+        StateHasChanged();
+    }
+
+    private void ClearEvents()
+    {
+        events.Clear();
+        StateHasChanged();
+    }
+
+    private void RefreshStatus()
+    {
+        UpdateConnectionInfo();
+        events.Insert(0, $"[{DateTime.Now:HH:mm:ss}] ?? Status refreshed");
+        StateHasChanged();
+    }
+
+    private void UpdateConnectionInfo()
+    {
+        connectionState = HubConnection.State.ToString();
+        connectionId = HubConnection.ConnectionId ?? "Not connected";
+    }
+
+    private string GetStateColorClass()
+    {
+        return connectionState switch
+        {
+            "Connected" => "text-green-600",
+            "Disconnected" => "text-red-600",
+            "Connecting" => "text-yellow-600",
+            "Reconnecting" => "text-orange-600",
+            _ => "text-gray-600"
+        };
+    }
+
+    private string GetEventColorClass(string evt)
+    {
+        if (evt.Contains("LeadCreated") || evt.Contains("AgentConnected"))
+            return "bg-green-100 border-l-4 border-green-500";
+        if (evt.Contains("LeadUpdated") || evt.Contains("ProfileUpdated"))
+            return "bg-blue-100 border-l-4 border-blue-500";
+        if (evt.Contains("KpisChanged") || evt.Contains("StatusChanged"))
+            return "bg-yellow-100 border-l-4 border-yellow-500";
+        if (evt.Contains("Disconnected") || evt.Contains("failed"))
+            return "bg-red-100 border-l-4 border-red-500";
+        
+        return "bg-gray-100 border-l-4 border-gray-400";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Unsubscribe from all events
+        HubConnection.OnLeadCreated -= HandleLeadCreated;
+        HubConnection.OnLeadUpdated -= HandleLeadUpdated;
+        HubConnection.OnProfileUpdated -= HandleProfileUpdated;
+        HubConnection.OnKpisChanged -= HandleKpisChanged;
+        HubConnection.OnAgentConnected -= HandleAgentConnected;
+        HubConnection.OnAgentDisconnected -= HandleAgentDisconnected;
+        HubConnection.OnAgentStatusChanged -= HandleAgentStatusChanged;
+    }
+}

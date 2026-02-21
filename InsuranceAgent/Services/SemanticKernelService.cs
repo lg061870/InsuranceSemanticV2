@@ -2,44 +2,45 @@
 using InsuranceAgent.Configuration;
 using ConversaCore.Models;
 using ConversaCore.Events;
+using ConversaCore.Services;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
-using ConversaCore.Interfaces;
 
 namespace InsuranceAgent.Services;
 
 /// <summary>
-/// Event-driven service wrapper around Semantic Kernel.
-/// Emits events instead of returning raw responses.
+/// Insurance-specific implementation of Semantic Kernel service.
+/// Provides insurance-focused prompts and event triggers.
 /// </summary>
-public class SemanticKernelService : ISemanticKernelService {
-    private readonly Kernel _kernel;
+public class InsuranceSemanticKernelService : ConversaCore.Services.SemanticKernelService {
     private readonly OpenAIConfiguration _openAiConfig;
-    private readonly ILogger<SemanticKernelService> _logger;
-    
-    // === Events (outbound to HybridChatService) ===
-    public event EventHandler<SemanticMessageEventArgs>? SemanticMessageReady;
-    public event EventHandler<SemanticAdaptiveCardEventArgs>? SemanticAdaptiveCardReady;
-    public event EventHandler<SemanticChatEventArgs>? SemanticChatEventRaised;
-    public event EventHandler<SemanticTypingEventArgs>? SemanticTypingIndicatorChanged;
+    private readonly Kernel _kernel;
+    private readonly ILogger<InsuranceSemanticKernelService> _logger;
 
-    public SemanticKernelService(
+    // Override base system prompt with insurance-specific one
+    protected override string SystemPrompt => "You are a helpful insurance assistant. You help users with insurance-related questions, " +
+        "guide them through forms and processes, and provide information about insurance products. " +
+        "Be friendly, professional, and concise. If a user asks about starting a health questionnaire, " +
+        "respond that you can help them get started. If they mention needing to speak with an agent, " +
+        "acknowledge their request.";
+
+    public InsuranceSemanticKernelService(
         Kernel kernel,
         IOptions<OpenAIConfiguration> openAiConfig,
-        ILogger<SemanticKernelService> logger)
+        ILogger<InsuranceSemanticKernelService> logger)
+        : base(kernel, logger)
     {
-        _kernel = kernel;
         _openAiConfig = openAiConfig.Value;
+        _kernel = kernel;
         _logger = logger;
     }
 
     /// <summary>
-    /// Processes a user message using Semantic Kernel.
-    /// Downcasts to ChatSessionState if possible.
+    /// Override to handle ChatSessionState casting
     /// </summary>
-    public async Task<SemanticKernelResponse> ProcessMessageAsync(
+    public new async Task<SemanticKernelResponse> ProcessMessageAsync(
         string userMessage,
         ChatSessionStateBase sessionState) {
 
@@ -50,82 +51,17 @@ public class SemanticKernelService : ISemanticKernelService {
     }
 
     /// <summary>
-    /// Internal processing logic - uses OpenAI when available, falls back to keyword-based responses.
+    /// Override AI processing to use insurance-specific settings
     /// </summary>
-    private async Task<SemanticKernelResponse> ProcessMessageInternalAsync(
+    protected override async Task<SemanticKernelResponse> ProcessWithAIAsync(
         string userMessage,
-        ChatSessionState sessionState) {
+        ChatSessionStateBase sessionState) {
 
-        // Start typing indicator
-        OnSemanticTypingIndicatorChanged(true);
-
-        try {
-            SemanticKernelResponse response;
-
-            if (_openAiConfig.IsConfigured) {
-                try {
-                    var chatService = _kernel.GetRequiredService<IChatCompletionService>();
-                    if (chatService != null) {
-                        _logger.LogDebug("Processing message with OpenAI: {Message}", userMessage);
-                        response = await ProcessWithOpenAIAsync(userMessage, sessionState);
-                    } else {
-                        _logger.LogDebug("No chat completion service available, using fallback");
-                        response = ProcessWithKeywordFallback(userMessage, sessionState);
-                    }
-                } catch (InvalidOperationException) {
-                    _logger.LogDebug("Chat completion service not configured, using fallback");
-                    response = ProcessWithKeywordFallback(userMessage, sessionState);
-                }
-            } else {
-                _logger.LogDebug("Processing message with keyword fallback: {Message}", userMessage);
-                response = ProcessWithKeywordFallback(userMessage, sessionState);
-            }
-
-            // === Raise events ===
-            if (!string.IsNullOrEmpty(response.Content)) {
-                OnSemanticMessageReady(new ChatMessage {
-                    Content = response.Content,
-                    IsFromUser = false,
-                    Timestamp = DateTime.Now
-                });
-            }
-
-            if (response.IsAdaptiveCard && !string.IsNullOrEmpty(response.AdaptiveCardJson)) {
-                OnSemanticAdaptiveCardReady(response.AdaptiveCardJson!);
-            }
-
-            if (response.Events?.Any() == true) {
-                foreach (var evt in response.Events)
-                    OnSemanticChatEventRaised(evt);
-            }
-
-            return response;
-        } finally {
-            // Always end typing indicator
-            OnSemanticTypingIndicatorChanged(false);
-        }
-    }
-
-    /// <summary>
-    /// Process message using OpenAI/LLM
-    /// </summary>
-    private async Task<SemanticKernelResponse> ProcessWithOpenAIAsync(
-        string userMessage,
-        ChatSessionState sessionState) {
-        
         try {
             var chatCompletionService = _kernel.GetRequiredService<IChatCompletionService>();
-            
-            var chatHistory = new ChatHistory();
-            chatHistory.AddSystemMessage(
-                "You are a helpful insurance assistant. You help users with insurance-related questions, " +
-                "guide them through forms and processes, and provide information about insurance products. " +
-                "Be friendly, professional, and concise. If a user asks about starting a health questionnaire, " +
-                "respond that you can help them get started. If they mention needing to speak with an agent, " +
-                "acknowledge their request."
-            );
 
-            // Could add conversation history here if needed in the future
+            var chatHistory = new ChatHistory();
+            chatHistory.AddSystemMessage(SystemPrompt);
 
             chatHistory.AddUserMessage(userMessage);
 
@@ -142,8 +78,8 @@ public class SemanticKernelService : ISemanticKernelService {
             );
 
             var content = result.Content ?? "I'm sorry, I didn't understand that. Could you please rephrase?";
-            
-            // Analyze response for potential events
+
+            // Insurance-specific event analysis
             var events = AnalyzeResponseForEvents(content, userMessage);
 
             return new SemanticKernelResponse {
@@ -155,19 +91,19 @@ public class SemanticKernelService : ISemanticKernelService {
         }
         catch (Exception ex) {
             _logger.LogError(ex, "Error processing message with OpenAI");
-            
-            // Fall back to keyword processing
-            return ProcessWithKeywordFallback(userMessage, sessionState);
+
+            // Fall back to insurance-specific keyword processing
+            return ProcessWithInsuranceFallback(userMessage, sessionState);
         }
     }
 
     /// <summary>
-    /// Fallback keyword-based processing when OpenAI is not available
+    /// Insurance-specific fallback processing
     /// </summary>
-    private SemanticKernelResponse ProcessWithKeywordFallback(
+    private SemanticKernelResponse ProcessWithInsuranceFallback(
         string userMessage,
-        ChatSessionState sessionState) {
-        
+        ChatSessionStateBase sessionState) {
+
         var response = new SemanticKernelResponse {
             Content = $"🤖 I received your message: {userMessage}",
             IsAdaptiveCard = false,
@@ -177,7 +113,7 @@ public class SemanticKernelService : ISemanticKernelService {
 
         var lower = userMessage.ToLowerInvariant();
 
-        // Simple keyword-based demo triggers
+        // Insurance-specific keyword-based demo triggers
         if (lower.Contains("questionnaire") || lower.Contains("health") || lower.Contains("questions")) {
             response.Content = "I can help you get started with a health questionnaire. Let me guide you through it.";
             response.Events.Add(new ChatEvent { Type = "startHealthQuestionnaire" });
@@ -201,37 +137,24 @@ public class SemanticKernelService : ISemanticKernelService {
     }
 
     /// <summary>
-    /// Analyze LLM response to determine if any events should be triggered
+    /// Insurance-specific event analysis
     /// </summary>
-    private List<ChatEvent> AnalyzeResponseForEvents(string aiResponse, string userMessage) {
+    protected override List<ChatEvent> AnalyzeResponseForEvents(string aiResponse, string userMessage) {
         var events = new List<ChatEvent>();
         var responseLower = aiResponse.ToLowerInvariant();
         var userLower = userMessage.ToLowerInvariant();
 
-        // Look for patterns that suggest specific actions
-        if ((responseLower.Contains("questionnaire") || responseLower.Contains("health questions")) && 
+        // Look for patterns that suggest specific insurance actions
+        if ((responseLower.Contains("questionnaire") || responseLower.Contains("health questions")) &&
             (userLower.Contains("health") || userLower.Contains("questions"))) {
             events.Add(new ChatEvent { Type = "startHealthQuestionnaire" });
         }
-        
-        if (responseLower.Contains("agent") || responseLower.Contains("human") || 
+
+        if (responseLower.Contains("agent") || responseLower.Contains("human") ||
             userLower.Contains("speak") && userLower.Contains("person")) {
             events.Add(new ChatEvent { Type = "requestConsent" });
         }
 
         return events;
     }
-
-    // === Protected Raise Methods ===
-    protected virtual void OnSemanticMessageReady(ChatMessage message)
-        => SemanticMessageReady?.Invoke(this, new SemanticMessageEventArgs(message));
-
-    protected virtual void OnSemanticAdaptiveCardReady(string cardJson)
-        => SemanticAdaptiveCardReady?.Invoke(this, new SemanticAdaptiveCardEventArgs(cardJson));
-
-    protected virtual void OnSemanticChatEventRaised(ChatEvent chatEvent)
-        => SemanticChatEventRaised?.Invoke(this, new SemanticChatEventArgs(chatEvent));
-
-    protected virtual void OnSemanticTypingIndicatorChanged(bool isTyping)
-        => SemanticTypingIndicatorChanged?.Invoke(this, new SemanticTypingEventArgs(isTyping));
 }

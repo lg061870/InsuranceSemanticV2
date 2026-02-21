@@ -11,4 +11,7 @@ public class ChatMessage {
 
     // ✅ NEW property — used by HybridCardStateChanged
     public bool IsActive { get; set; } = true;
+
+    // ✅ NEW property — quick-reply / choice options for messages
+    public System.Collections.Generic.List<string>? Options { get; set; }
 }

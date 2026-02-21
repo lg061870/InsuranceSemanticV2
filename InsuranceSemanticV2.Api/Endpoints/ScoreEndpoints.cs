@@ -6,7 +6,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class ScoreEndpoints {
     public static RouteGroupBuilder MapScoreEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/scores")
+        var group = routes.MapGroup("/scores")
                           .WithTags("Lead Scores");
 
         // GET all scores for a lead
@@ -30,7 +30,7 @@ public static class ScoreEndpoints {
             db.LeadScores.Add(dto);
             await db.SaveChangesAsync();
 
-            return Results.Created($"/api/scores/{dto.LeadScoreId}", dto);
+            return Results.Created($"/scores/{dto.LeadScoreId}", dto);
         });
 
         return group;

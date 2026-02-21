@@ -114,7 +114,8 @@ public abstract class TopicFlowActivity : ITerminable, IPausableActivity {
     {
         { ActivityState.Idle,      new() { ActivityState.Created } },
         { ActivityState.Created,   new() { ActivityState.Running, ActivityState.Failed } },
-        { ActivityState.Running,   new() { ActivityState.Completed, ActivityState.Failed } },
+        { ActivityState.Running,   new() { ActivityState.Completed, ActivityState.Failed, ActivityState.Rendered, ActivityState.WaitingForUserInput, ActivityState.Finalizing } },
+        { ActivityState.Finalizing, new() { ActivityState.Completed, ActivityState.Failed } },
         { ActivityState.Completed, new() { } },
         { ActivityState.Failed,    new() { } }
     };
@@ -182,7 +183,12 @@ public abstract class TopicFlowActivity : ITerminable, IPausableActivity {
                 _logger?.LogInformation("[{ActivityId}] Waiting for input", Id);
             }
             else {
-                TransitionTo(ActivityState.Completed, result);
+                // Only transition to Completed if the activity didn't already
+                // transition itself to Failed or Completed inside RunActivity.
+                if (CurrentState != ActivityState.Failed &&
+                    CurrentState != ActivityState.Completed) {
+                    TransitionTo(ActivityState.Completed, result);
+                }
             }
 
             return result!;

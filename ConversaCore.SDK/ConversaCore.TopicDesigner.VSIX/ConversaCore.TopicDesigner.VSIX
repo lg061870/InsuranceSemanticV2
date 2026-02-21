@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36616.10 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConversaCore.TopicTool.VSIX", "ConversaCore.TopicTool.VSIX.csproj", "{57150C4F-0655-CA1D-914B-EA60226499FA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{57150C4F-0655-CA1D-914B-EA60226499FA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{57150C4F-0655-CA1D-914B-EA60226499FA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{57150C4F-0655-CA1D-914B-EA60226499FA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{57150C4F-0655-CA1D-914B-EA60226499FA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E732A2C3-BEC7-4DC5-88B9-1D5A942217B0}
+	EndGlobalSection
+EndGlobal

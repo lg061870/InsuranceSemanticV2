@@ -6,7 +6,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class SchedulingEndpoints {
     public static RouteGroupBuilder MapSchedulingEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/scheduling")
+        var group = routes.MapGroup("/scheduling")
                           .WithTags("Scheduling");
 
         // ------------------------------------------------------------

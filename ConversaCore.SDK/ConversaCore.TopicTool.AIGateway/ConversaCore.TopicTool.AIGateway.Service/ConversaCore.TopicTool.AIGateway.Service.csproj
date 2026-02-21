@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AspNetCoreHostingModel>InProcess</AspNetCoreHostingModel>
+    <UseWindowsService>true</UseWindowsService>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-ConversaCore.TopicTool.AIGateway.Service-92017f27-3bb1-46fc-bdd3-59eb7c4632ed</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+</Project>

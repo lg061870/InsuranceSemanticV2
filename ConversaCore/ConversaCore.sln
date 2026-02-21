@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConversaCore", "ConversaCore.csproj", "{36882B09-F3A7-B9A6-F92B-BE9788CC7110}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{36882B09-F3A7-B9A6-F92B-BE9788CC7110}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{36882B09-F3A7-B9A6-F92B-BE9788CC7110}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{36882B09-F3A7-B9A6-F92B-BE9788CC7110}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{36882B09-F3A7-B9A6-F92B-BE9788CC7110}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C73A7EF2-FBFD-4907-A37F-0DD4ECCBD987}
+	EndGlobalSection
+EndGlobal

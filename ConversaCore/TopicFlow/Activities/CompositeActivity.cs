@@ -190,6 +190,14 @@ public class CompositeActivity :
         child.ActivityLifecycleChanged += (s, e) =>
             ActivityLifecycleChanged?.Invoke(s, e);
 
+        // Forward message events so that SimpleActivity and other
+        // children emitting messages are visible to the outer
+        // orchestration. We can't invoke the base MessageEmitted
+        // event directly from here, so we delegate to the protected
+        // OnMessageEmitted helper on TopicFlowActivity.
+        child.MessageEmitted += (s, e) =>
+            OnMessageEmitted(e.Message);
+
         // Handle and forward completion
         child.ActivityCompleted += (s, e) => {
             Console.WriteLine($"[CompositeActivity] 🟡 Child completed event fired for {((TopicFlowActivity)s!).Id}");

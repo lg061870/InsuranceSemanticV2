@@ -1,0 +1,125 @@
+@startuml
+title Persona #1 – Newbie / First-Time Visitor (Cold Traffic, Compliant Flow)
+
+start
+
+:'Visitor lands on site\n(Ad / SEO / Referral)';
+note right
+US-01: Understand value quickly
+User goal: decide if worth attention
+end note
+
+:'Ask if value understood\n(QuickAnswerActivity: ValueCheck)';
+if (Value understood?) then (Yes)
+  :Continue;
+else (No)
+  :Exit site (bounce)\n(EndActivity: BounceExit)';
+  stop
+endif
+
+:'Display trust signals\n(AdaptiveCardActivity: TrustSignalsCard)';
+note right
+US-02: Establish trust
+end note
+
+:'Ask if trust sufficient\n(QuickAnswerActivity: TrustCheck)';
+if (Trust sufficient?) then (Yes)
+  :Proceed;
+else (No)
+  :Passive browse or exit\n(EndActivity: PassiveExit)';
+  stop
+endif
+
+:'Early contact capture\n(AdaptiveCardActivity: ContactCaptureCard)';
+note right
+Business goal:
+Capture lead ASAP
+end note
+
+if (Contact info provided?) then (Yes)
+  :Store contact (pending consent);
+else (No)
+  :Allow limited anonymous browsing\n(EndActivity: AnonBrowseExit)';
+  stop
+endif
+
+:'Display TCPA consent\n(AdaptiveCardActivity: TcpaConsentCard)';
+note right
+LEGAL:
+Required to contact lead
+end note
+
+:'Ask if TCPA consent given\n(QuickAnswerActivity: TcpaCheck)';
+if (TCPA consent given?) then (Yes)
+  :Record TCPA consent\n(timestamp, IP, version);
+else (No)
+  :Mark lead as non-contactable;
+endif
+
+:'Display CCPA notice\n(AdaptiveCardActivity: CcpaNoticeCard)';
+note right
+LEGAL:
+Notice & acknowledgement
+end note
+
+:'Record CCPA acknowledgement';
+
+:'Show "Who this insurance is for"\n(AdaptiveCardActivity: ApplicabilityCard)';
+note right
+US-03: Applicability check
+end note
+
+:'Ask if applicable\n(QuickAnswerActivity: ApplicabilityCheck)';
+if (Visitor feels applicable?) then (Yes)
+  :Continue education;
+else (No)
+  :Exit with trust preserved\n(EndActivity: TrustExit)';
+  stop
+endif
+
+:'Explain insurance types\n(AdaptiveCardActivity: InsuranceTypesCard)';
+note right
+US-04: Learn without committing
+end note
+
+:'Ask if wants guidance\n(QuickAnswerActivity: GuidanceCheck)';
+if (Visitor wants guidance?) then (Yes)
+  :Start AI-assisted guidance\n(TriggerTopicActivity: GuidanceTopic)';
+else (No)
+  :Continue browsing content;
+endif
+
+:'Ask light qualification questions\n(AdaptiveCardActivity: LightQualCard)';
+note right
+Business goal:
+Non-sensitive qualification
+end note
+
+:'Ask if enough info\n(QuickAnswerActivity: QualCheck)';
+if (Enough qualification info?) then (Yes)
+  :Personalized guidance\n(not a quote);
+else (No)
+  :Offer to continue later\n(EndActivity: LaterExit)';
+  stop
+endif
+
+:'Ask if requests human help\n(QuickAnswerActivity: HumanHelpCheck)';
+if (Visitor requests human help?) then (Yes)
+  :Transfer to live agent\n(EscalateActivity: AgentTransfer)';
+  note right
+Warm handoff
+TCPA required = Yes
+end note
+else (No)
+  :Continue AI assistance;
+endif
+
+:'Ask if ready to proceed\n(QuickAnswerActivity: ProceedCheck)';
+if (Visitor ready to proceed?) then (Yes)
+  :Advance to next funnel stage\n(TriggerTopicActivity: NextStageTopic)';
+else (No)
+  :Allow exit with follow-up permitted\n(EndActivity: FollowUpExit)';
+endif
+
+stop
+@enduml

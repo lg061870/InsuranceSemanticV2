@@ -14,7 +14,7 @@ public static class AuthEndpoints
 {
     public static RouteGroupBuilder MapAuthEndpoints(this IEndpointRouteBuilder routes)
     {
-        var group = routes.MapGroup("/api/auth").WithTags("Authentication");
+        var group = routes.MapGroup("/auth").WithTags("Authentication");
 
         // POST /api/auth/login - JWT-based authentication
         group.MapPost("/login", async (

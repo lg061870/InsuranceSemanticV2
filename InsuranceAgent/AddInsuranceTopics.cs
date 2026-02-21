@@ -2,6 +2,7 @@
 using ConversaCore.SystemTopics;
 using ConversaCore.TopicFlow;
 using ConversaCore.Topics;
+using ConversaCore.Integrations.Core;
 using InsuranceAgent.Repositories;
 using InsuranceAgent.Topics;
 using InsuranceAgent.Topics.BeneficiaryRepeatDemo;
@@ -18,26 +19,7 @@ public static class InsuranceTopicRegistrationExtensions {
         void AddLogger<T>() where T : class =>
             services.AddScoped(sp => sp.GetRequiredService<ILoggerFactory>().CreateLogger<T>());
 
-        //AddLogger<ConversationStartTopic>();
-        //AddLogger<BeneficiaryInfoDemoTopic>();
-        //AddLogger<CaliforniaResidentTopic>();
-        //AddLogger<BeneficiaryRepeatDemoTopic>();
-        //AddLogger<BeneficiaryUserDrivenTopic>();
-        //AddLogger<ComplianceTopic>();
-        //AddLogger<ContactHealthTopic>();
-        //AddLogger<ContactInfoTopic>();
-        //AddLogger<CoverageIntentTopic>();
-        //AddLogger<EmploymentTopic>();
-        //AddLogger<DependentsTopic>();
-        //AddLogger<HealthInfoTopic>();
-        //AddLogger<InsuranceContextTopic>();
-        //AddLogger<LeadDetailsTopic>();
-        //AddLogger<LifeGoalsTopic>();
-        //AddLogger<HandDownDemoTopic>();
-        //AddLogger<RadioButtonDemoTopic>();
-        AddLogger<MarketingT1Topic>();
-        //AddLogger<SemanticActivitiesDemoTopic>();
-        //AddLogger<EventTriggerDemoTopic>();
+        AddLogger<ZapierIntegrationDemoTopic>();
 
 
         // ─────────────────────────────
@@ -155,6 +137,12 @@ public static class InsuranceTopicRegistrationExtensions {
             sp.GetRequiredService<IConversationContext>()
         ));
 
+        AddTopic(sp => new NewbieTopic(
+            sp.GetRequiredService<TopicWorkflowContext>(),
+            sp.GetRequiredService<ILogger<NewbieTopic>>(),
+            sp.GetRequiredService<IConversationContext>()
+        ));
+
         AddTopic(sp => new MarketingT1Topic(
             sp.GetRequiredService<TopicWorkflowContext>(),
             sp.GetRequiredService<ILogger<MarketingT1Topic>>(),
@@ -174,6 +162,13 @@ public static class InsuranceTopicRegistrationExtensions {
             sp.GetRequiredService<TopicWorkflowContext>(),
             sp.GetRequiredService<ILogger<EventTriggerDemoTopic>>(),
             sp.GetRequiredService<IConversationContext>()
+        ));
+
+        AddTopic(sp => new ZapierIntegrationDemoTopic(
+            sp.GetRequiredService<TopicWorkflowContext>(),
+            sp.GetRequiredService<ILogger<ZapierIntegrationDemoTopic>>(),
+            sp.GetRequiredService<IConversationContext>(),
+            sp.GetRequiredService<IIntegrationService>()
         ));
 
         return services;

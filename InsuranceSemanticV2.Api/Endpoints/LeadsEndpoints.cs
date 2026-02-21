@@ -13,7 +13,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class LeadsEndpoints {
     public static RouteGroupBuilder MapLeadEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/leads").WithTags("Leads");
+        var group = routes.MapGroup("/leads").WithTags("Leads");
 
 
         group.MapPost("/", async (LeadRequest req, AppDbContext db, IHubContext<LeadsHub> hubContext) => {
@@ -24,7 +24,7 @@ public static class LeadsEndpoints {
             await hubContext.Clients.All.SendAsync("LeadCreated", entity.LeadId);
             await hubContext.Clients.All.SendAsync("KpisChanged");
 
-            return Results.Created($"/api/leads/{entity.LeadId}",
+            return Results.Created($"/leads/{entity.LeadId}",
             new LeadResponse {
                 LeadId = entity.LeadId,
                 Payload = new List<LeadRequest> { req }

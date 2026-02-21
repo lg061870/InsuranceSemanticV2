@@ -6,14 +6,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <AspNetCoreHostingModel>OutOfProcess</AspNetCoreHostingModel>
+    <AspNetCoreModuleStdoutLogEnabled>true</AspNetCoreModuleStdoutLogEnabled>
+    <AspNetCoreModuleStdoutLogFile>.\logs\stdout</AspNetCoreModuleStdoutLogFile>
     <UserSecretsId>671a2161-8af5-4cdb-a575-8c353368f5f8</UserSecretsId>
   </PropertyGroup>
 
-  <!-- ConversaCore Framework (Project References for proper static web assets) -->
-
-  <!-- Project References (Implementation-specific) -->
+  <!-- Project References -->
   <ItemGroup>
-    <ProjectReference Include="..\InsuranceSemanticV2.Api\InsuranceSemanticV2.Api.csproj" />
+    <ProjectReference Include="..\ConversaCore\ConversaCore.csproj" />
+    <ProjectReference Include="..\ConversaCore.UI\ConversaCore.UI.csproj" />
     <ProjectReference Include="..\InsuranceSemanticV2.Core\InsuranceSemanticV2.Core.csproj" />
     <ProjectReference Include="..\InsuranceSemanticV2.Data\InsuranceSemanticV2.Data.csproj" />
   </ItemGroup>
@@ -43,15 +45,6 @@
   <ItemGroup>
     <Folder Include="docs\" />
     <Folder Include="wwwroot\documents\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="ConversaCore">
-      <HintPath>..\lib\ConversaCore.dll</HintPath>
-    </Reference>
-    <Reference Include="ConversaCore.UI">
-      <HintPath>..\lib\ConversaCore.UI.dll</HintPath>
-    </Reference>
   </ItemGroup>
 
   <ItemGroup>

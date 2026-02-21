@@ -6,6 +6,7 @@
 @using ConversaCore.Services
 @using ConversaCore.TopicFlow
 @using ConversaCore.Agentic
+@using ConversaCore.UI.Models
 
 @implements IDisposable
 
@@ -15,125 +16,96 @@
 @inject IChatInteropService ChatInteropService
 
 <!-- ========== CHAT WINDOW LAYOUT ========== -->
-<div class="chat-window-container">
+<div class="chat-window-container @GetStyleClass() @(hasStartedConversation ? "conversation-started" : "")">
 
-    <!-- Header -->
-    <div class="chat-header">
-        <div class="chat-header-avatar">
-            <div class="avatar-circle">
-                <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-ai-1.jpg" alt="Sofia" />
-                <div class="avatar-status"></div>
+    @if (Style == ChatStyle.ChatWindow && !hasStartedConversation)
+    {
+        <!-- ChatWindow: Initial Prompt State -->
+        <div class="chat-prompt-initial">
+            <img src="@GetAvatarUrl()" 
+                 alt="Sofia" 
+                 class="prompt-logo" />
+            
+            <h1 class="prompt-title">Hello, I'm Sofia</h1>
+            <p class="prompt-subtitle">Your personal insurance advisor. How can I help you today?</p>
+            
+            <div class="prompt-input-wrapper">
+                <textarea @bind="CurrentMessage"
+                          @bind:event="oninput"
+                          @onkeydown="HandleKeyDown"
+                          placeholder="Ask me anything about insurance..."
+                          class="prompt-input"
+                          rows="1"
+                          @ref="messageInputRef"></textarea>
+                <button class="prompt-send-button"
+                        @onclick="SendMessage"
+                        disabled="@(IsProcessing || string.IsNullOrWhiteSpace(CurrentMessage))">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
             </div>
-        </div>
-        <div class="chat-header-info">
-            <h3 class="chat-header-name">Sofia</h3>
-            <div class="chat-header-status">
-                <div class="status-indicator"></div>
-                <span>V3 -- Direct Agent • Online</span>
-            </div>
-        </div>
-        <div class="chat-header-actions">
-            <button class="chat-header-button" title="Reset conversation" @onclick="ExecuteReset">
-                <i class="fa-solid fa-rotate-left"></i>
-            </button>
-            <button class="chat-header-button" title="Clear chat" @onclick="ClearChat">
-                <i class="fa-solid fa-trash-can"></i>
-            </button>
-        </div>
-    </div>
 
-    <!-- Message history -->
-    <div class="messages-container" @ref="messagesContainerRef">
-        @foreach (var message in Messages) {
-            @if (message.IsFromUser) {
-                <!-- User messages -->
-                <div class="message-group">
-                    <div class="message user-message">
-                        <div class="message-content">@message.Content</div>
-                        <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
-                        <div class="message-actions">
-                            <button class="message-action-button" title="Edit" @onclick="() => EditMessage(message)">
-                                <i class="fa-solid fa-pen"></i>
-                            </button>
-                        </div>
-                    </div>
+            <div class="prompt-suggestions">
+                <div class="prompt-suggestion-card" @onclick='() => UseSuggestion("first timer v2")'>
+                    <div class="suggestion-card-title">Initial Presentation</div>
+                    <div class="suggestion-card-description">Start the guided first-time visitor flow</div>
                 </div>
-            }
-            else {
-                <!-- Bot messages -->
-                <div class="message-group">
-                    <div class="message bot-message">
-
-                        @if (message.IsAdaptiveCard && !string.IsNullOrEmpty(message.AdaptiveCardJson)) {
-                            <!-- Adaptive Card -->
-                            <div class="adaptive-card-container @(message.IsActive ? "" : "readonly")">
-                                <AdaptiveCardRenderer CardJson="@message.AdaptiveCardJson"
-                                                      CardContainerId="@($"card-{message.Timestamp.Ticks}")"
-                                                      Disabled="@(!message.IsActive)"
-                                                      OnSubmit="OnAdaptiveCardSubmit"
-                                                      OnAction="HandleCardAction" />
-
-                            </div>
-
-                            <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
-                        }
-                        else {
-                            <!-- Plain text message -->
-                            <div class="message-content>@((MarkupString)FormatMessageContent(message.Content))</div>
-                            <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
-                            <div class="message-actions">
-                                <button class="message-action-button" title="Copy" @onclick="() => CopyMessageToClipboard(message)">
-                                    <i class="fa-solid fa-copy"></i>
-                                </button>
-                            </div>
-                        }
-                    </div>
+                <div class="prompt-suggestion-card" @onclick='() => UseSuggestion("insurance basics")'>
+                    <div class="suggestion-card-title">Insurance Basics</div>
+                    <div class="suggestion-card-description">I’m new and want the basics explained</div>
                 </div>
-            }
-        }
-
-        <!-- Typing indicator -->
-        @if (IsTyping) {
-            <div class="message bot-message typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
+                <div class="prompt-suggestion-card" @onclick='() => UseSuggestion("Tell me about coverage options")'>
+                    <div class="suggestion-card-title">Coverage Options</div>
+                    <div class="suggestion-card-description">Explore different types of insurance coverage</div>
+                </div>
+                <div class="prompt-suggestion-card" @onclick='() => UseSuggestion("test zapier")'>
+                    <div class="suggestion-card-title">Test Zapier</div>
+                    <div class="suggestion-card-description">Send a test webhook to Zapier</div>
+                </div>
+                <div class="prompt-suggestion-card" @onclick='() => UseSuggestion("test whatsapp")'>
+                    <div class="suggestion-card-title">Test WhatsApp</div>
+                    <div class="suggestion-card-description">Send a simple test message via WhatsApp</div>
+                </div>
+                <div class="prompt-suggestion-card" @onclick='() => UseSuggestion("prompt attention demo")'>
+                    <div class="suggestion-card-title">Prompt Attention Demo</div>
+                    <div class="suggestion-card-description">Trigger the topic that highlights the chat prompt</div>
+                </div>
             </div>
+        </div>
+
+        
+
+        <!-- ChatWindow: Full Chat Interface (shown after first message) -->
+        <div class="chat-interface">
+            @RenderChatContent()
+        </div>
+    }
+    else if (Style == ChatStyle.FloatingChat)
+    {
+        <!-- FloatingChat: Expanded view -->
+        @if (!isMinimized)
+        {
+            @RenderChatContent()
         }
-    </div>
-
-    <!-- Suggestion chips -->
-    <div class="chat-suggestions @( !IsPromptEnabled ? "disabled" : "" )">
-        @foreach (var suggestion in CurrentSuggestions) {
-            <div class="suggestion-chip"
-                 @onclick="() => UseSuggestion(suggestion)"
-                 disabled="@(!IsPromptEnabled)">
-                @suggestion
-            </div>
-        }
-    </div>
-
-    <!-- Message input -->
-    <div class="message-input-container" title="@(!IsPromptEnabled ? "Please complete the required card above before continuing." : null)">
-        <textarea @bind="CurrentMessage"
-                  @bind:event="oninput"
-                  @onkeydown="HandleKeyDown"
-                  placeholder="@(!IsPromptEnabled
-                                      ? "Please complete the required card above before continuing..."
-                                      : "Type your message...")"
-                  disabled="@(!IsPromptEnabled || IsProcessing)"
-                  class="message-input @( !IsPromptEnabled ? "disabled" : "" )"
-                  rows="1"
-                  @ref="messageInputRef"></textarea>
-
-        <button class="send-button"
-                @onclick="SendMessage"
-                disabled="@(!IsPromptEnabled || IsProcessing || string.IsNullOrWhiteSpace(CurrentMessage))">
-            <i class="fa-solid fa-paper-plane"></i>
-        </button>
-    </div>
+    }
+    else
+    {
+        <!-- SidebarChat: Default full view -->
+        @RenderChatContent()
+    }
 
 </div>
+
+@if (Style == ChatStyle.FloatingChat && isMinimized)
+{
+    <!-- Floating toggle button when minimized -->
+    <button class="floating-chat-toggle" @onclick="ToggleMinimize" title="Chat with Sofia">
+        <i class="fa-solid fa-comment"></i>
+        @if (Messages.Count > 0)
+        {
+            <span class="notification-badge"></span>
+        }
+    </button>
+}
 
 <!-- Reset Confirmation Dialog -->
 @if (showResetConfirmation) {
@@ -164,9 +136,16 @@
     </div>
 }
 
+
+
 @code {
     // ========== PARAMETERS ========== 
     [Parameter] public required DomainAgentService AgentService { get; set; }
+    
+    /// <summary>
+    /// The visual style of the chat interface (SidebarChat, FloatingChat, or ChatWindow).
+    /// </summary>
+    [Parameter] public ChatStyle Style { get; set; } = ChatStyle.SidebarChat;
     
     // Allow consumer to provide a subscribe method via parameter
     [Parameter] public Action<CustomChatWindowV3>? SubscribeToEvents { get; set; }
@@ -174,7 +153,15 @@
     // ========== STATE ========== 
     private ChatSessionStateBase SessionState { get; set; } = new DefaultChatSessionState();
     private List<ChatMessage> Messages { get; set; } = new();
-    private string CurrentMessage { get; set; } = "";
+    private string _currentMessage = "";
+    private string CurrentMessage 
+    { 
+        get => _currentMessage;
+        set
+        {
+            _currentMessage = value;
+        }
+    }
     private bool IsTyping { get; set; } = false;
     private bool IsProcessing { get; set; } = false;
     private ChatMessage? messageBeingEdited = null;
@@ -182,36 +169,54 @@
     private bool showResetConfirmation = false;
     private bool IsPromptEnabled { get; set; } = true;
     private readonly string resetButtonLogMessage = "Button clicked";
+    private bool isMinimized = true; // Start minimized for FloatingChat (icon mode)
+    private bool hasStartedConversation = false; // For ChatWindow style
+
+    // Transient prompt attention state driven by chat interaction events
+    private bool IsPromptAttentionActive { get; set; } = false;
+    private string? PromptAttentionText { get; set; }
 
     private ElementReference messagesContainerRef;
     private ElementReference messageInputRef;
 
-    private List<string> CurrentSuggestions { get; set; } = new() {
-        "California Resident",
-        "Beneficiary info",
-        "repeat demo"
-    };
+    private List<string> CurrentSuggestions { get; set; } = new();
 
-    protected override async Task OnAfterRenderAsync(bool firstRender) {
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        
+        // Initialize minimization state based on style
+        if (Style != ChatStyle.FloatingChat)
+        {
+            isMinimized = false; // Start expanded for sidebar and chat window styles
+        }
+        // FloatingChat starts minimized (as icon)
+    }
+
+    protected override void OnAfterRender(bool firstRender) {
+        base.OnAfterRender(firstRender);
+
         if (firstRender && !_conversationStarted) {
-            Logger?.LogInformation("[ChatWindowV3] 🔄 First render - initializing event-driven architecture");
-            
+            try {
+                Logger?.LogInformation("[ChatWindowV3] 🔄 First render - initializing event-driven architecture");
+
             // ========== SUBSCRIBE AGENT TO UI EVENTS ==========
             Logger?.LogInformation("[ChatWindowV3] Wiring agent event subscriptions");
-            
+
             // Call the consumer-provided subscription method if available
-            if (SubscribeToEvents != null)
-            {
-                SubscribeToEvents(this);
-            }
-            
+            SubscribeToEvents?.Invoke(this);
+
             // ========== SUBSCRIBE UI TO AGENT EVENTS ==========
             Logger?.LogInformation("[ChatWindowV3] Subscribing to agent outbound events");
-            
+
             // Bot messages
             AgentService.ActivityMessageReady += (s, e) => {
                 Logger?.LogInformation("[ChatWindowV3] ActivityMessageReady: {Content}", e.Message.Content);
-                InvokeAsync(() => {
+
+                _ = InvokeAsync(() => {
+                    // Clear typing/busy indicators when a bot message arrives
+                    IsTyping = false;
+                    IsProcessing = false;
                     Messages.Add(e.Message);
                     StateHasChanged();
                 });
@@ -219,16 +224,30 @@
 
             // Adaptive cards
             AgentService.ActivityAdaptiveCardReady += (s, e) => {
-                Logger?.LogInformation("[ChatWindowV3] ActivityAdaptiveCardReady: CardId={CardId}, RenderMode={RenderMode}", 
-                    e.CardId, e.RenderMode);
-                InvokeAsync(() => {
-                    if (e.RenderMode == ConversaCore.Events.RenderMode.Replace && !string.IsNullOrEmpty(e.CardId)) {
-                        var existing = Messages.FirstOrDefault(m => m.IsAdaptiveCard && m.CardId == e.CardId);
+                Logger?.LogInformation(
+                    "[ChatWindowV3] ActivityAdaptiveCardReady: CardId={CardId}, RenderMode={RenderMode}",
+                    e.CardId,
+                    e.RenderMode
+                );
+
+                _ = InvokeAsync(() => {
+                    // Clear typing/busy indicators when a card is ready
+                    IsTyping = false;
+                    IsProcessing = false;
+                    if (e.RenderMode == ConversaCore.Events.RenderMode.Replace &&
+                        !string.IsNullOrEmpty(e.CardId)) {
+                        var existing = Messages.FirstOrDefault(m =>
+                            m.IsAdaptiveCard && m.CardId == e.CardId);
+
                         if (existing != null) {
                             existing.AdaptiveCardJson = e.CardJson;
                             existing.Timestamp = DateTime.Now;
                             StateHasChanged();
-                            Logger?.LogInformation("[ChatWindowV3] AdaptiveCard replaced: CardId={CardId}", e.CardId);
+
+                            Logger?.LogInformation(
+                                "[ChatWindowV3] AdaptiveCard replaced: CardId={CardId}",
+                                e.CardId
+                            );
                             return;
                         }
                     }
@@ -243,28 +262,49 @@
                     });
 
                     StateHasChanged();
-                    Logger?.LogInformation("[ChatWindowV3] AdaptiveCard appended: CardId={CardId}", e.CardId);
+
+                    Logger?.LogInformation(
+                        "[ChatWindowV3] AdaptiveCard appended: CardId={CardId}",
+                        e.CardId
+                    );
                 });
             };
 
             // Card state changes
             AgentService.CardStateChanged += (s, e) => {
-                Logger?.LogInformation("[ChatWindowV3] Card state changed: {CardId} -> {State}", e.CardId, e.State);
-                InvokeAsync(async () => {
-                    var index = Messages.FindIndex(m => m.IsAdaptiveCard && m.CardId == e.CardId);
+                Logger?.LogInformation(
+                    "[ChatWindowV3] Card state changed: {CardId} -> {State}",
+                    e.CardId,
+                    e.State
+                );
+
+                _ = InvokeAsync(async () => {
+                    var index = Messages.FindIndex(m =>
+                        m.IsAdaptiveCard && m.CardId == e.CardId);
+
                     if (index != -1) {
                         var card = Messages[index];
                         bool newIsActive = e.State == CardState.Active;
 
                         if (card.IsActive != newIsActive) {
-                            Logger?.LogInformation("[ChatWindowV3] Updating card {CardId} active={IsActive}", e.CardId, newIsActive);
+                            Logger?.LogInformation(
+                                "[ChatWindowV3] Updating card {CardId} active={IsActive}",
+                                e.CardId,
+                                newIsActive
+                            );
+
                             card.IsActive = newIsActive;
                             Messages[index] = card;
                             StateHasChanged();
 
                             if (newIsActive) {
-                                Logger?.LogInformation("[ChatWindowV3] Scrolling to bottom after activating {CardId}", e.CardId);
-                                await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+                                Logger?.LogInformation(
+                                    "[ChatWindowV3] Scrolling to bottom after activating {CardId}",
+                                    e.CardId
+                                );
+
+                                await ChatInteropService
+                                    .ScrollToBottomAsync(messagesContainerRef);
                             }
                         }
                     }
@@ -273,48 +313,152 @@
 
             // Prompt state
             AgentService.PromptInputStateChanged += (s, e) => {
-                Logger?.LogInformation("[ChatWindowV3] Prompt state changed: Enabled={IsEnabled} (CardId={CardId})", 
-                    e.IsEnabled, e.CardId);
-                InvokeAsync(() => {
+                Logger?.LogInformation(
+                    "[ChatWindowV3] Prompt state changed: Enabled={IsEnabled} (CardId={CardId})",
+                    e.IsEnabled,
+                    e.CardId
+                );
+
+                _ = InvokeAsync(() => {
                     IsPromptEnabled = e.IsEnabled;
                     StateHasChanged();
                 });
             };
 
+            // Custom events (e.g., suggestion chips)
+            AgentService.CustomEventTriggered += (s, e) => {
+                Logger?.LogInformation("[ChatWindowV3] CustomEventTriggered: {EventName}", e.EventName);
+
+                if (e.EventName == "UpdateSuggestions")
+                {
+                    _ = InvokeAsync(() => {
+                        if (e.EventData is IEnumerable<string> list)
+                        {
+                            CurrentSuggestions = list.ToList();
+                            StateHasChanged();
+                        }
+                    });
+                }
+                else if (e.EventName == "PromptAttention")
+                {
+                    _ = InvokeAsync(async () => {
+                        try
+                        {
+                            // Expect a ChatInteractionPayload when sent from TopicFlowActivity
+                            if (e.EventData is ChatInteractionPayload payload)
+                            {
+                                PromptAttentionText = payload.Message ?? "Your input is required";
+                                IsPromptAttentionActive = true;
+                                StateHasChanged();
+
+                                if (payload.DurationMs.HasValue && payload.DurationMs.Value > 0)
+                                {
+                                    try
+                                    {
+                                        await Task.Delay(payload.DurationMs.Value);
+                                    }
+                                    catch { /* ignore cancellation */ }
+
+                                    IsPromptAttentionActive = false;
+                                    StateHasChanged();
+                                }
+                            }
+                            else
+                            {
+                                PromptAttentionText = "Your input is required";
+                                IsPromptAttentionActive = true;
+                                StateHasChanged();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger?.LogError(ex, "[ChatWindowV3] Error handling PromptAttention event");
+                        }
+                    });
+                }
+            };
+
             // Conversation reset
             AgentService.ConversationReset += (s, e) => {
-                Logger?.LogInformation("[ChatWindowV3] ConversationReset at {ResetTime}", e.ResetTime);
-                Logger?.LogInformation("[ChatWindowV3] Clearing {Count} messages", Messages.Count);
-                InvokeAsync(() => {
+                Logger?.LogInformation(
+                    "[ChatWindowV3] ConversationReset at {ResetTime}",
+                    e.ResetTime
+                );
+
+                Logger?.LogInformation(
+                    "[ChatWindowV3] Clearing {Count} messages",
+                    Messages.Count
+                );
+
+                _ = InvokeAsync(() => {
                     Messages.Clear();
+                    // For ChatWindow style, return to initial prompt mode
+                    if (Style == ChatStyle.ChatWindow)
+                    {
+                        hasStartedConversation = false;
+                        CurrentMessage = string.Empty;
+                    }
                     StateHasChanged();
                     Logger?.LogInformation("[ChatWindowV3] Messages cleared");
                 });
             };
 
-            // Lifecycle events (optional logging)
-            AgentService.ActivityCompleted += (s, e) => 
+            // Lifecycle logging
+            AgentService.ActivityCompleted += (s, e) =>
                 Logger?.LogDebug("[ChatWindowV3] ActivityCompleted");
-            
-            AgentService.TopicLifecycleChanged += (s, e) => 
-                Logger?.LogDebug("[ChatWindowV3] TopicLifecycleChanged: {TopicName} -> {State}", e.TopicName, e.State);
-            
-            AgentService.ActivityLifecycleChanged += (s, e) => 
-                Logger?.LogDebug("[ChatWindowV3] ActivityLifecycleChanged: {ActivityId} -> {State}", e.ActivityId, e.State);
+
+            AgentService.TopicLifecycleChanged += (s, e) =>
+                Logger?.LogDebug(
+                    "[ChatWindowV3] TopicLifecycleChanged: {TopicName} -> {State}",
+                    e.TopicName,
+                    e.State
+                );
+
+            AgentService.ActivityLifecycleChanged += (s, e) =>
+                Logger?.LogDebug(
+                    "[ChatWindowV3] ActivityLifecycleChanged: {ActivityId} -> {State}",
+                    e.ActivityId,
+                    e.State
+                );
 
             // ========== START CONVERSATION ==========
-            Logger?.LogInformation("[ChatWindowV3] Raising ConversationStartRequested event");
-            ConversationStartRequested?.Invoke(this, new ConversationStartRequestedEventArgs(CancellationToken.None));
+            Logger?.LogInformation(
+                "[ChatWindowV3] Raising ConversationStartRequested event"
+            );
+
+            ConversationStartRequested?.Invoke(
+                this,
+                new ConversationStartRequestedEventArgs(CancellationToken.None)
+            );
 
             _conversationStarted = true;
-            Logger?.LogInformation("[ChatWindowV3] ✅ Event-driven initialization complete");
+
+                Logger?.LogInformation(
+                    "[ChatWindowV3] ✅ Event-driven initialization complete"
+                );
+            } catch (Exception ex) {
+                Logger?.LogError(ex, "[ChatWindowV3] OnAfterRender initialization error: {Message}", ex.Message);
+            }
         }
     }
 
-    public void Dispose() {
-        Logger?.LogInformation("[ChatWindowV3] Disposing - unsubscribing from agent events");
-        // Events will be automatically unsubscribed when component disposes
+    private string GetAvatarUrl()
+    {
+        // Prefer external CDN if reachable; fallback to embedded RCL asset
+        // Use the well-known static web assets path used by Blazor RCLs
+        return NavigationManager.BaseUri.TrimEnd('/') + "/_content/ConversaCore.UI/avatars/avatar-ai-1.svg";
     }
+
+
+    public void Dispose() {
+        try {
+            Logger?.LogInformation("[ChatWindowV3] Disposing - unsubscribing from agent events");
+            // Events will be automatically unsubscribed when component disposes
+        } catch (Exception ex) {
+            Logger?.LogError(ex, "[ChatWindowV3] Dispose error: {Message}", ex.Message);
+        }
+    }
+    
 
     // ========== CONVERSATION ========== 
     private async Task SendMessage() {
@@ -324,6 +468,13 @@
         Logger?.LogInformation("[ChatWindowV3] SendMessage: {Message}", CurrentMessage);
         IsProcessing = true;
 
+        // Mark conversation as started for ChatWindow style
+        if (Style == ChatStyle.ChatWindow && !hasStartedConversation)
+        {
+            hasStartedConversation = true;
+            Logger?.LogInformation("[ChatWindowV3] First message sent - transitioning to full chat interface");
+        }
+
         var userMessage = new ChatMessage {
             Content = CurrentMessage,
             IsFromUser = true,
@@ -331,6 +482,9 @@
         };
 
         Messages.Add(userMessage);
+
+        // Show typing indicator while waiting for the agent response
+        IsTyping = true;
 
         string userMessageText = CurrentMessage;
         CurrentMessage = "";
@@ -349,7 +503,7 @@
             });
             StateHasChanged();
         } finally {
-            IsProcessing = false;
+            // Leave IsProcessing/IsTyping to be cleared by the first bot response
             Logger?.LogInformation("[ChatWindowV3] SendMessage completed");
         }
     }
@@ -387,6 +541,7 @@
             ConversationResetRequested?.Invoke(this, new ConversationResetRequestedEventArgs(CancellationToken.None));
 
             Logger?.LogInformation("[ChatWindowV3] Reset completed");
+
             StateHasChanged();
         } catch (Exception ex) {
             Logger?.LogError(ex, "[ChatWindowV3] Error resetting conversation");
@@ -432,11 +587,49 @@
         await SendMessage();
     }
 
+    private async Task UseOption(ChatMessage originatingMessage, string option) {
+        if (string.IsNullOrWhiteSpace(option)) return;
+
+        Logger?.LogInformation("[ChatWindowV3] UseOption: {Option}", option);
+
+        // Add a user message for the selected option
+        var userMessage = new ChatMessage {
+            Content = option,
+            IsFromUser = true,
+            Timestamp = DateTime.Now
+        };
+
+        Messages.Add(userMessage);
+
+        // Optionally mark originating message as no longer active
+        originatingMessage.IsActive = false;
+
+        StateHasChanged();
+        await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+
+        // Raise user message event so the conversation engine receives the choice
+        UserMessageReceived?.Invoke(this, new UserMessageReceivedEventArgs(option, CancellationToken.None));
+    }
+
     private Task OnAdaptiveCardSubmit(Dictionary<string, object> data) {
         Logger?.LogInformation("[ChatWindowV3] OnAdaptiveCardSubmit: {Keys}", string.Join(",", data.Keys));
         Logger?.LogInformation("[ChatWindowV3] Raising CardSubmitted event");
+        // Show typing/busy indicator while the back-end processes the card
+        IsProcessing = true;
+        IsTyping = true;
+        StateHasChanged();
         CardSubmitted?.Invoke(this, new CardSubmittedEventArgs(data, CancellationToken.None));
         return Task.CompletedTask;
+    }
+
+    // ========== PUBLIC METHODS ==========
+    /// <summary>
+    /// Programmatically triggers a conversation reset by invoking ExecuteReset
+    /// </summary>
+    public Task RequestReset()
+    {
+        Logger?.LogInformation("[ChatWindowV3] RequestReset: externally triggered");
+        return ExecuteReset();
     }
 
     // ========== PUBLIC EVENTS (UI → Agent) ==========
@@ -444,4 +637,172 @@
     public event EventHandler<ConversationStartRequestedEventArgs>? ConversationStartRequested;
     public event EventHandler<ConversationResetRequestedEventArgs>? ConversationResetRequested;
     public event EventHandler<CardSubmittedEventArgs>? CardSubmitted;
+
+    // ========== HELPER METHODS ==========
+    private string GetStyleClass() => Style switch
+    {
+        ChatStyle.FloatingChat => "style-floating" + (isMinimized ? " minimized" : ""),
+        ChatStyle.ChatWindow => "style-chatwindow",
+        _ => "style-sidebar"
+    };
+
+    private void ToggleMinimize()
+    {
+        isMinimized = !isMinimized;
+        Logger?.LogInformation("[ChatWindowV3] Toggled minimize: {IsMinimized}", isMinimized);
+        StateHasChanged();
+    }
+
+    private RenderFragment RenderChatContent() => __builder =>
+    {
+        // Header
+        <div class="chat-header">
+            <div class="chat-header-avatar">
+                <div class="avatar-circle">
+                    <img src="@GetAvatarUrl()" alt="Sofia" />
+                    <div class="avatar-status"></div>
+                </div>
+            </div>
+            <div class="chat-header-info">
+                <h3 class="chat-header-name">Sofia</h3>
+                <div class="chat-header-status">
+                    <div class="status-indicator"></div>
+                    <span>V3 -- Direct Agent • Online</span>
+                </div>
+            </div>
+            <div class="chat-header-actions">
+                @if (Style == ChatStyle.FloatingChat)
+                {
+                    <button class="minimize-button" title="Minimize" @onclick="ToggleMinimize">
+                        <i class="fa-solid fa-minus"></i>
+                    </button>
+                }
+                <button class="chat-header-button" title="Reset conversation" @onclick="ExecuteReset">
+                    <i class="fa-solid fa-rotate-left"></i>
+                </button>
+                <button class="chat-header-button" title="Clear chat" @onclick="ClearChat">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </div>
+        </div>
+
+        // Message history
+        <div class="messages-container" @ref="messagesContainerRef">
+            @foreach (var message in Messages)
+            {
+                @if (message.IsFromUser)
+                {
+                    <!-- User messages -->
+                    <div class="message-group">
+                        <div class="message user-message">
+                            <div class="message-content">@message.Content</div>
+                            <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                            <div class="message-actions">
+                                <button class="message-action-button" title="Edit" @onclick="() => EditMessage(message)">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <!-- Bot messages -->
+                    <div class="message-group">
+                        <div class="message bot-message">
+
+                            @if (message.IsAdaptiveCard && !string.IsNullOrEmpty(message.AdaptiveCardJson))
+                            {
+                                <!-- Adaptive Card -->
+                                <div class="adaptive-card-container @(message.IsActive ? "" : "readonly")">
+                                    <AdaptiveCardRenderer CardJson="@message.AdaptiveCardJson"
+                                                          CardContainerId="@($"card-{message.Timestamp.Ticks}")"
+                                                          Disabled="@(!message.IsActive)"
+                                                          OnSubmit="OnAdaptiveCardSubmit"
+                                                          OnAction="HandleCardAction" />
+
+                                </div>
+
+                                <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                            }
+                            else
+                            {
+                                <!-- Plain text message -->
+                                <div class="message-content">@((MarkupString)FormatMessageContent(message.Content))</div>
+                                @if (message.Options != null && message.Options.Count > 0)
+                                {
+                                    <div class="message-options">
+                                        @foreach (var opt in message.Options)
+                                        {
+                                            <button class="option-button" @onclick="() => UseOption(message, opt)">@opt</button>
+                                        }
+                                    </div>
+                                }
+                                <div class="message-time">@message.Timestamp.ToString("h:mm tt")</div>
+                                <div class="message-actions">
+                                    <button class="message-action-button" title="Copy" @onclick="() => CopyMessageToClipboard(message)">
+                                        <i class="fa-solid fa-copy"></i>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+
+            <!-- Typing indicator -->
+            @if (IsTyping)
+            {
+                <div class="message bot-message typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            }
+        </div>
+
+        // Suggestion chips
+        @if (Style != ChatStyle.ChatWindow)
+        {
+            <div class="chat-suggestions @(!IsPromptEnabled ? "disabled" : "")">
+                @foreach (var suggestion in CurrentSuggestions)
+                {
+                    <div class="suggestion-chip"
+                         @onclick="() => UseSuggestion(suggestion)"
+                         disabled="@(!IsPromptEnabled)">
+                        @suggestion
+                    </div>
+                }
+            </div>
+        }
+
+        // Message input
+        <div class="message-input-container @(IsPromptAttentionActive ? "prompt-attention" : "")" title="@(!IsPromptEnabled ? "Please complete the required card above before continuing." : null)">
+            @if (IsPromptAttentionActive && !string.IsNullOrEmpty(PromptAttentionText))
+            {
+                <div class="prompt-attention-label">@PromptAttentionText</div>
+            }
+            <div class="message-input-row">
+                <div class="message-input-field">
+                    <textarea @bind="CurrentMessage"
+                              @bind:event="oninput"
+                              @onkeydown="HandleKeyDown"
+                              placeholder="@(!IsPromptEnabled
+                                                  ? "Please complete the required card above before continuing..."
+                                                  : "Type your message...")"
+                              disabled="@(!IsPromptEnabled || IsProcessing)"
+                              class="message-input @(!IsPromptEnabled ? "disabled" : "") @(IsPromptAttentionActive ? "attention-active" : "")"
+                              rows="1"
+                              @ref="messageInputRef"></textarea>
+                </div>
+
+                <button class="send-button"
+                        @onclick="SendMessage"
+                        disabled="@(!IsPromptEnabled || IsProcessing || string.IsNullOrWhiteSpace(CurrentMessage))">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+        
+    };
 }

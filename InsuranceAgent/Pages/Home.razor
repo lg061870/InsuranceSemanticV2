@@ -42,7 +42,6 @@
             <CustomerConsoleV2 @ref="customerConsoleRef"
                              IsVisible="@showCustomerConsole"
                              OnClose="@CloseCustomerConsole" />
-
         </div>
 
         <!-- Questionnaire -->
@@ -98,6 +97,7 @@
     <div class="w-1/3 h-full relative flex">
         <div class="flex-1 mx-4 my-2">
             <CustomChatWindowV3 AgentService="@InsuranceAgentService"
+                              Style="@ConversaCore.UI.Models.ChatStyle.SidebarChat"
                               SubscribeToEvents="@(w => InsuranceAgentService.SubscribeToChatWindowEvents(w))" />
         </div>
     </div>

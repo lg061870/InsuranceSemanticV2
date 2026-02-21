@@ -117,7 +117,9 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         options.Converters.Add(new FlexibleIntConverter());
         options.Converters.Add(new FlexibleDecimalConverter());
+        options.Converters.Add(new FlexibleDoubleConverter());
         options.Converters.Add(new FlexibleBoolConverter());
+        options.Converters.Add(new FlexibleStringListConverter());
         options.Converters.Add(new FlexibleDateTimeConverter());
 
         _logger.LogDebug("[Binding] Activity {ActivityId} binding data to {ModelType}: {Json}",
@@ -218,14 +220,18 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
             try {
                 var successCardJson = AdaptiveCardValidationHelper.InjectSuccessState(cardJson, data);
 
+                // Once validation succeeds, the card is no longer "required" input.
+                // Mark IsRequired = false on the success lifecycle events so hosts
+                // (DomainAgentService, InsuranceAgentService, etc.) can re-enable
+                // the bottom prompt via PromptInputStateChanged(true, cardId).
                 CardJsonEmitted?.Invoke(this,
-                    new CardJsonEventArgs(successCardJson, "✅ Validation successful", RenderMode.Replace, Id, null, IsRequired));
+                    new CardJsonEventArgs(successCardJson, "✅ Validation successful", RenderMode.Replace, Id, null, false));
 
                 CardJsonSending?.Invoke(this,
-                    new CardJsonEventArgs(string.Empty, "Validation passed", RenderMode.Replace, Id, null, IsRequired));
+                    new CardJsonEventArgs(string.Empty, "Validation passed", RenderMode.Replace, Id, null, false));
 
                 CardJsonSent?.Invoke(this,
-                    new CardJsonEventArgs(successCardJson, "Sent clean card to client", RenderMode.Replace, Id, null, IsRequired));
+                    new CardJsonEventArgs(successCardJson, "Sent clean card to client", RenderMode.Replace, Id, null, false));
 
                 CardJsonRendered?.Invoke(this,
                     new CardJsonRenderedEventArgs(successCardJson));
@@ -281,15 +287,19 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
         TransitionTo(ActivityState.Rendered);
 
         // 🧩 Emit the card lifecycle events (now including IsRequired)
+        _logger.LogDebug("[AdaptiveCard] Emitting CardJsonEmitted for {ActivityId} (len={Len})", Id, cardJson?.Length ?? 0);
         CardJsonEmitted?.Invoke(this,
             new CardJsonEventArgs(cardJson, "Generated JSON", RenderMode.Replace, Id, null, IsRequired));
 
+        _logger.LogDebug("[AdaptiveCard] Emitting CardJsonSending for {ActivityId}", Id);
         CardJsonSending?.Invoke(this,
             new CardJsonEventArgs(string.Empty, _customMessage, RenderMode.Replace, Id, null, IsRequired));
 
+        _logger.LogInformation("[AdaptiveCard] Emitting CardJsonSent for {ActivityId} (IsRequired={IsRequired}, len={Len})", Id, IsRequired, cardJson?.Length ?? 0);
         CardJsonSent?.Invoke(this,
             new CardJsonEventArgs(cardJson, "Sent to client", RenderMode.Replace, Id, null, IsRequired));
 
+        _logger.LogDebug("[AdaptiveCard] Emitting CardJsonRendered ack for {ActivityId}", Id);
         CardJsonRendered?.Invoke(this,
             new CardJsonRenderedEventArgs(cardJson));
 
@@ -413,6 +423,60 @@ public class FlexibleDecimalConverter : JsonConverter<decimal> {
     }
     public override void Write(Utf8JsonWriter writer, decimal value, JsonSerializerOptions options)
         => writer.WriteNumberValue(value);
+}
+
+public class FlexibleDoubleConverter : JsonConverter<double> {
+    public override double Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) {
+        if (reader.TokenType == JsonTokenType.String && double.TryParse(reader.GetString(), out var value))
+            return value;
+        if (reader.TokenType == JsonTokenType.Number)
+            return reader.GetDouble();
+        return 0d;
+    }
+    public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options)
+        => writer.WriteNumberValue(value);
+}
+
+/// <summary>
+/// Converter that allows List<string> properties to bind from either a JSON array
+/// or a comma-delimited string (e.g. "HeartDisease,Cancer"). This is useful for
+/// adaptive card multi-select inputs that may post as a single string.
+/// </summary>
+public class FlexibleStringListConverter : JsonConverter<List<string>> {
+    public override List<string> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) {
+        // Case 1: already an array
+        if (reader.TokenType == JsonTokenType.StartArray) {
+            var list = new List<string>();
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray) {
+                if (reader.TokenType == JsonTokenType.String) {
+                    list.Add(reader.GetString() ?? string.Empty);
+                } else {
+                    // Fallback: best-effort string representation for non-string items
+                    list.Add(reader.GetString() ?? string.Empty);
+                }
+            }
+            return list;
+        }
+
+        // Case 2: a single comma-delimited string
+        if (reader.TokenType == JsonTokenType.String) {
+            var raw = reader.GetString() ?? string.Empty;
+            return raw
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+        }
+
+        // Fallback: single scalar value as string
+        return new List<string> { reader.GetString() ?? string.Empty };
+    }
+
+    public override void Write(Utf8JsonWriter writer, List<string> value, JsonSerializerOptions options) {
+        writer.WriteStartArray();
+        foreach (var s in value ?? Enumerable.Empty<string>()) {
+            writer.WriteStringValue(s);
+        }
+        writer.WriteEndArray();
+    }
 }
 
 public class FlexibleBoolConverter : JsonConverter<bool> {

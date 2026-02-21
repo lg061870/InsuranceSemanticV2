@@ -19,4 +19,18 @@
     <ProjectReference Include="..\ConversaCore\ConversaCore.csproj" />
   </ItemGroup>
 
+  <Target Name="CopyToBlazorTemplateHostLib" AfterTargets="Build" Condition="'$(IsCrossTargetingBuild)' != 'true'">
+    <PropertyGroup>
+      <_TemplateHostLibDir>$(MSBuildThisFileDirectory)..\ConversaCore.SDK\ConversaCore.BlazorTemplateHost\lib\</_TemplateHostLibDir>
+    </PropertyGroup>
+
+    <Message Importance="High" Text="Copying ConversaCore.UI build output to '$(_TemplateHostLibDir)'" />
+    <MakeDir Directories="$(_TemplateHostLibDir)" Condition="!Exists('$(_TemplateHostLibDir)')" />
+
+    <Copy
+      SourceFiles="$(TargetPath)"
+      DestinationFolder="$(_TemplateHostLibDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

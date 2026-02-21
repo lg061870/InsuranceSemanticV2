@@ -263,19 +263,36 @@ public abstract class TopicFlow : ITopic, ITerminable {
                 ActivityLifecycleChanged?.Invoke(this, e);
         };
 
-        // Completion logic for synchronous activities
-        activity.ActivityCompleted += async (s, e) =>
+        // Completion logic for activities that may finish while the flow
+        // is in WaitingForInput (e.g., AdaptiveCardActivity after
+        // OnInputCollected, or container activities resuming children).
+        activity.ActivityCompleted += (s, e) =>
         {
             if (_isTerminated) return;
 
             _logger.LogInformation(
-                "[TopicFlow:{Topic}] Activity {ActivityId} completed",
-                Name, e.ActivityId);
+                "[TopicFlow:{Topic}] Activity {ActivityId} completed (FlowState={State}, CurrentActivity={CurrentId})",
+                Name, e.ActivityId, State, _currentActivityId ?? "<null>");
 
-            if (State == FlowState.WaitingForInput)
-                await _fsm.TryTransitionAsync(
-                    FlowState.Running,
-                    "Input collected");
+            // When the flow is waiting for input and the currently active
+            // activity completes (typically as a result of external input),
+            // bubble this completion through the TopicFlow-level
+            // ActivityCompleted event. DomainAgentService listens to that
+            // and will call StepAsync to advance the queue.
+            if (State == FlowState.WaitingForInput &&
+                _currentActivityId == e.ActivityId)
+            {
+                _logger.LogInformation(
+                    "[TopicFlow:{Topic}] Bubbling ActivityCompleted for current activity {ActivityId} while WaitingForInput",
+                    Name, e.ActivityId);
+                OnActivityCompleted(e.ActivityId);
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "[TopicFlow:{Topic}] ActivityCompleted for {ActivityId} ignored for bubbling (FlowState={State}, CurrentActivity={CurrentId})",
+                    Name, e.ActivityId, State, _currentActivityId ?? "<null>");
+            }
         };
 
         // ============================================================
@@ -381,8 +398,10 @@ public abstract class TopicFlow : ITopic, ITerminable {
     // Execution
     // ================================
     public virtual async Task<TopicResult> RunAsync(CancellationToken cancellationToken = default) {
-        if (_activityQueue.Count == 0)
-            throw new InvalidOperationException("No activities in flow. Add activities before starting.");
+        if (_activityQueue.Count == 0) {
+            _logger.LogInformation("queue is empty but here I am", _currentActivityId);
+            throw new InvalidOperationException("Cannot run flow with no activities.");
+        }
 
         await _fsm.TryTransitionAsync(FlowState.Starting, "RunAsync invoked");
         OnTopicLifecycleChanged(TopicLifecycleState.Starting);
@@ -399,6 +418,12 @@ public abstract class TopicFlow : ITopic, ITerminable {
     }
 
     public async Task<TopicResult> ResumeAsync(string message, CancellationToken cancellationToken = default) {
+        _logger.LogInformation(
+            "[TopicFlow:{Name}] ResumeAsync invoked with message='{Message}' (State={State})",
+            Name,
+            message,
+            State);
+
         if (State != FlowState.WaitingForInput)
             throw new InvalidOperationException($"Flow is not waiting for input (state: {State}).");
 
@@ -409,20 +434,30 @@ public abstract class TopicFlow : ITopic, ITerminable {
     }
 
     public virtual async Task<TopicResult> StepAsync(object? input, CancellationToken ct) {
-        // 🧭 Instrumentation start
+        // Temporary debug instrumentation to track queue and state
         void LogQueueState(string phase)
-            => _logger.LogInformation("[Flow.Trace] {Phase} | Count={Count} | Current={CurrentId} | Queue=[{Queue}]",
-                phase, _activityQueue.Count, _currentActivityId ?? "<null>", string.Join(", ", _activityQueue.ToArray()));
+            => _logger.LogInformation(
+                "[Flow.Trace] {Phase} | Topic={Topic} | State={State} | Count={Count} | Current={CurrentId} | Queue=[{Queue}]",
+                phase,
+                Name,
+                State,
+                _activityQueue.Count,
+                _currentActivityId ?? "<null>",
+                string.Join(", ", _activityQueue.ToArray()));
 
-        LogQueueState("StepAsync Begin");
-        // 🧭 End instrumentation setup
+        LogQueueState("StepAsync.Begin");
 
         if (!_isRunning) {
             _logger.LogWarning("StepAsync called but _isRunning=false. Attempting to recover.");
             _isRunning = true;
         }
 
-        if (State != FlowState.Running && State != FlowState.Starting && State != FlowState.Idle) {
+        if (State == FlowState.WaitingForInput) {
+            _logger.LogInformation("[TopicFlow:{Name}] StepAsync invoked while WaitingForInput – treating as implicit resume.", Name);
+            await _fsm.TryTransitionAsync(FlowState.Running, "Implicit resume via StepAsync");
+            OnTopicLifecycleChanged(TopicLifecycleState.Resuming);
+        }
+        else if (State != FlowState.Running && State != FlowState.Starting && State != FlowState.Idle) {
             _logger.LogWarning("StepAsync invoked but flow state={State}. Attempting to transition to Running.", State);
 
             if (State == FlowState.Completed) {
@@ -445,7 +480,7 @@ public abstract class TopicFlow : ITopic, ITerminable {
 
             if (string.IsNullOrWhiteSpace(_currentActivityId) ||
                 !_activities.TryGetValue(_currentActivityId, out var activity)) {
-                _logger.LogError("Current activity '{ActivityId}' not found.", _currentActivityId ?? "<null>");
+                _logger.LogError("[Flow.Trace] Current activity '{ActivityId}' not found (State={State}, QueueCount={Count}).", _currentActivityId ?? "<null>", State, _activityQueue.Count);
                 await _fsm.TryTransitionAsync(FlowState.Failed, "Activity not found");
                 OnTopicLifecycleChanged(TopicLifecycleState.Failed, "Activity not found");
                 return TopicResult.CreateResponse("Error: activity not found.", _context, requiresInput: true);
@@ -460,7 +495,7 @@ public abstract class TopicFlow : ITopic, ITerminable {
                 continue;
             }
 
-            _logger.LogInformation("Executing activity {ActivityId}", activity.Id);
+            _logger.LogInformation("[Flow.Trace] Executing activity {ActivityId} (Topic={Topic}, State={State})", activity.Id, Name, State);
             LogQueueState("Before RunAsync");
 
             ActivityResult ar;
@@ -483,7 +518,7 @@ public abstract class TopicFlow : ITopic, ITerminable {
 
             // 🕒 Handle waiting
             if (ar.IsWaiting) {
-                LogQueueState("WaitingForInput Triggered");
+                LogQueueState("WaitingForInput.Triggered");
                 await _fsm.TryTransitionAsync(FlowState.WaitingForInput, "Activity requested input");
                 OnTopicLifecycleChanged(TopicLifecycleState.WaitingForUserInput, ar);
                 return TopicResult.CreateResponse(ar.Message ?? "Waiting for user input…", _context, requiresInput: true);
@@ -491,7 +526,7 @@ public abstract class TopicFlow : ITopic, ITerminable {
 
             // 🧩 Handle sub-topic wait
             if (ar.IsWaitingForSubTopic) {
-                _logger.LogInformation("Activity {ActivityId} is waiting for sub-topic '{SubTopic}'", activity.Id, ar.SubTopicName);
+                _logger.LogInformation("[Flow.Trace] Activity {ActivityId} waiting for sub-topic '{SubTopic}' (Topic={Topic})", activity.Id, ar.SubTopicName, Name);
                 await _fsm.TryTransitionAsync(FlowState.WaitingForInput, "Activity waiting for sub-topic");
                 OnTopicLifecycleChanged(TopicLifecycleState.WaitingForSubTopic, ar);
                 return TopicResult.CreateSubTopicTrigger(ar.SubTopicName!, ar.Message, _context);
@@ -499,7 +534,7 @@ public abstract class TopicFlow : ITopic, ITerminable {
 
             // 🏁 Handle activity end
             if (ar.IsEnd) {
-                _logger.LogInformation("Activity {ActivityId} signaled end of topic", activity.Id);
+                _logger.LogInformation("[Flow.Trace] Activity {ActivityId} signaled end of topic {Topic}", activity.Id, Name);
                 OnActivityCompleted(activity.Id);
                 await _fsm.TryTransitionAsync(FlowState.Completed, "Activity signaled end");
                 OnTopicLifecycleChanged(TopicLifecycleState.Completed, ar);
@@ -524,8 +559,10 @@ public abstract class TopicFlow : ITopic, ITerminable {
                 return TopicResult.CreateCompleted(string.Empty, _context);
             }
 
-            _logger.LogInformation("Dequeued next activity: {ActivityId}", _currentActivityId);
+            _logger.LogInformation("[Flow.Trace] Dequeued next activity: {ActivityId} (Topic={Topic}, State={State})", _currentActivityId, Name, State);
         }
+
+        LogQueueState("StepAsync.End.BeforeComplete");
 
         _logger.LogWarning("[Flow.Trace] Final queue dump: {Dump}",
             string.Join(", ", _activities.Select(a => $"{a.Value.Id}:{a.Value.CurrentState}")));

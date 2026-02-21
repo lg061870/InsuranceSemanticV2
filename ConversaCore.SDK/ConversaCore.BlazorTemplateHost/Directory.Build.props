@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Marks this repo build as using local ConversaCore source projects -->
+    <ConversaCoreDev>true</ConversaCoreDev>
+  </PropertyGroup>
+</Project>

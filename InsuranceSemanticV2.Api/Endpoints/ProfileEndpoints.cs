@@ -13,7 +13,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class ProfileEndpoints {
     public static RouteGroupBuilder MapProfileEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/profile").WithTags("Profile");
+        var group = routes.MapGroup("/profile").WithTags("Profile");
 
         static async Task<LeadProfile?> GetOrCreateProfileAsync(int leadId, AppDbContext db) {
             var lead = await db.Leads.Include(x => x.Profile).FirstOrDefaultAsync(x => x.LeadId == leadId);

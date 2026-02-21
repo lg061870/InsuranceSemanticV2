@@ -17,6 +17,7 @@ public class RepeatActivity<TActivity> : TopicFlowActivity, IAdaptiveCardActivit
     private readonly Func<string, TopicWorkflowContext, TActivity> _activityFactory;
     private readonly int? _fixedIterations;
     private readonly string? _continuePrompt;
+    private readonly Func<TopicWorkflowContext, bool>? _customShouldContinue;
     private readonly string _collectionContextKey;
     private readonly ILogger? _logger;
     
@@ -169,6 +170,10 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
         // Hook activity completion to trigger next iteration
         if (childActivity != null)
         {
+            // Forward simple message events from the repeated child
+            // so that any messages (e.g. QA answers, empathy text)
+            // inside the loop surface as normal bot messages.
+            childActivity.MessageEmitted += (s, e) => OnMessageEmitted(e.Message);
             childActivity.ActivityCompleted += OnChildActivityCompleted;
         }
     }
@@ -285,9 +290,12 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
             
             // Store collected results in context and complete
             _activeContext!.SetValue(_collectionContextKey, _collectedResults);
-            
-            // Signal that RepeatActivity is complete
-            OnCompleted(e.Context ?? new object());
+
+            // Signal that RepeatActivity is complete via normal
+            // lifecycle transition so TopicFlow sees ActivityCompleted.
+            var payload = ActivityResult.Continue(_collectedResults);
+            _logger?.LogInformation("[RepeatActivity] Transitioning to Completed with {Count} collected results", _collectedResults.Count);
+            TransitionTo(ActivityState.Completed, payload);
         }
     }
 
@@ -318,7 +326,9 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
                     
                     // Store collected results and complete
                     _activeContext!.SetValue(_collectionContextKey, _collectedResults);
-                    OnCompleted(_collectedResults.LastOrDefault() ?? new object());
+                    var payload = ActivityResult.Continue(_collectedResults);
+                    _logger?.LogInformation("[RepeatActivity] Transitioning to Completed after user stop with {Count} collected results", _collectedResults.Count);
+                    TransitionTo(ActivityState.Completed, payload);
                     return;
                 }
             }
@@ -407,6 +417,25 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
         _logger = logger;
     }
 
+    /// <summary>
+    /// Creates a RepeatActivity that uses a custom predicate to determine
+    /// whether another iteration should run. This is useful for semantic
+    /// loops driven by conversation context (e.g. "StillLearning" labels).
+    /// </summary>
+    public RepeatActivity(
+        string id,
+        Func<string, TopicWorkflowContext, TActivity> activityFactory,
+        Func<TopicWorkflowContext, bool> shouldContinuePredicate,
+        string? collectionContextKey = null,
+        ILogger? logger = null)
+        : base(id)
+    {
+        _activityFactory = activityFactory ?? throw new ArgumentNullException(nameof(activityFactory));
+        _customShouldContinue = shouldContinuePredicate ?? throw new ArgumentNullException(nameof(shouldContinuePredicate));
+        _collectionContextKey = collectionContextKey ?? $"{id}_Collection";
+        _logger = logger;
+    }
+
     protected override async Task<ActivityResult> RunActivity(
         TopicWorkflowContext context,
         object? input = null,
@@ -479,6 +508,14 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
     /// </summary>
     private bool ShouldContinue(TopicWorkflowContext context)
     {
+        // Custom predicate mode (semantic loop)
+        if (_customShouldContinue != null)
+        {
+            var decision = _customShouldContinue(context);
+            _logger?.LogInformation("[RepeatActivity] Custom predicate ShouldContinue => {Decision} (Iteration={Iteration})", decision, _currentIteration);
+            return decision;
+        }
+
         // Fixed iterations mode
         if (_fixedIterations.HasValue)
         {
@@ -561,5 +598,19 @@ public static class RepeatActivity
         where TActivity : TopicFlowActivity
     {
         return new RepeatActivity<TActivity>(id, activityFactory, continuePrompt, logger: logger);
+    }
+
+    /// <summary>
+    /// Creates a RepeatActivity that continues while the provided predicate
+    /// evaluates to true for the current TopicWorkflowContext.
+    /// </summary>
+    public static RepeatActivity<TActivity> While<TActivity>(
+        string id,
+        Func<string, TopicWorkflowContext, TActivity> activityFactory,
+        Func<TopicWorkflowContext, bool> shouldContinue,
+        ILogger? logger = null)
+        where TActivity : TopicFlowActivity
+    {
+        return new RepeatActivity<TActivity>(id, activityFactory, shouldContinue, logger: logger);
     }
 }

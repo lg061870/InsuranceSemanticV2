@@ -98,6 +98,12 @@ public static class ServiceCollectionExtensions {
             )
         );
 
+        // ---------------------------------------
+        // BASE FRAMEWORK SERVICES
+        // ---------------------------------------
+        services.AddScoped<ISemanticKernelService, Services.SemanticKernelService>();
+        services.AddScoped<IDocumentEmbeddingService, Services.DocumentEmbeddingService>();
+
         Console.WriteLine("ConversaCore successfully registered.");
         return services;
     }

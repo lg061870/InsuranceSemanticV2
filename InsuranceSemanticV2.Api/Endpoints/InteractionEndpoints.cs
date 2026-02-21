@@ -6,7 +6,7 @@ namespace InsuranceSemanticV2.Api.Endpoints;
 
 public static class InteractionEndpoints {
     public static RouteGroupBuilder MapInteractionEndpoints(this IEndpointRouteBuilder routes) {
-        var group = routes.MapGroup("/api/interactions")
+        var group = routes.MapGroup("/interactions")
                           .WithTags("Interactions");
 
         // CREATE interaction
@@ -20,7 +20,7 @@ public static class InteractionEndpoints {
             db.LeadInteractions.Add(dto);
             await db.SaveChangesAsync();
 
-            return Results.Created($"/api/interactions/{dto.LeadInteractionId}", dto);
+            return Results.Created($"/interactions/{dto.LeadInteractionId}", dto);
         });
 
         // GET interactions for a lead

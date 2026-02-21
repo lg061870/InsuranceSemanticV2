@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Vsix xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Version="1.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
+  <Identifier Id="ConversaCore.TopicTool.VSIX">
+    <Name>ConversaCore Topic Designer</Name>
+    <Author>ConversaCore</Author>
+    <Version>0.1.0</Version>
+    <Description xml:space="preserve">Topic authoring tooling for ConversaCore-based Blazor agents.</Description>
+    <Locale>1033</Locale>
+    <MoreInfoUrl>https://example.com/conversacore</MoreInfoUrl>
+    <SupportedProducts>
+      <VisualStudio Version="17.0">
+        <Edition>Community</Edition>
+        <Edition>Pro</Edition>
+        <Edition>Enterprise</Edition>
+      </VisualStudio>
+    </SupportedProducts>
+    <SupportedFrameworkRuntimeEdition MinVersion="4.7.2" MaxVersion="4.8" />
+  </Identifier>
+  <References />
+  <Content>
+    <MefComponent>|ConversaCore.TopicTool.VSIX|</MefComponent>
+  </Content>
+</Vsix>

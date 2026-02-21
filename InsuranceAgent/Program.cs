@@ -45,9 +45,11 @@ internal class Program {
 
         // ------------------------------------------------------------
         // LOAD OPENAI API KEY (single source of truth)
+        // Try: 1) Environment variable, 2) User Secrets, 3) Fail
         // ------------------------------------------------------------
         string apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
-            ?? throw new InvalidOperationException("Missing OPENAI_API_KEY");
+            ?? configuration["OPENAI_API_KEY"]
+            ?? throw new InvalidOperationException("Missing OPENAI_API_KEY (set via User Secrets or environment variable)");
 
         Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🔑 OpenAI key loaded (length={apiKey.Length})");
 

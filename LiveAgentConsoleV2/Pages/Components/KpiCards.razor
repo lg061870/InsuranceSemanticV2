@@ -1,0 +1,30 @@
+@using InsuranceSemanticV2.Core.DTO
+
+@* KPI Cards displaying key metrics *@
+<div class="px-6 pb-4">
+    <div class="grid grid-cols-4 gap-4">
+        <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+            <p class="text-xs text-gray-500 uppercase font-semibold">Total Leads</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">@(Kpis?.TotalLeads ?? 0)</p>
+        </div>
+        
+        <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+            <p class="text-xs text-gray-500 uppercase font-semibold">Avg Score</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">@((Kpis?.AverageQualificationScore ?? 0).ToString("0"))</p>
+        </div>
+        
+        <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+            <p class="text-xs text-gray-500 uppercase font-semibold">Avg Progress</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">@((Kpis?.AverageProgressPercentage ?? 0).ToString("0"))%</p>
+        </div>
+        
+        <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+            <p class="text-xs text-gray-500 uppercase font-semibold">Follow-ups</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">@(Kpis?.LeadsNeedingFollowUp ?? 0)</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public LeadKpiResponse? Kpis { get; set; }
+}
