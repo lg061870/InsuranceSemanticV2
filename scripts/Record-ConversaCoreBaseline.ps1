@@ -1,0 +1,21 @@
+$ErrorActionPreference = 'Stop'
+$repo = 'lg061870/InsuranceSemanticV2'
+$updates = @{
+    14 = 'Initial public/semi-public API inventory added in commit 29877ff. It identifies runtime ownership in DomainAgentService, duplicate TopicRegistry/TopicManager responsibilities, and host exposure of mutable workflow context. This supports deciding which behavior belongs behind the framework facade. Remaining: exhaustive consumer review and acceptance of the inventory.'
+    15 = 'Initial topic registration inventory added in commit 29877ff. Found manual startup population of a singleton registry with scoped topics, missing T2 registration, and inconsistent runtime identity. This supports immutable descriptors and scoped activation. Remaining: exhaustively compare topic classes, registered runtime names, and subtopic references, including T3 paths.'
+    16 = 'Initial host-event matrix added in commit 29877ff. Home.razor mixes visual progress handling with lead/profile persistence, and the T2 event names differ from the Home switch. This supports splitting typed host notifications/interactions from deterministic tools. Remaining: enumerate every producer, payload, consumer and response path, including demos.'
+    17 = 'Three local characterization tests added in ConversaCore.Tests/Characterization/LegacyHostInteractionTests.cs. They verify deferred notification data and exactly one completion, reproduce an inline response dropped before the waiting state, and reproduce stale markers after cancellation. Why: preserve observable evidence before replacing the event machinery. Remaining: start, active input, fallback, required cards, subtopic return, reset and semantic completion coverage; commit/push and applicable completion checks.'
+    18 = 'Four local tests added in ConversaCore.Tests/Characterization/LegacySessionIsolationTests.cs using actual AddConversaCore registrations and a disposable probe. Direct scoped resolution isolates objects; startup registration retains a disposed topic and shares state; reconfiguration preserves the first instance; one session reset changes the registry seen by another. Why: provide executable evidence for a descriptor-only catalog and scoped activation. These tests intentionally reproduce legacy defects. Remaining: commit/push and record applicable completion checks. Positive target-runtime isolation belongs to CC-212, and remains required there.'
+    19 = 'Initial cleanup register added in commit 29877ff. It classifies active V2/V3 surfaces, duplicate orchestration, experiments, demos, and logging for migration or later retirement. Why: prevent removal of behavior before replacement coverage exists. Remaining: exhaustive references/dead-code review and disposition decisions. No runtime cleanup has been performed in this task.'
+}
+foreach ($number in ($updates.Keys | Sort-Object)) {
+    $marker = '<!-- conversacore-baseline-import-v1 -->'
+    $comments = & gh api "repos/$repo/issues/$number/comments?per_page=100" | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect issue comments' }
+    if (@($comments | Where-Object { $_.body.Contains($marker) }).Count -gt 0) { continue }
+    $body = "$marker`n## Baseline progress: change and rationale`n`n$($updates[$number])`n`n## Evidence and status`n`nInventory: https://github.com/$repo/blob/29877ff/docs/ConversaCore.WP0CurrentStateInventory.md`n`nTargeted local command: ``dotnet test ConversaCore.Tests/ConversaCore.Tests.csproj --no-restore --filter FullyQualifiedName~Characterization --nologo --verbosity quiet -clp:ErrorsOnly``. Result: 7 passed, 0 failed, 0 skipped. No AI/network calls in these tests. The new test files are not yet available on the remote branch.`n`nEarlier full baseline: ConversaCore tests 40 passed, 9 failed, 1 skipped; integration tests 33 failed at startup due to missing JWT configuration. These failures have not been resolved by the characterization work. Issue remains open."
+    $result = @{body = $body} | ConvertTo-Json | & gh api --method POST "repos/$repo/issues/$number/comments" --input -
+    if ($LASTEXITCODE -ne 0) { throw "Comment failed on #$number" }
+    Write-Host "Recorded progress on #$number"
+    Start-Sleep -Milliseconds 1100
+}

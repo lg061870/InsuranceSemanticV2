@@ -4,6 +4,8 @@
 **Date:** 2026-09-06  
 **Architecture baseline:** [ConversaCore Target Architecture](./ConversaCore.TargetArchitecture.md)
 
+**Execution tracker:** [GitHub master issue #12](https://github.com/lg061870/InsuranceSemanticV2/issues/12). Each WP is a phase parent and every CC task has its own sub-issue. Record changes, reasons, verification evidence, and remaining work on the task issue. Close only after its full scope and definition of done are satisfied and delivered in GitHub.
+
 ## 1. Purpose
 
 This plan transforms the current ConversaCore implementation into the target architecture without requiring a big-bang rewrite. It covers the framework runtime, ConversaCore.UI, domain tools, host events, InsuranceAgent migration, the SDK template, cleanup, and release hardening.
@@ -64,7 +66,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 - [ ] **CC-001 — Build a topic-registration inventory.** Compare topic classes, DI registrations, referenced subtopic names, runtime names, and fallback/start topic conventions. Flag duplicates and missing targets such as the current T2/T3 paths.
 - [ ] **CC-002 — Build a host-event inventory.** For every InsuranceAgent custom event, record producer, payload, consumer, one-way/request-response behavior, and whether it should become a standard output, host event, or tool.
 - [ ] **CC-003 — Add characterization tests.** Cover conversation start, active-topic input, fallback interruption, required cards, subtopic hand-down/return, reset, async semantic completion, and current custom notifications.
-- [ ] **CC-004 — Add a two-session isolation test.** Demonstrate whether two conversation scopes currently share topic/context state; retain it as a required regression test for the target runtime.
+- [x] **CC-004 — Add a two-session isolation test.** Four legacy characterization tests demonstrate scoped isolation versus singleton registry leakage and cross-session reset. The 17-test characterization suite and solution build pass; delivery and completion evidence are tracked in [#18](https://github.com/lg061870/InsuranceSemanticV2/issues/18). Positive isolation tests remain a separate required gate in [CC-212 #42](https://github.com/lg061870/InsuranceSemanticV2/issues/42); see `ConversaCore.Tests/Characterization/LegacySessionIsolationTests.cs`.
 - [ ] **CC-005 — Record cleanup candidates.** Classify V2/V3 services, old demos, duplicate registrations, dead topics, debug logging, and obsolete guides as retain, migrate, archive, or delete-later.
 - [ ] **CC-006 — Approve target ADRs.** Confirm the facade, catalog/activation model, output transport, host-event split, tool contract, and bounded selection rules from the architecture document.
 

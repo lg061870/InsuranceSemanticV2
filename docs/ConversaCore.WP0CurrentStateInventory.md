@@ -152,7 +152,24 @@ Existing tests cover portions of activities, events, topic flow, vector storage,
 
 ### CC-004 isolation coverage
 
-No explicit two-session isolation test has been identified. This is the highest-priority characterization test because the singleton registry currently retains scoped topic/context instances.
+`ConversaCore.Tests/Characterization/LegacySessionIsolationTests.cs` now supplies four executable scenarios using the actual `AddConversaCore` registrations and a disposable probe topic:
+
+- Direct scoped topic resolution isolates topic instances and both contexts.
+- The startup-populated singleton registry retains a disposed topic and exposes its mutable workflow state to both sessions.
+- Reconfiguring from a later scope silently retains the original topic with the same name.
+- Resetting from one scope changes the registry seen by another scope.
+
+These are legacy characterization tests: passing means the documented defect is reproduced. Keep them on the compatibility path and add positive isolation tests for the replacement catalog/runtime before marking its isolation gate complete.
+
+`ConversaCore.Tests/Characterization/LegacyHostInteractionTests.cs` adds three scenarios: deferred notification payload resolution with exactly one completion, an inline host response dropped before the waiting transition, and cancellation leaving stale waiting markers. They use explicit cancellation, no AI calls, and no timeout sleeps.
+
+The targeted characterization run now passes 17 tests. `LegacyOrchestrationTests.cs` exercises the real domain agent with deterministic routing probes: start still requires a domain override, all topics compete on each message, matched input is not passed to `ProcessMessageAsync`, fallback receives the unmatched prompt, no fallback emits a missing-topic notification, and async follow-up is inserted and forwarded without executing immediately.
+
+`LegacyWorkflowTests.cs` covers real flow reset, subtopic wait and explicit return, conversation reset, and the hidden required-card flag. A required `AdaptiveCardActivity<T>` reads as optional through `TopicFlowActivity` because its property hides rather than overrides the base property. Flow reset clears authored activities; a rerun requires rebuilding them. A subtopic trigger is marked completed while the parent remains waiting.
+
+CC-003 remains partial: full card submission/validation, fallback interruption and resumption through the real callbacks, domain start/compliance composition, actual asynchronous semantic completion, and exhaustive insurance notification coverage are still outstanding. The probe tests isolate routing entry points; they do not certify end-to-end domain behavior.
+
+Progress and validation are recorded on [CC-003 #17](https://github.com/lg061870/InsuranceSemanticV2/issues/17) and [CC-004 #18](https://github.com/lg061870/InsuranceSemanticV2/issues/18).
 
 ### Baseline validation on this branch
 
@@ -164,7 +181,7 @@ No explicit two-session isolation test has been identified. This is the highest-
 
 ## 8. Immediate WP0 next steps
 
-1. Add CC-004 first: construct two independent service scopes and prove the current registry/context leakage, then preserve the expected isolated behavior for the replacement runtime.
+1. Use the CC-004 legacy tests as evidence for a descriptor-only catalog; add positive session-isolation tests alongside the replacement runtime.
 2. Add focused CC-003 tests around start, fallback, required card, hand-down/return, and event wait/response without using real AI services.
 3. Decide whether the SQLite connector remains in framework core, moves behind an optional package, or migrates to the maintained Community Toolkit provider.
 4. Approve stable topic IDs and typed host-event names before public-contract implementation begins.
