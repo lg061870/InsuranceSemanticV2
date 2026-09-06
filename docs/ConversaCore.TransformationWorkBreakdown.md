@@ -52,6 +52,8 @@ The critical path is WP0 → WP1 → WP2 → WP3/WP4 → WP5 → WP6/WP7 → WP8
 
 ## 5. WP0 — Baseline, decisions, and safety net
 
+Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCore.WP0CurrentStateInventory.md). It establishes the initial evidence for CC-000, CC-001, CC-002, and CC-005; those items remain open until their findings and the CC-003/CC-004 characterization results are approved.
+
 **Outcome:** The team can change orchestration safely because current behavior, intended behavior, and obsolete experiments are distinguishable.  
 **Estimate:** 4–6 days  
 **Dependencies:** None
