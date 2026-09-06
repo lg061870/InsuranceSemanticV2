@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Microsoft.Extensions.Configuration.UserSecrets;
 
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
@@ -14,6 +15,7 @@ using System.Runtime.Versioning;
 [assembly: AssemblyCopyright("Copyright © 2025")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
+[assembly: UserSecretsId("671a2161-8af5-4cdb-a575-8c353368f5f8")]
 
 // Target framework attribute
 [assembly: TargetFramework("net7.0", FrameworkDisplayName = ".NET 7.0")]
