@@ -44,12 +44,17 @@ internal class Program {
         var configuration = builder.Configuration;
 
         // ------------------------------------------------------------
-        // LOAD OPENAI API KEY (single source of truth)
-        // Try: 1) Environment variable, 2) User Secrets, 3) Fail
+        // LOAD OPENAI API KEY
+        // Local development: .NET User Secrets
+        // Production: environment variable OPENAI_API_KEY
+        //
+        // IConfiguration automatically combines configured providers,
+        // including environment variables and User Secrets.
         // ------------------------------------------------------------
-        string apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
-            ?? configuration["OPENAI_API_KEY"]
-            ?? throw new InvalidOperationException("Missing OPENAI_API_KEY (set via User Secrets or environment variable)");
+        string apiKey = configuration["OPENAI_API_KEY"]
+            ?? throw new InvalidOperationException(
+                "Missing OPENAI_API_KEY. Configure it using .NET User Secrets " +
+                "or the OPENAI_API_KEY environment variable.");
 
         Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🔑 OpenAI key loaded (length={apiKey.Length})");
 
@@ -94,7 +99,7 @@ internal class Program {
         // ------------------------------------------------------------
         // AUTOMAPPER CONFIG
         // ------------------------------------------------------------
-        builder.Services.AddAutoMapper(typeof(MappingProfile));
+        builder.Services.AddAutoMapper(_ => { }, typeof(MappingProfile));
 
 
         // ------------------------------------------------------------
