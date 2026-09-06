@@ -79,3 +79,6 @@ Thumbs.db
 # Note: .mcp.json should be committed, but create .mcp.local.json for local overrides with tokens
 .mcp.local.json 
 nul
+
+# Archify render-validation artifacts (regenerated on demand)
+docs/*.visual-check.*

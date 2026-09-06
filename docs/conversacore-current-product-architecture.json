@@ -1,0 +1,332 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "ConversaCore Current Product Architecture",
+    "locale": "en",
+    "output": "conversacore-current-product-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/lg061870/InsuranceSemanticV2.git",
+      "revision": "84f3ad035bbfbda90055c9e8af8c286a7d7c721e"
+    },
+    "views": [
+      {
+        "id": "bounded-runtime",
+        "label": "Bounded conversation runtime",
+        "focus": ["ui", "domain_agent", "topic_routing", "topic_runtime", "activity_runtime"],
+        "note": "The developer-authored TopicFlow controls execution from UI input through framework activities."
+      },
+      {
+        "id": "ui-contract",
+        "label": "UI and agent contract",
+        "focus": ["ui", "domain_agent"],
+        "note": "ConversaCore.UI raises user-interaction events and renders messages, cards, and state events."
+      },
+      {
+        "id": "ai-and-knowledge",
+        "label": "Optional AI and knowledge",
+        "focus": ["activity_runtime", "semantic_services", "knowledge_services", "model_provider"],
+        "note": "Activities explicitly invoke model and retrieval services; those services do not own the workflow."
+      }
+    ]
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [56, 100],
+    "cols": 5,
+    "gapX": 55,
+    "gapY": 120,
+    "cellW": 150,
+    "cellH": 80
+  },
+  "components": [
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "ConversaCore.UI",
+      "sublabel": "Chat, Adaptive Cards, browser interop",
+      "sources": [
+        {
+          "path": "ConversaCore.UI/Components/CustomChatWindowV3.razor",
+          "line": 143,
+          "label": "Agent binding"
+        },
+        {
+          "path": "ConversaCore.UI/Components/CustomChatWindowV3.razor",
+          "line": 636,
+          "label": "Interaction events"
+        },
+        {
+          "path": "ConversaCore.UI/Components/AdaptiveCardRenderer.razor",
+          "line": 36,
+          "label": "Card rendering"
+        }
+      ],
+      "row": 1,
+      "col": 0,
+      "size": [170, 80]
+    },
+    {
+      "id": "domain_agent",
+      "type": "backend",
+      "label": "DomainAgentService",
+      "sublabel": "Domain extension and UI orchestration",
+      "sources": [
+        {
+          "path": "ConversaCore/Agentic/DomainAgentService.cs",
+          "line": 21,
+          "label": "Agent base"
+        },
+        {
+          "path": "ConversaCore/Agentic/DomainAgentService.cs",
+          "line": 39,
+          "label": "Output events"
+        }
+      ],
+      "row": 1,
+      "col": 1,
+      "size": [170, 80]
+    },
+    {
+      "id": "topic_routing",
+      "type": "backend",
+      "label": "Topic Routing",
+      "sublabel": "TopicManager + TopicRegistry",
+      "sources": [
+        {
+          "path": "ConversaCore/Topics/TopicManager.cs",
+          "line": 43,
+          "label": "Route or resume"
+        },
+        {
+          "path": "ConversaCore/Topics/TopicRegistry.cs",
+          "line": 226,
+          "label": "Best-topic search"
+        }
+      ],
+      "row": 1,
+      "col": 2,
+      "size": [170, 80]
+    },
+    {
+      "id": "topic_runtime",
+      "type": "backend",
+      "label": "TopicFlow Runtime",
+      "sublabel": "Stateful and resumable workflow",
+      "sources": [
+        {
+          "path": "ConversaCore/TopicFlow/Core/TopicFlow.cs",
+          "line": 16,
+          "label": "Workflow base"
+        },
+        {
+          "path": "ConversaCore/TopicFlow/Core/TopicFlow.cs",
+          "line": 390,
+          "label": "Process and run"
+        }
+      ],
+      "row": 1,
+      "col": 3,
+      "size": [170, 80]
+    },
+    {
+      "id": "activity_runtime",
+      "type": "backend",
+      "label": "Activity Runtime",
+      "sublabel": "Messages, input, cards, decisions",
+      "sources": [
+        {
+          "path": "ConversaCore/TopicFlow/Core/TopicFlowActivity.cs",
+          "line": 16,
+          "label": "Activity base"
+        },
+        {
+          "path": "ConversaCore/TopicFlow/Core/TopicFlowActivity.cs",
+          "line": 151,
+          "label": "Activity execution"
+        }
+      ],
+      "row": 1,
+      "col": 4,
+      "size": [170, 80]
+    },
+    {
+      "id": "conversation_context",
+      "type": "backend",
+      "label": "Conversation Context",
+      "sublabel": "Models, variables, topic call stack",
+      "sources": [
+        {
+          "path": "ConversaCore/Context/ConversationContext.cs",
+          "line": 74,
+          "label": "Context values"
+        },
+        {
+          "path": "ConversaCore/Context/ConversationContext.cs",
+          "line": 321,
+          "label": "Nested calls"
+        }
+      ],
+      "row": 2,
+      "col": 3,
+      "size": [170, 80]
+    },
+    {
+      "id": "knowledge_services",
+      "type": "database",
+      "label": "Document + Vector RAG",
+      "sublabel": "Chunk, embed, index, retrieve",
+      "tag": "Optional",
+      "sources": [
+        {
+          "path": "ConversaCore/Services/DocumentEmbeddingService.cs",
+          "line": 42,
+          "label": "Ingestion"
+        },
+        {
+          "path": "ConversaCore/Services/DocumentEmbeddingService.cs",
+          "line": 91,
+          "label": "Search"
+        }
+      ],
+      "row": 0,
+      "col": 2,
+      "size": [170, 80]
+    },
+    {
+      "id": "semantic_services",
+      "type": "backend",
+      "label": "Semantic Services",
+      "sublabel": "Intent, prompts, structured decisions",
+      "tag": "Optional",
+      "sources": [
+        {
+          "path": "ConversaCore/Services/SemanticKernelService.cs",
+          "line": 40,
+          "label": "Semantic processing"
+        },
+        {
+          "path": "ConversaCore/ServiceCollectionExtensions.cs",
+          "line": 45,
+          "label": "Kernel registration"
+        }
+      ],
+      "row": 0,
+      "col": 3,
+      "size": [170, 80]
+    },
+    {
+      "id": "model_provider",
+      "type": "external",
+      "label": "AI Model Provider",
+      "sublabel": "Chat completion and embeddings",
+      "row": 0,
+      "col": 4,
+      "size": [170, 80]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "ConversaCore.UI",
+      "wraps": ["ui"],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "ConversaCore",
+      "wraps": ["domain_agent", "topic_routing", "topic_runtime", "activity_runtime", "conversation_context", "knowledge_services", "semantic_services"],
+      "pad": 26
+    }
+  ],
+  "connections": [
+    {
+      "id": "ui-requests",
+      "from": "ui",
+      "to": "domain_agent",
+      "label": "interaction events",
+      "labelAt": [243, 294],
+      "variant": "emphasis"
+    },
+    {
+      "id": "ui-output",
+      "from": "domain_agent",
+      "to": "ui",
+      "label": "message / card / state events",
+      "labelAt": [243, 390]
+    },
+    {
+      "id": "agent-routing",
+      "from": "domain_agent",
+      "to": "topic_routing",
+      "variant": "emphasis"
+    },
+    {
+      "id": "topic-selection",
+      "from": "topic_routing",
+      "to": "topic_runtime",
+      "variant": "emphasis"
+    },
+    {
+      "id": "activity-execution",
+      "from": "topic_runtime",
+      "to": "activity_runtime",
+      "variant": "emphasis"
+    },
+    {
+      "id": "workflow-state",
+      "from": "topic_runtime",
+      "to": "conversation_context",
+      "label": "workflow state",
+      "labelAt": [756, 394]
+    },
+    {
+      "id": "activity-state",
+      "from": "activity_runtime",
+      "to": "conversation_context",
+      "label": "models / variables"
+    },
+    {
+      "id": "optional-ai",
+      "from": "activity_runtime",
+      "to": "semantic_services",
+      "label": "optional AI decision",
+      "variant": "dashed"
+    },
+    {
+      "id": "knowledge-retrieval",
+      "from": "semantic_services",
+      "to": "knowledge_services",
+      "label": "approved-document retrieval",
+      "labelAt": [654, 194],
+      "variant": "dashed"
+    },
+    {
+      "id": "model-request",
+      "from": "semantic_services",
+      "to": "model_provider",
+      "label": "chat / embeddings",
+      "labelAt": [961, 194],
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Bounded control",
+      "items": [
+        "TopicFlow owns the conversation trajectory",
+        "AI is invoked by explicit activities, not granted control of the application"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Developer model",
+      "items": [
+        "Domain apps extend DomainAgentService and register ITopic implementations",
+        "Topics compose framework activities, cards, rules, retrieval, and subtopics"
+      ]
+    }
+  ]
+}

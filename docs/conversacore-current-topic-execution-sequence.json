@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "ConversaCore Current Topic Execution Sequence",
+    "locale": "en",
+    "output": "conversacore-current-topic-execution-sequence.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [820, 500]
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "User",
+      "sublabel": "browser"
+    },
+    {
+      "id": "chat_ui",
+      "type": "frontend",
+      "label": "Chat UI",
+      "sublabel": "CustomChatWindowV3"
+    },
+    {
+      "id": "domain_agent",
+      "type": "backend",
+      "label": "Domain Agent",
+      "sublabel": "DomainAgentService"
+    },
+    {
+      "id": "topic_registry",
+      "type": "backend",
+      "label": "Topic Registry",
+      "sublabel": "bounded topic catalog"
+    },
+    {
+      "id": "topic_flow",
+      "type": "backend",
+      "label": "TopicFlow",
+      "sublabel": "resumable workflow"
+    },
+    {
+      "id": "activity",
+      "type": "backend",
+      "label": "Activity",
+      "sublabel": "controlled step"
+    }
+  ],
+  "segments": [
+    {
+      "from": 262,
+      "to": 342,
+      "label": "Execute its activity queue"
+    },
+    {
+      "from": 348,
+      "to": 418,
+      "label": "Return UI events"
+    }
+  ],
+  "messages": [
+    {
+      "id": "submit-message",
+      "from": "user",
+      "to": "chat_ui",
+      "y": 160,
+      "label": "submit message",
+      "variant": "emphasis"
+    },
+    {
+      "id": "raise-user-event",
+      "from": "chat_ui",
+      "to": "domain_agent",
+      "y": 188,
+      "label": "UserMessageReceived(message)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "find-topic",
+      "from": "domain_agent",
+      "to": "topic_registry",
+      "y": 216,
+      "label": "FindBestTopicAsync(message)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "return-topic",
+      "from": "topic_registry",
+      "to": "domain_agent",
+      "y": 244,
+      "label": "topic + confidence",
+      "variant": "return"
+    },
+    {
+      "id": "run-topic",
+      "from": "domain_agent",
+      "to": "topic_flow",
+      "y": 272,
+      "label": "HookTopicEvents(); RunAsync()",
+      "variant": "emphasis"
+    },
+    {
+      "id": "run-activity",
+      "from": "topic_flow",
+      "to": "activity",
+      "y": 300,
+      "label": "RunAsync(context, input)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "activity-result",
+      "from": "activity",
+      "to": "topic_flow",
+      "y": 328,
+      "label": "ActivityResult + output events",
+      "variant": "return"
+    },
+    {
+      "id": "bubble-events",
+      "from": "topic_flow",
+      "to": "domain_agent",
+      "y": 356,
+      "label": "message / card / lifecycle events",
+      "variant": "dashed"
+    },
+    {
+      "id": "notify-ui",
+      "from": "domain_agent",
+      "to": "chat_ui",
+      "y": 384,
+      "label": "ActivityMessageReady / CardReady",
+      "variant": "return"
+    },
+    {
+      "id": "render-response",
+      "from": "chat_ui",
+      "to": "user",
+      "y": 412,
+      "label": "render response or Adaptive Card",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "chat_ui",
+      "from": 154,
+      "to": 420,
+      "type": "frontend"
+    },
+    {
+      "participant": "domain_agent",
+      "from": 182,
+      "to": 392,
+      "type": "backend"
+    },
+    {
+      "participant": "topic_registry",
+      "from": 210,
+      "to": 252,
+      "type": "backend"
+    },
+    {
+      "participant": "topic_flow",
+      "from": 266,
+      "to": 364,
+      "type": "backend"
+    },
+    {
+      "participant": "activity",
+      "from": 294,
+      "to": 336,
+      "type": "backend"
+    }
+  ]
+}
