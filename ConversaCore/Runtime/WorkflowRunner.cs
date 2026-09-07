@@ -13,24 +13,30 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
 {
     private readonly IConversationSession _session;
     private readonly ITopicActivator _activator;
+    private readonly ITopicCatalog _catalog;
     private readonly IWorkflowOutputDispatcher _outputDispatcher;
     private readonly IServiceProvider _services;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private readonly Stack<SuspendedExecution> _suspendedParents = new();
     private ITopic? _activeExecution;
     private bool _disposed;
 
     /// <summary>Creates a runner for exactly one scoped conversation.</summary>
-    public WorkflowRunner(IConversationSession session, ITopicActivator activator, IServiceProvider services,
+    public WorkflowRunner(IConversationSession session, ITopicActivator activator, ITopicCatalog catalog, IServiceProvider services,
         IWorkflowOutputDispatcher? outputDispatcher = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _activator = activator ?? throw new ArgumentNullException(nameof(activator));
+        _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _outputDispatcher = outputDispatcher ?? NullWorkflowOutputDispatcher.Instance;
     }
 
     /// <inheritdoc />
     public bool HasActiveExecution => _activeExecution is not null;
+
+    /// <inheritdoc />
+    public int PendingSubtopicDepth => _suspendedParents.Count;
 
     /// <inheritdoc />
     public Task<WorkflowExecutionOutcome> StartAsync(TopicDescriptor topic, CancellationToken cancellationToken = default)
@@ -70,6 +76,8 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_suspendedParents.Count != 0)
+                throw new InvalidOperationException("Cannot replace a workflow while a parent is awaiting subtopic completion.");
             // A new activation supersedes an old, nonterminal execution only when the caller has
             // already made that routing/interrupt decision. CC-207 supplies that policy.
             _activeExecution = await _activator.ActivateAsync(topic.TopicId, _services, cancellationToken).ConfigureAwait(false);
@@ -96,6 +104,15 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         var outcome = new WorkflowExecutionOutcome(descriptor, state, result.Response, result.AdaptiveCardJson,
             result.IsHandled, result.IsWaitingForSubTopic ? result.NextTopicName : null);
 
+        // The parent wait is observable before its child starts. The runner, not an activity
+        // subscription, then performs the hand-down as one serialized continuation.
+        if (state == WorkflowExecutionState.WaitingForSubtopic)
+        {
+            await _outputDispatcher.DispatchAsync(outcome, cancellationToken).ConfigureAwait(false);
+            return await StartRequestedSubtopicAsync(descriptor, execution, result.NextTopicName!, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         if (state is WorkflowExecutionState.Completed or WorkflowExecutionState.NotHandled)
         {
             _activeExecution = null;
@@ -103,7 +120,48 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         }
 
         await _outputDispatcher.DispatchAsync(outcome, cancellationToken).ConfigureAwait(false);
+        if (state is WorkflowExecutionState.Completed or WorkflowExecutionState.NotHandled)
+            return await ResumeParentIfNeededAsync(outcome, cancellationToken).ConfigureAwait(false);
         return outcome;
+    }
+
+    private async Task<WorkflowExecutionOutcome> StartRequestedSubtopicAsync(TopicDescriptor parentDescriptor,
+        ITopic parentExecution, string subtopicId, CancellationToken cancellationToken)
+    {
+        if (!_catalog.TryGetDescriptor(subtopicId, out var childDescriptor) || childDescriptor is null)
+            throw new TopicActivationException(subtopicId,
+                $"Topic '{parentDescriptor.TopicId}' requested unregistered subtopic '{subtopicId}'.");
+        if (_suspendedParents.Any(frame => frame.Descriptor.Equals(childDescriptor)) || parentDescriptor.Equals(childDescriptor))
+            throw new InvalidOperationException($"Subtopic cycle detected for '{childDescriptor.TopicId}'.");
+
+        // TriggerTopicActivity in the legacy compatibility path may have already pushed this
+        // exact child. New runner-owned paths do not; only the latter is popped by this runner.
+        var runnerOwnsSessionCall = !_session.IsTopicInCallStack(childDescriptor.TopicId);
+        if (runnerOwnsSessionCall)
+            _session.PushTopicCall(parentDescriptor.TopicId, childDescriptor.TopicId);
+
+        _suspendedParents.Push(new SuspendedExecution(parentDescriptor, parentExecution, runnerOwnsSessionCall));
+        _activeExecution = await _activator.ActivateAsync(childDescriptor.TopicId, _services, cancellationToken).ConfigureAwait(false);
+        _session.SetActiveTopic(childDescriptor);
+        return await ExecuteActiveAsync(childDescriptor, _activeExecution, string.Empty, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<WorkflowExecutionOutcome> ResumeParentIfNeededAsync(WorkflowExecutionOutcome childOutcome,
+        CancellationToken cancellationToken)
+    {
+        if (_suspendedParents.Count == 0)
+            return childOutcome;
+
+        var parent = _suspendedParents.Pop();
+        if (parent.RunnerOwnsSessionCall)
+            _session.PopTopicCall(childOutcome);
+
+        _activeExecution = parent.Execution;
+        _session.SetActiveTopic(parent.Descriptor);
+        // Existing ITopic exposes text input only. New typed child-result delivery is deliberately
+        // deferred; legacy TopicFlow uses this conventional completion signal to advance its cursor.
+        return await ExecuteActiveAsync(parent.Descriptor, parent.Execution, "Sub-topic completed", cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static WorkflowExecutionState GetState(TopicResult result) =>
@@ -123,6 +181,7 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         if (_disposed) return;
         _disposed = true;
         _activeExecution = null;
+        _suspendedParents.Clear();
         _operationGate.Dispose();
     }
 
@@ -135,4 +194,6 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
             return Task.CompletedTask;
         }
     }
+
+    private sealed record SuspendedExecution(TopicDescriptor Descriptor, ITopic Execution, bool RunnerOwnsSessionCall);
 }

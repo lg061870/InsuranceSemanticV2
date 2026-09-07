@@ -19,6 +19,9 @@ public interface IWorkflowRunner
     /// <summary>Delivers a message to the retained active activation.</summary>
     Task<WorkflowExecutionOutcome> DeliverToActiveAsync(string message, CancellationToken cancellationToken = default);
 
+    /// <summary>Gets the number of runner-owned parents currently awaiting a subtopic.</summary>
+    int PendingSubtopicDepth { get; }
+
     /// <summary>Gets whether this runner retains a mutable active activation.</summary>
     bool HasActiveExecution { get; }
 }
