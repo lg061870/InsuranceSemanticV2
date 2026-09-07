@@ -23,6 +23,12 @@ public interface IWorkflowRunner
     Task<WorkflowExecutionOutcome> InterruptAndDeliverAsync(TopicDescriptor topic, string message,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Cancels active runner work and clears retained execution state.</summary>
+    Task CancelAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Cancels active work and resets the conversation session without selecting a new start topic.</summary>
+    Task ResetAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Gets the number of runner-owned parents currently awaiting a subtopic.</summary>
     int PendingSubtopicDepth { get; }
 

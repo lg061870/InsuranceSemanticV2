@@ -17,7 +17,9 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
     private readonly IWorkflowOutputDispatcher _outputDispatcher;
     private readonly IServiceProvider _services;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private readonly object _cancellationSync = new();
     private readonly Stack<SuspendedExecution> _suspendedParents = new();
+    private CancellationTokenSource _executionCancellation = new();
     private ITopic? _activeExecution;
     private bool _disposed;
 
@@ -55,12 +57,13 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         ThrowIfDisposed();
-        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = CreateOperationCancellation(cancellationToken);
+        await _operationGate.WaitAsync(operation.Token).ConfigureAwait(false);
         try
         {
             if (_activeExecution is null || _session.ActiveTopic is null)
                 throw new InvalidOperationException("No active workflow execution is available to receive input.");
-            return await ExecuteActiveAsync(_session.ActiveTopic, _activeExecution, message, cancellationToken,
+            return await ExecuteActiveAsync(_session.ActiveTopic, _activeExecution, message, operation.Token,
                 retainWhenUnhandled: true).ConfigureAwait(false);
         }
         finally
@@ -76,16 +79,17 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         ArgumentNullException.ThrowIfNull(topic);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         ThrowIfDisposed();
-        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = CreateOperationCancellation(cancellationToken);
+        await _operationGate.WaitAsync(operation.Token).ConfigureAwait(false);
         try
         {
             if (_activeExecution is null || _session.ActiveTopic is null)
                 throw new InvalidOperationException("No active workflow execution is available to interrupt.");
             _suspendedParents.Push(new SuspendedExecution(_session.ActiveTopic, _activeExecution,
                 RunnerOwnsSessionCall: false, SuspensionKind.Interruption));
-            _activeExecution = await _activator.ActivateAsync(topic.TopicId, _services, cancellationToken).ConfigureAwait(false);
+            _activeExecution = await _activator.ActivateAsync(topic.TopicId, _services, operation.Token).ConfigureAwait(false);
             _session.SetActiveTopic(topic);
-            return await ExecuteActiveAsync(topic, _activeExecution, message, cancellationToken).ConfigureAwait(false);
+            return await ExecuteActiveAsync(topic, _activeExecution, message, operation.Token).ConfigureAwait(false);
         }
         finally
         {
@@ -93,26 +97,58 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         }
     }
 
+    /// <inheritdoc />
+    public Task CancelAsync(CancellationToken cancellationToken = default) => ClearAfterCancellationAsync(resetSession: false, cancellationToken);
+
+    /// <inheritdoc />
+    public Task ResetAsync(CancellationToken cancellationToken = default) => ClearAfterCancellationAsync(resetSession: true, cancellationToken);
+
     private async Task<WorkflowExecutionOutcome> ExecuteNewAsync(TopicDescriptor topic, string message,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(topic);
         ThrowIfDisposed();
-        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = CreateOperationCancellation(cancellationToken);
+        await _operationGate.WaitAsync(operation.Token).ConfigureAwait(false);
         try
         {
             if (_suspendedParents.Count != 0)
                 throw new InvalidOperationException("Cannot replace a workflow while a parent is awaiting subtopic completion.");
             // A new activation supersedes an old, nonterminal execution only when the caller has
             // already made that routing/interrupt decision. CC-207 supplies that policy.
-            _activeExecution = await _activator.ActivateAsync(topic.TopicId, _services, cancellationToken).ConfigureAwait(false);
+            _activeExecution = await _activator.ActivateAsync(topic.TopicId, _services, operation.Token).ConfigureAwait(false);
             _session.SetActiveTopic(topic);
-            return await ExecuteActiveAsync(topic, _activeExecution, message, cancellationToken).ConfigureAwait(false);
+            return await ExecuteActiveAsync(topic, _activeExecution, message, operation.Token).ConfigureAwait(false);
         }
         finally
         {
             _operationGate.Release();
         }
+    }
+
+    private async Task ClearAfterCancellationAsync(bool resetSession, CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        lock (_cancellationSync) _executionCancellation.Cancel();
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _activeExecution = null;
+            _suspendedParents.Clear();
+            if (resetSession) _session.Reset(); else _session.SetActiveTopic(null);
+            lock (_cancellationSync)
+            {
+                _executionCancellation.Dispose();
+                _executionCancellation = new CancellationTokenSource();
+            }
+        }
+        finally { _operationGate.Release(); }
+    }
+
+    private CancellationTokenSource CreateOperationCancellation(CancellationToken callerToken)
+    {
+        lock (_cancellationSync)
+            return CancellationTokenSource.CreateLinkedTokenSource(callerToken, _executionCancellation.Token);
     }
 
     private async Task<WorkflowExecutionOutcome> ExecuteActiveAsync(TopicDescriptor descriptor, ITopic execution,
@@ -207,8 +243,10 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        lock (_cancellationSync) _executionCancellation.Cancel();
         _activeExecution = null;
         _suspendedParents.Clear();
+        _executionCancellation.Dispose();
         _operationGate.Dispose();
     }
 
