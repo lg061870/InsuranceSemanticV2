@@ -207,7 +207,7 @@ public abstract class TopicFlowActivity : ITerminable, IPausableActivity {
     // ======================================================
     // AUTOMATIC CONTEXT PROPAGATION
     // ======================================================
-    protected virtual async Task HandleActivityCompletionAsync(ActivityState from, ActivityState to, object? data) {
+    protected virtual void HandleActivityCompletion(ActivityState from, ActivityState to, object? data) {
         if (to != ActivityState.Completed || data == null) return;
         if (Context == null) return;
 
@@ -222,12 +222,11 @@ public abstract class TopicFlowActivity : ITerminable, IPausableActivity {
             }
         }
 
-        await Task.CompletedTask;
     }
 
     protected virtual void OnCompleted(object? data) {
         // Automatically trigger context propagation
-        _ = HandleActivityCompletionAsync(CurrentState, ActivityState.Completed, data);
+        HandleActivityCompletion(CurrentState, ActivityState.Completed, data);
     }
 
     protected virtual void OnMessageEmitted(string message) {
