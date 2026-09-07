@@ -86,13 +86,13 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 
 ### Tasks
 
-- [ ] **CC-100 — Introduce `ConversaCoreBuilder`.** Change or overload `AddConversaCore` to return a fluent builder while preserving the current extension during migration.
-- [ ] **CC-101 — Define `TopicDescriptor`.** Include stable ID, display name, description, priority, routing metadata, system/domain classification, interruption policy, and allowed tool IDs.
-- [ ] **CC-102 — Define registration APIs.** Support `AddTopic<T>()`, explicit factories where needed, and `AddTopicsFromAssemblyContaining<T>()`.
-- [ ] **CC-103 — Add startup validation.** Reject duplicate IDs, duplicate aliases, invalid lifetimes, missing fallback/start topics, and unresolved subtopic references.
-- [ ] **CC-104 — Separate definitions from instances.** Ensure registration builds immutable descriptors and factories without resolving scoped topic objects.
-- [ ] **CC-105 — Provide compatibility registration.** Translate existing `IEnumerable<ITopic>` registrations into descriptors during the migration window.
-- [ ] **CC-106 — Add API and validation tests.** Cover scanning, explicit registration, duplicate handling, deterministic ordering, and useful diagnostics.
+- [x] **CC-100 — Introduce `ConversaCoreBuilder`.** Change or overload `AddConversaCore` to return a fluent builder while preserving the current extension during migration. Delivered as a differently-named `AddConversaCoreBuilder` sibling entry point (a true overload differing only by return type is illegal in C#, CS0111); see [#22](https://github.com/lg061870/InsuranceSemanticV2/issues/22).
+- [x] **CC-101 — Define `TopicDescriptor`.** Include stable ID, display name, description, priority, routing metadata, system/domain classification, interruption policy, and allowed tool IDs. See [#23](https://github.com/lg061870/InsuranceSemanticV2/issues/23).
+- [x] **CC-102 — Define registration APIs.** Support `AddTopic<T>()`, explicit factories where needed, and `AddTopicsFromAssemblyContaining<T>()`. See [#24](https://github.com/lg061870/InsuranceSemanticV2/issues/24).
+- [ ] **CC-103 — Add startup validation.** Reject duplicate IDs, duplicate aliases, invalid lifetimes, missing fallback/start topics, and unresolved subtopic references. Partially delivered: aggregated duplicate-ID detection and missing start/fallback topic checks are done; duplicate aliases, invalid lifetimes, and unresolved subtopic references are deliberately deferred (no alias/lifetime/subtopic-reference concept exists yet on `TopicDescriptor` to check against). Scope-reconciliation decision pending; see [#25](https://github.com/lg061870/InsuranceSemanticV2/issues/25).
+- [x] **CC-104 — Separate definitions from instances.** Ensure registration builds immutable descriptors and factories without resolving scoped topic objects. The guarantee already held by construction from CC-100–103; delivered as holistic acceptance-test evidence, no production code change needed. See [#26](https://github.com/lg061870/InsuranceSemanticV2/issues/26).
+- [x] **CC-105 — Provide compatibility registration.** Translate existing `IEnumerable<ITopic>` registrations into descriptors during the migration window. See [#27](https://github.com/lg061870/InsuranceSemanticV2/issues/27).
+- [x] **CC-106 — Add API and validation tests.** Cover scanning, explicit registration, duplicate handling, deterministic ordering, and useful diagnostics. Closed a genuine gap in deterministic-ordering test coverage; the other four areas were already adequately covered. See [#28](https://github.com/lg061870/InsuranceSemanticV2/issues/28).
 
 ### Acceptance criteria
 
@@ -109,10 +109,10 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 
 ### Tasks
 
-- [ ] **CC-200 — Define `IConversationRuntime`.** Add awaitable start, message, card-submit, host-response, reset, and output-subscription operations.
-- [ ] **CC-201 — Implement the conversation session.** Own conversation identity, authenticated subject, active topic, topic stack, pending interactions, and shared state in a scoped service.
-- [ ] **CC-202 — Implement immutable `ITopicCatalog`.** Store descriptors and activation metadata only.
-- [ ] **CC-203 — Implement `ITopicActivator`.** Resolve a fresh mutable topic execution from the current conversation scope and await initialization before exposing it.
+- [x] **CC-200 — Define `IConversationRuntime`.** Add awaitable start, message, card-submit, host-response, reset, and output-subscription operations. Contract only (no implementation); ships with minimal WP3-scoped placeholder types (`CardSubmission`, `HostInteractionResponse`, `IConversationOutputSubscription`) documented as stopgaps. See [#30](https://github.com/lg061870/InsuranceSemanticV2/issues/30).
+- [x] **CC-201 — Implement the conversation session.** Own conversation identity, authenticated subject, active topic, topic stack, pending interactions, and shared state in a scoped service. Composes the existing `IConversationContext` rather than reimplementing it; adds a typed `ActiveTopic` and a pending-host-interaction registry. See [#31](https://github.com/lg061870/InsuranceSemanticV2/issues/31).
+- [x] **CC-202 — Implement immutable `ITopicCatalog`.** Store descriptors and activation metadata only. See [#32](https://github.com/lg061870/InsuranceSemanticV2/issues/32).
+- [x] **CC-203 — Implement `ITopicActivator`.** Resolve a fresh mutable topic execution from the current conversation scope and await initialization before exposing it. Defines a new optional `IAsyncInitializable` seam for the awaited-initialization phase; no real topic migrated onto it yet (that's CC-209/WP5). See [#33](https://github.com/lg061870/InsuranceSemanticV2/issues/33).
 - [ ] **CC-204 — Consolidate routing into `ITopicRouter`.** Merge the useful behavior of `TopicRegistry` and `TopicManager` under one policy and one threshold model.
 - [ ] **CC-205 — Implement `IWorkflowRunner`.** Own activity execution, active cursor, waits, output dispatch, and terminal transitions.
 - [ ] **CC-206 — Move subtopic coordination into the runner.** Replace event-subscription choreography with an explicit call stack and awaitable child completion.
