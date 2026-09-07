@@ -20,6 +20,9 @@ namespace ConversaCore.Registration;
 /// </remarks>
 public sealed class TopicRegistrationOptions
 {
+    /// <summary>Exact routing phrases, copied into immutable metadata. Null means none.</summary>
+    public IReadOnlySet<string>? TriggerPhrases { get; set; }
+
     /// <summary>
     /// A human-facing display name for diagnostics and authoring tools. Left
     /// <see langword="null"/> to fall back to <see cref="TopicDescriptor"/>'s own

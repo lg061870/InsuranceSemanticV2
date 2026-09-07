@@ -264,6 +264,7 @@ public static class ConversaCoreBuilderTopicExtensions
             Priority = options.Priority,
             Classification = options.Classification,
             InterruptionPolicy = options.InterruptionPolicy,
+            TriggerPhrases = options.TriggerPhrases ?? new HashSet<string>(),
             AllowedToolIds = options.AllowedToolIds ?? new HashSet<string>()
         };
     }

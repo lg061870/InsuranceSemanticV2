@@ -1,4 +1,5 @@
 using ConversaCore.Topics;
+using System.Collections.Frozen;
 
 namespace ConversaCore.Registration;
 
@@ -76,6 +77,22 @@ public enum TopicInterruptionPolicy
 /// </remarks>
 public sealed record TopicDescriptor
 {
+    private IReadOnlySet<string> _triggerPhrases = Array.Empty<string>().ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Exact, case-insensitive routing phrases. Copied, trimmed and frozen at registration;
+    /// these are matching hints, not unique topic aliases. Multiple topics may share a phrase.</summary>
+    public IReadOnlySet<string> TriggerPhrases
+    {
+        get => _triggerPhrases;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (value.Any(string.IsNullOrWhiteSpace))
+                throw new ArgumentException("Trigger phrases must not be blank.", nameof(value));
+            _triggerPhrases = value.Select(p => p.Trim()).ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
     private static readonly IReadOnlySet<string> EmptyToolIds = new HashSet<string>();
 
     /// <summary>
