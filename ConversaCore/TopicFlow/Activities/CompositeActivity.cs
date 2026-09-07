@@ -21,6 +21,8 @@ public class CompositeActivity :
     private readonly IList<TopicFlowActivity> _activities;
     private TopicFlowActivity? _waitingChild;
     private TopicWorkflowContext? _storedContext;
+    private Task? _resumeTask;
+    private CancellationToken _operationCancellationToken;
 
     private string CurrentIndexKey => $"{Id}_CurrentActivityIndex";
 
@@ -107,6 +109,7 @@ public class CompositeActivity :
 
         TransitionTo(ActivityState.Running, input);
         _storedContext = context;
+        _operationCancellationToken = cancellationToken;
 
         var currentIndex = context.GetValue<int>(CurrentIndexKey, 0);
         Console.WriteLine($"[CompositeActivity] Starting at index {currentIndex} / {_activities.Count}");
@@ -158,7 +161,7 @@ public class CompositeActivity :
             var child = _activities[index];
             Console.WriteLine($"[CompositeActivity.ResumeAsync] ➡️ Next child: {child.Id} ({child.GetType().Name})");
 
-            var result = await child.RunAsync(context, null, CancellationToken.None);
+            var result = await child.RunAsync(context, null, _operationCancellationToken);
             Console.WriteLine($"[CompositeActivity.ResumeAsync] Child {child.Id} finished RunAsync → IsWaiting={result.IsWaiting}");
 
             if (result.IsWaiting) {
@@ -210,15 +213,7 @@ public class CompositeActivity :
 
                 _waitingChild = null;
                 if (_storedContext != null) {
-                    _ = Task.Run(async () => {
-                        try {
-                            Console.WriteLine($"[CompositeActivity] ⚙️ Calling ResumeAsync() after {_waitingChild?.Id ?? "unknown"} completion");
-                            await ResumeAsync(_storedContext);
-                        } catch (Exception ex) {
-                            Console.WriteLine($"[CompositeActivity] ❌ ResumeAsync error: {ex}");
-                            TransitionTo(ActivityState.Failed, ex);
-                        }
-                    });
+                    _resumeTask = ResumeAfterChildCompletionAsync(_storedContext);
                 }
             }
         };
@@ -240,6 +235,20 @@ public class CompositeActivity :
             ac.CardDataReceived += (s, e) => CardDataReceived?.Invoke(s, e);
             ac.ModelBound += (s, e) => ModelBound?.Invoke(s, e);
             ac.ValidationFailed += (s, e) => ValidationFailed?.Invoke(s, e);
+        }
+    }
+
+    private async Task ResumeAfterChildCompletionAsync(TopicWorkflowContext context)
+    {
+        try
+        {
+            Console.WriteLine($"[CompositeActivity] ⚙️ Calling ResumeAsync() after child completion");
+            await ResumeAsync(context).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CompositeActivity] ❌ ResumeAsync error: {ex}");
+            TransitionTo(ActivityState.Failed, ex);
         }
     }
 

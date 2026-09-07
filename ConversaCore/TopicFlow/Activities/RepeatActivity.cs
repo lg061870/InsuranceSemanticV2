@@ -29,6 +29,8 @@ private Dictionary<string, object>? _lastSubmittedData; // Store last submitted 
 private bool _continuationDecisionMade = false; // Flag to track if user made continuation choice
 private bool _shouldContinueAfterCompletion = false; // User's continuation decision
 private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance cards with continuation prompts        // === IAdaptiveCardActivity Events - Forward from child activities ===
+    private Task? _childCompletionTask;
+    private CancellationToken _operationCancellationToken;
     public event EventHandler<CardJsonEventArgs>? CardJsonEmitted;
     public event EventHandler<CardJsonEventArgs>? CardJsonSending;
     public event EventHandler<CardJsonEventArgs>? CardJsonSent;
@@ -84,7 +86,7 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
                     
                     // Complete current iteration immediately without forwarding to child
                     var dummyResult = new { UserResponse = userResponse };
-                    OnChildActivityCompleted(_currentActivity, new ActivityCompletedEventArgs(
+                    StartChildCompletion(_currentActivity, new ActivityCompletedEventArgs(
                         _currentActivity?.Id ?? $"Iteration{_currentIteration}", dummyResult));
                     return;
                 }
@@ -174,7 +176,7 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
             // so that any messages (e.g. QA answers, empathy text)
             // inside the loop surface as normal bot messages.
             childActivity.MessageEmitted += (s, e) => OnMessageEmitted(e.Message);
-            childActivity.ActivityCompleted += OnChildActivityCompleted;
+            childActivity.ActivityCompleted += StartChildCompletion;
         }
     }
 
@@ -236,7 +238,22 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
     /// <summary>
     /// Handles completion of child activity and triggers next iteration if needed.
     /// </summary>
-    private async void OnChildActivityCompleted(object? sender, ActivityCompletedEventArgs e)
+    private void StartChildCompletion(object? sender, ActivityCompletedEventArgs e)
+    {
+        _childCompletionTask = HandleChildActivityCompletionSafelyAsync(sender, e);
+    }
+
+    private async Task HandleChildActivityCompletionSafelyAsync(object? sender, ActivityCompletedEventArgs e)
+    {
+        try { await HandleChildActivityCompletedAsync(sender, e).ConfigureAwait(false); }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "[RepeatActivity] Child completion continuation failed");
+            TransitionTo(ActivityState.Failed, ex);
+        }
+    }
+
+    private async Task HandleChildActivityCompletedAsync(object? sender, ActivityCompletedEventArgs e)
     {
         _logger?.LogWarning("[RepeatActivity] OnChildActivityCompleted - ActivityId: {ActivityId}, Iteration: {Iteration}", 
             e.ActivityId, _currentIteration);
@@ -357,7 +374,7 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
             HookChildActivityEvents(_currentActivity);
             
             // Execute the wrapped activity
-            var result = await _currentActivity.RunAsync(_activeContext!, null, CancellationToken.None);
+            var result = await _currentActivity.RunAsync(_activeContext!, null, _operationCancellationToken);
             
             // Handle waiting states - activity might be waiting for user input
             if (result.IsWaiting)
@@ -369,8 +386,9 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
             else if (!result.IsWaiting && !result.IsEnd)
             {
                 _logger?.LogInformation("[RepeatActivity] Activity completed immediately on iteration {Iteration}", _currentIteration);
-                // Trigger completion manually since OnChildActivityCompleted won't fire for immediate completion
-                OnChildActivityCompleted(_currentActivity, new ActivityCompletedEventArgs(iterationId, result.ModelContext ?? new object()));
+                // Trigger completion manually since the child event won't fire for immediate completion.
+                await HandleChildActivityCompletedAsync(_currentActivity,
+                    new ActivityCompletedEventArgs(iterationId, result.ModelContext ?? new object()));
             }
         }
         catch (Exception ex)
@@ -442,6 +460,7 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
         CancellationToken cancellationToken = default)
     {
         _activeContext = context; // Store context for event handlers
+        _operationCancellationToken = cancellationToken;
         _logger?.LogInformation("[RepeatActivity] Starting repeat execution for {ActivityId}", Id);
 
         try

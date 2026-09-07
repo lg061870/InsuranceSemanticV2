@@ -320,7 +320,10 @@ public abstract class DomainAgentService {
         LogTrace("EVT_AC_0002");
     }
 
-    protected async void OnTopicTriggered(object? sender, TopicTriggeredEventArgs e) {
+    protected void OnTopicTriggered(object? sender, TopicTriggeredEventArgs e) =>
+        ObserveLegacyCallback(OnTopicTriggeredAsync(sender, e), nameof(OnTopicTriggered));
+
+    private async Task OnTopicTriggeredAsync(object? sender, TopicTriggeredEventArgs e) {
 
         var senderType = sender?.GetType().Name ?? "Unknown";
         var senderId = sender is TopicFlowActivity activity
@@ -473,7 +476,10 @@ public abstract class DomainAgentService {
         }
     }
 
-    protected async void OnCustomEventTriggered(object? sender, CustomEventTriggeredEventArgs e) {
+    protected void OnCustomEventTriggered(object? sender, CustomEventTriggeredEventArgs e) =>
+        ObserveLegacyCallback(OnCustomEventTriggeredAsync(sender, e), nameof(OnCustomEventTriggered));
+
+    private async Task OnCustomEventTriggeredAsync(object? sender, CustomEventTriggeredEventArgs e) {
         LogInfo("EVT_CE_0001");
         _logger.LogWarning("[DEBUG] OnCustomEventTriggered called - EventName={EventName}, Sender={SenderType}, SubscriberCount={Count}",
             e.EventName, sender?.GetType().Name ?? "null", CustomEventTriggered?.GetInvocationList().Length ?? 0);
@@ -494,7 +500,10 @@ public abstract class DomainAgentService {
         }
     }
 
-    protected async void OnTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) {
+    protected void OnTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) =>
+        ObserveLegacyCallback(OnTopicLifecycleChangedAsync(sender, e), nameof(OnTopicLifecycleChanged));
+
+    private async Task OnTopicLifecycleChangedAsync(object? sender, TopicLifecycleEventArgs e) {
         LogInfo("EVT_LF_0001");
 
         try {
@@ -642,7 +651,10 @@ public abstract class DomainAgentService {
 
         AsyncActivityCompleted?.Invoke(this, e);
     }
-    protected async void HandleTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) {
+    protected void HandleTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) =>
+        ObserveLegacyCallback(HandleTopicLifecycleChangedAsync(sender, e), nameof(HandleTopicLifecycleChanged));
+
+    private async Task HandleTopicLifecycleChangedAsync(object? sender, TopicLifecycleEventArgs e) {
 
         LogInfo("EVT_TH_0001");
 
@@ -706,7 +718,10 @@ public abstract class DomainAgentService {
             }
         }
     }
-    private void HandleActivityCompleted(object? sender, ActivityCompletedEventArgs e) {
+    private void HandleActivityCompleted(object? sender, ActivityCompletedEventArgs e) =>
+        ObserveLegacyCallback(HandleActivityCompletedAsync(sender, e), nameof(HandleActivityCompleted));
+
+    private async Task HandleActivityCompletedAsync(object? sender, ActivityCompletedEventArgs e) {
         LogInfo("EVT_ACM_0001");
         ActivityCompleted?.Invoke(this, e);
 
@@ -721,20 +736,26 @@ public abstract class DomainAgentService {
             var current = flow.GetCurrentActivity();
             if (current != null && current.Id == e.ActivityId)
             {
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
-                    {
-                        _logger.LogInformation("[DomainAgentService] Advancing flow '{FlowName}' after ActivityCompleted for current activity {ActivityId}", flow.Name, e.ActivityId);
-                        await flow.StepAsync(null, CancellationToken.None);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "[DomainAgentService] Error advancing flow after ActivityCompleted for {ActivityId}", e.ActivityId);
-                    }
-                });
+                    _logger.LogInformation("[DomainAgentService] Advancing flow '{FlowName}' after ActivityCompleted for current activity {ActivityId}", flow.Name, e.ActivityId);
+                    await flow.StepAsync(null, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[DomainAgentService] Error advancing flow after ActivityCompleted for {ActivityId}", e.ActivityId);
+                }
             }
         }
+    }
+
+    private void ObserveLegacyCallback(Task callback, string operation)
+    {
+        callback.GetAwaiter().OnCompleted(() =>
+        {
+            try { callback.GetAwaiter().GetResult(); }
+            catch (Exception ex) { _logger.LogError(ex, "Legacy callback {Operation} failed", operation); }
+        });
     }
     private void HandleTopicInserted(object? sender, TopicInsertedEventArgs e)
         => TopicInserted?.Invoke(this, e);

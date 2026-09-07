@@ -139,23 +139,10 @@ public class ZapierWebhookActivity : TopicFlowActivity
             }
             else
             {
-                // Fire and forget - don't wait for response
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await _integrationService.ExecuteAsync<ZapierWebhookRequest, ZapierWebhookResponse>(
-                            "Zapier",
-                            integrationRequest,
-                            CancellationToken.None);
-                    }
-                    catch (Exception ex)
-                    {
-                        _activityLogger?.LogError(ex, "Fire-and-forget Zapier webhook failed");
-                    }
-                }, CancellationToken.None);
-
-                _activityLogger?.LogInformation("Zapier webhook triggered (fire-and-forget mode)");
+                // Framework lifecycle work is always awaited so cancellation and failure reach the runner.
+                await _integrationService.ExecuteAsync<ZapierWebhookRequest, ZapierWebhookResponse>(
+                    "Zapier", integrationRequest, cancellationToken);
+                _activityLogger?.LogInformation("Zapier webhook triggered and completed");
                 
                 TransitionTo(ActivityState.Completed, "Webhook triggered");
                 return ActivityResult.Continue(new { status = "triggered" });

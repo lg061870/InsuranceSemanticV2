@@ -118,35 +118,14 @@ public abstract class SemanticActivity : TopicFlowActivity, IAsyncNotifiableActi
         CancellationToken cancellationToken = default) {
 
         if (RunInBackground) {
-            _semanticLogger.LogInformation("[{ActivityId}] 🚀 Running semantic activity in background.", Id);
-
-            _ = Task.Run(async () => {
-                try {
-                    var result = await RunSemanticCoreAsync(context, input, cancellationToken);
-
-                    // 🔹 Run user-provided callback (if any)
-                    TopicFlowActivity? nextActivity = null;
-                    if (OnAsyncCompletedCallback != null) {
-                        try {
-                            _semanticLogger.LogDebug("[{ActivityId}] 🔁 Executing OnAsyncCompleted callback...", Id);
-                            nextActivity = await OnAsyncCompletedCallback(context);
-                        } catch (Exception cbEx) {
-                            _semanticLogger.LogWarning(cbEx,
-                                "[{ActivityId}] ⚠ OnAsyncCompleted callback failed.", Id);
-                        }
-                    }
-
-                    // 🔹 Raise AsyncCompleted event
-                    if (nextActivity != null)
-                        RaiseAsyncCompleted(context, nextActivity);
-
-                    _semanticLogger.LogInformation("[{ActivityId}] ✅ Background semantic activity completed.", Id);
-                } catch (Exception ex) {
-                    _semanticLogger.LogError(ex, "[{ActivityId}] ❌ Background semantic activity failed.", Id);
-                }
-            }, cancellationToken);
-
-            return ActivityResult.Continue($"[{Id}] running in background");
+            _semanticLogger.LogInformation("[{ActivityId}] Running formerly-background semantic activity as an awaited operation.", Id);
+            var result = await RunSemanticCoreAsync(context, input, cancellationToken).ConfigureAwait(false);
+            if (OnAsyncCompletedCallback is not null)
+            {
+                var nextActivity = await OnAsyncCompletedCallback(context).ConfigureAwait(false);
+                if (nextActivity is not null) RaiseAsyncCompleted(context, nextActivity);
+            }
+            return result;
         }
 
         // Default synchronous path
