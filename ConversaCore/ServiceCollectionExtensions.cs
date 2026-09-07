@@ -2,6 +2,7 @@
 
 using ConversaCore.Context;
 using ConversaCore.Interfaces;
+using ConversaCore.Registration;
 using ConversaCore.Services;
 using ConversaCore.TopicFlow;
 using ConversaCore.Topics;
@@ -25,6 +26,62 @@ public static class ServiceCollectionExtensions {
         this IServiceCollection services,
         string openAIApiKey,
         string embeddingModel = "text-embedding-3-small"
+    ) {
+        RegisterConversaCoreServices(services, openAIApiKey, embeddingModel);
+        return services;
+    }
+
+    /// <summary>
+    /// Adds ConversaCore to the DI container, identically to
+    /// <see cref="AddConversaCore(IServiceCollection, string, string)"/>, but returns a
+    /// <see cref="ConversaCoreBuilder"/> wrapping the same <see cref="IServiceCollection"/>
+    /// instead of the raw collection.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the builder-returning entry point introduced for CC-100 (see the
+    /// ConversaCore transformation work breakdown, WP1, and target architecture section
+    /// 1's <c>AddConversaCore(options => ...).AddTopicsFromAssemblyContaining&lt;T&gt;()...</c>
+    /// example). It exists as a separate, differently named method rather than a literal
+    /// C# overload of <see cref="AddConversaCore(IServiceCollection, string, string)"/>
+    /// because a same-named overload with an identical parameter list
+    /// (<c>string</c>, <c>string</c> with a default) cannot legally differ only by return
+    /// type — the compiler rejects that as a duplicate signature (CS0111). Both methods
+    /// call the same private <see cref="RegisterConversaCoreServices"/> registration logic,
+    /// so they are guaranteed to register the identical set of services with identical
+    /// lifetimes; only the returned wrapper type differs. The pre-existing
+    /// <see cref="AddConversaCore(IServiceCollection, string, string)"/> overload is left
+    /// completely unchanged so every current caller keeps compiling and behaving
+    /// identically.
+    /// </para>
+    /// </remarks>
+    /// <param name="services">The service collection to register ConversaCore's base services into.</param>
+    /// <param name="openAIApiKey">The OpenAI API key used for chat completion and embedding generation.</param>
+    /// <param name="embeddingModel">The embedding model ID. Defaults to <c>"text-embedding-3-small"</c>.</param>
+    /// <returns>A <see cref="ConversaCoreBuilder"/> wrapping <paramref name="services"/>.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when <paramref name="openAIApiKey"/> is null, empty, or whitespace.</exception>
+    public static ConversaCoreBuilder AddConversaCoreBuilder(
+        this IServiceCollection services,
+        string openAIApiKey,
+        string embeddingModel = "text-embedding-3-small"
+    ) {
+        RegisterConversaCoreServices(services, openAIApiKey, embeddingModel);
+        return new ConversaCoreBuilder(services);
+    }
+
+    /// <summary>
+    /// Registers ConversaCore's base framework services (topic registry, Semantic Kernel,
+    /// embedding generator, intent recognition, conversation context, topic manager,
+    /// vector database, and base framework services) into <paramref name="services"/>.
+    /// Shared by <see cref="AddConversaCore(IServiceCollection, string, string)"/> and
+    /// <see cref="AddConversaCoreBuilder(IServiceCollection, string, string)"/> so both
+    /// entry points perform exactly the same registration work with no duplicated logic
+    /// and no risk of behavioral drift between them.
+    /// </summary>
+    private static void RegisterConversaCoreServices(
+        IServiceCollection services,
+        string openAIApiKey,
+        string embeddingModel
     ) {
         Console.WriteLine("Starting ConversaCore registration...");
 
@@ -105,7 +162,6 @@ public static class ServiceCollectionExtensions {
         services.AddScoped<IDocumentEmbeddingService, Services.DocumentEmbeddingService>();
 
         Console.WriteLine("ConversaCore successfully registered.");
-        return services;
     }
 
     public static void ResetConversaCore(this IServiceProvider serviceProvider) {
