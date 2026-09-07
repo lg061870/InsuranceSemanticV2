@@ -60,7 +60,32 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         {
             if (_activeExecution is null || _session.ActiveTopic is null)
                 throw new InvalidOperationException("No active workflow execution is available to receive input.");
-            return await ExecuteActiveAsync(_session.ActiveTopic, _activeExecution, message, cancellationToken).ConfigureAwait(false);
+            return await ExecuteActiveAsync(_session.ActiveTopic, _activeExecution, message, cancellationToken,
+                retainWhenUnhandled: true).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<WorkflowExecutionOutcome> InterruptAndDeliverAsync(TopicDescriptor topic, string message,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        ThrowIfDisposed();
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_activeExecution is null || _session.ActiveTopic is null)
+                throw new InvalidOperationException("No active workflow execution is available to interrupt.");
+            _suspendedParents.Push(new SuspendedExecution(_session.ActiveTopic, _activeExecution,
+                RunnerOwnsSessionCall: false, SuspensionKind.Interruption));
+            _activeExecution = await _activator.ActivateAsync(topic.TopicId, _services, cancellationToken).ConfigureAwait(false);
+            _session.SetActiveTopic(topic);
+            return await ExecuteActiveAsync(topic, _activeExecution, message, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -91,7 +116,7 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
     }
 
     private async Task<WorkflowExecutionOutcome> ExecuteActiveAsync(TopicDescriptor descriptor, ITopic execution,
-        string message, CancellationToken cancellationToken)
+        string message, CancellationToken cancellationToken, bool retainWhenUnhandled = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         // Legacy topic implementations expose this single awaitable compatibility entry point.
@@ -113,14 +138,14 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
                 .ConfigureAwait(false);
         }
 
-        if (state is WorkflowExecutionState.Completed or WorkflowExecutionState.NotHandled)
+        if (state == WorkflowExecutionState.Completed || (state == WorkflowExecutionState.NotHandled && !retainWhenUnhandled))
         {
             _activeExecution = null;
             _session.SetActiveTopic(null);
         }
 
         await _outputDispatcher.DispatchAsync(outcome, cancellationToken).ConfigureAwait(false);
-        if (state is WorkflowExecutionState.Completed or WorkflowExecutionState.NotHandled)
+        if (state == WorkflowExecutionState.Completed || (state == WorkflowExecutionState.NotHandled && !retainWhenUnhandled))
             return await ResumeParentIfNeededAsync(outcome, cancellationToken).ConfigureAwait(false);
         return outcome;
     }
@@ -140,7 +165,8 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         if (runnerOwnsSessionCall)
             _session.PushTopicCall(parentDescriptor.TopicId, childDescriptor.TopicId);
 
-        _suspendedParents.Push(new SuspendedExecution(parentDescriptor, parentExecution, runnerOwnsSessionCall));
+        _suspendedParents.Push(new SuspendedExecution(parentDescriptor, parentExecution, runnerOwnsSessionCall,
+            SuspensionKind.Subtopic));
         _activeExecution = await _activator.ActivateAsync(childDescriptor.TopicId, _services, cancellationToken).ConfigureAwait(false);
         _session.SetActiveTopic(childDescriptor);
         return await ExecuteActiveAsync(childDescriptor, _activeExecution, string.Empty, cancellationToken).ConfigureAwait(false);
@@ -159,8 +185,9 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         _activeExecution = parent.Execution;
         _session.SetActiveTopic(parent.Descriptor);
         // Existing ITopic exposes text input only. New typed child-result delivery is deliberately
-        // deferred; legacy TopicFlow uses this conventional completion signal to advance its cursor.
-        return await ExecuteActiveAsync(parent.Descriptor, parent.Execution, "Sub-topic completed", cancellationToken)
+        // deferred; legacy TopicFlow uses these conventional messages to advance its cursor.
+        var resumeMessage = parent.Kind == SuspensionKind.Subtopic ? "Sub-topic completed" : "Interrupted topic completed";
+        return await ExecuteActiveAsync(parent.Descriptor, parent.Execution, resumeMessage, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -195,5 +222,8 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         }
     }
 
-    private sealed record SuspendedExecution(TopicDescriptor Descriptor, ITopic Execution, bool RunnerOwnsSessionCall);
+    private enum SuspensionKind { Subtopic, Interruption }
+
+    private sealed record SuspendedExecution(TopicDescriptor Descriptor, ITopic Execution,
+        bool RunnerOwnsSessionCall, SuspensionKind Kind);
 }

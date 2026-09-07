@@ -19,6 +19,10 @@ public interface IWorkflowRunner
     /// <summary>Delivers a message to the retained active activation.</summary>
     Task<WorkflowExecutionOutcome> DeliverToActiveAsync(string message, CancellationToken cancellationToken = default);
 
+    /// <summary>Suspends the current execution and delivers a declared interruption to a fresh activation.</summary>
+    Task<WorkflowExecutionOutcome> InterruptAndDeliverAsync(TopicDescriptor topic, string message,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Gets the number of runner-owned parents currently awaiting a subtopic.</summary>
     int PendingSubtopicDepth { get; }
 
