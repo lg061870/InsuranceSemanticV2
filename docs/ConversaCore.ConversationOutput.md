@@ -13,8 +13,10 @@ event enums so the new API can remain stable while compatibility adapters are re
 
 `HostNotificationOutput` and `HostInteractionRequestOutput` establish the two host-event
 categories and their common identity/version/correlation metadata. They are abstract in
-CC-300: CC-303 adds strongly typed notification payloads, while CC-304 adds typed request
-and response payloads plus completion semantics.
+CC-300. `HostNotification<TPayload>` supplies the CC-303 one-way contract: it freezes the
+serializable typed payload at construction and returns fresh typed values from an immutable
+JSON snapshot, preventing caller/consumer mutation from changing dispatched data. CC-304
+adds typed interaction request and response payloads plus completion semantics.
 
 `IConversationOutputSubscription.ReadAllAsync` now streams `ConversationOutput` rather
 than `object`. The scoped `ConversationOutputDispatcher` serializes publication and fans
