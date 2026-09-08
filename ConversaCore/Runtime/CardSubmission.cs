@@ -6,12 +6,11 @@ namespace ConversaCore.Runtime;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>WP2-scoped placeholder (CC-200).</b> The full typed <c>ConversationOutput</c>
-/// hierarchy (see target architecture section 9.1, task CC-300) does not exist yet, so
-/// there is no typed <c>AdaptiveCardOutput</c>/<c>CardStateOutput</c> for a submission to
-/// correlate against. This type intentionally carries only the minimum shape needed to
+/// <b>WP2-scoped command placeholder (CC-200).</b> CC-300 now defines typed
+/// <see cref="AdaptiveCardOutput"/> and <see cref="CardStateOutput"/> contracts. This type
+/// intentionally carries only the minimum shape needed to
 /// compile and use <see cref="IConversationRuntime"/> today: a card identifier plus the
-/// submitted field values. WP3 (CC-300 through CC-304) will very likely refine or replace
+/// submitted field values. CC-304 may refine or replace
 /// this shape — for example, by validating <see cref="CardId"/> against the currently
 /// dispatched card, by typing <see cref="Data"/> against a per-card schema, or by folding
 /// submission into a broader correlated-interaction contract. Treat this as a stopgap,

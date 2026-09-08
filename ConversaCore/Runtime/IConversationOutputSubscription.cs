@@ -6,14 +6,9 @@ namespace ConversaCore.Runtime;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>WP2-scoped placeholder (CC-200).</b> The typed <c>ConversationOutput</c> hierarchy
-/// (messages, cards, card state, prompt state, topic/activity lifecycle, host
-/// notifications, host interaction requests — see target architecture section 9.1) is
-/// CC-300's job and does not exist yet. This subscription therefore streams <see
-/// cref="object"/> items rather than a typed <c>ConversationOutput</c> base type. WP3 will
-/// very likely replace the item type with <c>ConversationOutput</c> (or make this
-/// interface generic over it) once that hierarchy is defined; no output-shape decisions
-/// are made by this placeholder. Treat this as a stopgap, not a final design.
+/// CC-300 replaces the WP2 object placeholder with the domain-neutral
+/// <see cref="ConversationOutput"/> hierarchy. Buffering, ordering, multi-subscriber fan-out,
+/// and subscriber-failure isolation remain implementation concerns for CC-301.
 /// </para>
 /// <para>
 /// The shape follows ADR-003 ("the runtime emits typed <c>ConversationOutput</c> values
@@ -43,5 +38,5 @@ public interface IConversationOutputSubscription : IAsyncDisposable
     /// </summary>
     /// <param name="cancellationToken">A token that ends enumeration when cancelled.</param>
     /// <returns>An asynchronous stream of output items.</returns>
-    IAsyncEnumerable<object> ReadAllAsync(CancellationToken cancellationToken = default);
+    IAsyncEnumerable<ConversationOutput> ReadAllAsync(CancellationToken cancellationToken = default);
 }

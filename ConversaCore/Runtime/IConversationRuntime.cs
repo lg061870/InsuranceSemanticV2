@@ -15,10 +15,9 @@ namespace ConversaCore.Runtime;
 /// This file defines the contract only. It intentionally does not implement
 /// <see cref="IConversationRuntime"/> — that is CC-201 (the conversation session),
 /// CC-205 (the workflow runner that actually executes topic activities), and the later
-/// tickets that assemble a concrete implementation from them. It also does not build the
-/// typed output hierarchy, host-event contracts, or tool contracts described elsewhere in
-/// the target architecture; those belong to WP3 (CC-300 through CC-310) and WP4
-/// (CC-400 through CC-412) respectively.
+/// tickets that assemble a concrete implementation from them. The typed
+/// <see cref="ConversationOutput"/> hierarchy is now defined by CC-300; detailed host-event
+/// contracts and tool contracts remain WP3 and WP4 work respectively.
 /// </para>
 /// <para><b>Scoping decision: minimal placeholders, not a reduced interface.</b></para>
 /// <para>
@@ -39,14 +38,9 @@ namespace ConversaCore.Runtime;
 /// <para>
 /// The alternative chosen instead: define the full six-operation surface now, and
 /// introduce genuinely minimal, clearly-documented placeholder types
-/// (<see cref="CardSubmission"/>, <see cref="HostInteractionResponse"/>,
-/// <see cref="IConversationOutputSubscription"/>) for whatever this interface needs to
-/// reference that WP3 has not designed yet. Each placeholder's XML docs say plainly that
-/// WP3 (CC-300 through CC-304) will very likely refine or replace it, and none of them
-/// attempt to build the <c>ConversationOutput</c> hierarchy, typed host-event contracts,
-/// or correlation/timeout machinery those tickets own — they exist only so this interface
-/// compiles and is usable end-to-end today, matching prior WP1 practice (CC-100, CC-103,
-/// CC-105) of documenting a judgment call in XML docs rather than silently picking a side.
+/// (<see cref="CardSubmission"/> and <see cref="HostInteractionResponse"/>) for command
+/// payloads that CC-304 has not finalized. CC-300 has replaced the subscription's original
+/// object stream with typed <see cref="ConversationOutput"/> values.
 /// </para>
 /// <para><b>Command surface, mapped from the legacy implementation.</b></para>
 /// <para>
@@ -151,8 +145,7 @@ public interface IConversationRuntime
     /// (<c>ActivityMessageReady</c>, <c>ActivityAdaptiveCardReady</c>,
     /// <c>PromptInputStateChanged</c>, <c>TopicLifecycleChanged</c>, and similar events on
     /// <c>DomainAgentService</c>) with one ordered, awaitable stream per ADR-003. See
-    /// <see cref="IConversationOutputSubscription"/> remarks for this subscription's
-    /// placeholder output-item shape.
+    /// <see cref="IConversationOutputSubscription"/> remarks for its typed output stream.
     /// </summary>
     /// <returns>A new subscription. The caller owns its lifetime and must dispose it (via <see cref="IAsyncDisposable"/>) when no longer needed.</returns>
     IConversationOutputSubscription Subscribe();

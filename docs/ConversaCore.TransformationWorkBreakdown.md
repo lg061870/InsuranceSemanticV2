@@ -140,7 +140,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 
 ### Tasks
 
-- [ ] **CC-300 — Define the `ConversationOutput` hierarchy.** Include messages, cards, card state, prompt state, topic/activity lifecycle, host notifications, and host interaction requests.
+- [x] **CC-300 — Define the `ConversationOutput` hierarchy.** Immutable, context-free contracts now cover messages, cards, card state, prompt state, topic/activity lifecycle, plus abstract versioned host-notification and correlated host-interaction categories for CC-303/304 specialization. `IConversationOutputSubscription` now streams the typed base contract; see [typed conversation output](ConversaCore.ConversationOutput.md).
 - [ ] **CC-301 — Implement ordered asynchronous dispatch.** Provide per-conversation ordering, multiple subscribers where required, cancellation, disposal, and subscriber-failure isolation.
 - [ ] **CC-302 — Adapt existing framework activities.** Translate current message/card/prompt/lifecycle emissions into typed outputs without domain forwarding code.
 - [ ] **CC-303 — Define typed host notifications.** Add stable event identity/version and typed immutable payloads.
