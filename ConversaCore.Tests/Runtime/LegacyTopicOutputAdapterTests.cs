@@ -5,6 +5,8 @@ using ConversaCore.Runtime;
 using ConversaCore.TopicFlow;
 using ConversaCore.Topics;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using Flow = ConversaCore.TopicFlow.TopicFlow;
 
 namespace ConversaCore.Tests.Runtime;
@@ -79,6 +81,147 @@ public sealed class LegacyTopicOutputAdapterTests
         await lease.DisposeAsync();
     }
 
+    [Fact]
+    public async Task FireAndForgetEvent_IsMappedToImmutableNotificationWithoutBlockingForHost()
+    {
+        var session = Session();
+        await using var dispatcher = new ConversationOutputDispatcher(session);
+        await using var coordinator = new HostInteractionCoordinator(session, dispatcher);
+        var subscription = dispatcher.Subscribe();
+        var logger = new RecordingLogger<LegacyTopicOutputAdapter>();
+        var adapter = new LegacyTopicOutputAdapter(session, dispatcher, logger, coordinator);
+        var source = new MutablePayload { Value = "original" };
+        var activity = new EventTriggerActivity("notify", "appointment.changed", source);
+        var legacyCallbacks = 0;
+        activity.CustomEventTriggered += (_, _) => legacyCallbacks++;
+        await using var lease = adapter.Attach(Descriptor(), FlowWith(activity));
+        await using var outputs = subscription.ReadAllAsync().GetAsyncEnumerator();
+
+        var result = await activity.RunAsync(new TopicWorkflowContext());
+        source.Value = "changed";
+        var notification = await ReadUntilAsync<HostNotification<LegacyEventTriggerPayload>>(outputs);
+
+        Assert.False(result.IsWaiting);
+        Assert.Equal(ActivityState.Completed, activity.CurrentState);
+        Assert.Equal("appointment.changed", notification.EventName);
+        Assert.Equal(1, notification.Version);
+        Assert.Equal("notify", notification.Payload.ActivityId);
+        Assert.Equal("original", notification.Payload.Data.GetProperty("Value").GetString());
+        Assert.Equal(0, legacyCallbacks);
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Warning &&
+            entry.Message.Contains("replace it with a typed host contract", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WaitForResponseEvent_UsesCorrelationAndResumesExactActivity()
+    {
+        var session = Session();
+        await using var dispatcher = new ConversationOutputDispatcher(session);
+        await using var coordinator = new HostInteractionCoordinator(session, dispatcher);
+        var subscription = dispatcher.Subscribe();
+        var adapter = new LegacyTopicOutputAdapter(session, dispatcher,
+            NullLogger<LegacyTopicOutputAdapter>.Instance, coordinator);
+        var activity = EventTriggerActivity.CreateWaitForResponse(
+            "confirm", "appointment.confirm", "host_response",
+            new { AppointmentId = "A-1" }, TimeSpan.FromSeconds(5));
+        var context = new TopicWorkflowContext();
+        await using var lease = adapter.Attach(Descriptor(), FlowWith(activity));
+        await using var outputs = subscription.ReadAllAsync().GetAsyncEnumerator();
+
+        var running = activity.RunAsync(context);
+        var request = await ReadUntilAsync<HostInteractionRequest<LegacyEventTriggerPayload, JsonElement>>(outputs);
+
+        Assert.False(running.IsCompleted);
+        Assert.Equal(ActivityState.WaitingForUserInput, activity.CurrentState);
+        Assert.True(session.IsHostInteractionPending(request.RequestId));
+        Assert.Equal("A-1", request.Request.Data.GetProperty("AppointmentId").GetString());
+
+        await coordinator.RespondAsync(new HostInteractionResponse(request.RequestId, new { Confirmed = true }));
+        var result = await running;
+
+        Assert.False(result.IsWaiting);
+        Assert.Equal(ActivityState.Completed, activity.CurrentState);
+        Assert.True(context.GetValue<JsonElement>("host_response").GetProperty("Confirmed").GetBoolean());
+        Assert.Null(context.GetValue<string>("confirm_WaitingForEvent"));
+        Assert.Empty(session.PendingHostInteractionIds);
+    }
+
+    [Fact]
+    public async Task WaitForResponseCancellation_CleansPendingStateAndWaitingMarkers()
+    {
+        var session = Session();
+        await using var dispatcher = new ConversationOutputDispatcher(session);
+        await using var coordinator = new HostInteractionCoordinator(session, dispatcher);
+        var subscription = dispatcher.Subscribe();
+        var adapter = new LegacyTopicOutputAdapter(session, dispatcher,
+            NullLogger<LegacyTopicOutputAdapter>.Instance, coordinator);
+        var activity = EventTriggerActivity.CreateWaitForResponse(
+            "confirm", "appointment.confirm", "host_response", responseTimeout: TimeSpan.FromSeconds(5));
+        var context = new TopicWorkflowContext();
+        using var cancellation = new CancellationTokenSource();
+        await using var lease = adapter.Attach(Descriptor(), FlowWith(activity));
+        await using var outputs = subscription.ReadAllAsync().GetAsyncEnumerator();
+
+        var running = activity.RunAsync(context, cancellationToken: cancellation.Token);
+        await ReadUntilAsync<HostInteractionRequest<LegacyEventTriggerPayload, JsonElement>>(outputs);
+        cancellation.Cancel();
+        var result = await running;
+
+        Assert.True(result.IsCancelled);
+        Assert.Equal(ActivityState.Failed, activity.CurrentState);
+        Assert.Null(context.GetValue<string>("confirm_WaitingForEvent"));
+        Assert.Empty(session.PendingHostInteractionIds);
+    }
+
+    [Fact]
+    public async Task WaitForResponseTimeout_CancelsActivityAndRejectsLateResponse()
+    {
+        var session = Session();
+        await using var dispatcher = new ConversationOutputDispatcher(session);
+        await using var coordinator = new HostInteractionCoordinator(session, dispatcher);
+        var subscription = dispatcher.Subscribe();
+        var adapter = new LegacyTopicOutputAdapter(session, dispatcher,
+            NullLogger<LegacyTopicOutputAdapter>.Instance, coordinator);
+        var activity = EventTriggerActivity.CreateWaitForResponse(
+            "confirm", "appointment.confirm", "host_response", responseTimeout: TimeSpan.FromMilliseconds(100));
+        var context = new TopicWorkflowContext();
+        await using var lease = adapter.Attach(Descriptor(), FlowWith(activity));
+        await using var outputs = subscription.ReadAllAsync().GetAsyncEnumerator();
+
+        var running = activity.RunAsync(context);
+        var request = await ReadUntilAsync<HostInteractionRequest<LegacyEventTriggerPayload, JsonElement>>(outputs);
+        var result = await running;
+
+        Assert.True(result.IsCancelled);
+        Assert.Equal(ActivityState.Failed, activity.CurrentState);
+        Assert.Null(context.GetValue<string>("confirm_WaitingForEvent"));
+        Assert.Empty(session.PendingHostInteractionIds);
+        await Assert.ThrowsAsync<HostInteractionNotPendingException>(() => coordinator.RespondAsync(
+            new HostInteractionResponse(request.RequestId, new { Confirmed = true })));
+    }
+
+    [Fact]
+    public async Task DisposedLease_DetachesRuntimeCompatibilityHandler()
+    {
+        var session = Session();
+        await using var dispatcher = new ConversationOutputDispatcher(session);
+        var subscription = dispatcher.Subscribe();
+        var adapter = new LegacyTopicOutputAdapter(session, dispatcher,
+            NullLogger<LegacyTopicOutputAdapter>.Instance);
+        var activity = new EventTriggerActivity("notify", "appointment.changed");
+        var legacyCallbacks = 0;
+        activity.CustomEventTriggered += (_, _) => legacyCallbacks++;
+        var lease = adapter.Attach(Descriptor(), FlowWith(activity));
+
+        await lease.DisposeAsync();
+        await activity.RunAsync(new TopicWorkflowContext());
+        await dispatcher.DisposeAsync();
+        var outputs = await ReadAllAsync(subscription);
+
+        Assert.Equal(1, legacyCallbacks);
+        Assert.DoesNotContain(outputs, output => output is HostNotificationOutput);
+    }
+
     private static (string CardId, ConversationCardState State) CardState(ConversationOutput output)
     {
         var state = Assert.IsType<CardStateOutput>(output);
@@ -103,6 +246,28 @@ public sealed class LegacyTopicOutputAdapterTests
         var outputs = new List<ConversationOutput>();
         await foreach (var output in subscription.ReadAllAsync()) outputs.Add(output);
         return outputs;
+    }
+
+    private static async Task<TOutput> ReadUntilAsync<TOutput>(IAsyncEnumerator<ConversationOutput> outputs)
+        where TOutput : ConversationOutput
+    {
+        while (await outputs.MoveNextAsync())
+            if (outputs.Current is TOutput match) return match;
+        throw new InvalidOperationException($"Output {typeof(TOutput).Name} was not dispatched.");
+    }
+
+    private sealed class MutablePayload
+    {
+        public string Value { get; set; } = string.Empty;
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Entries.Add((logLevel, formatter(state, exception)));
     }
 
     private sealed class EmittingCardActivity(string id) : TopicFlowActivity(id), IAdaptiveCardActivity

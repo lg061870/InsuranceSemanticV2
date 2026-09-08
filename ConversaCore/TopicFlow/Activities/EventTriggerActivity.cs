@@ -20,6 +20,7 @@ public class EventTriggerActivity : TopicFlowActivity, ICustomEventTriggeredActi
     private readonly bool _waitForResponse;
     private readonly string? _responseContextKey;
     private readonly TimeSpan _responseTimeout;
+    private Func<string, object?, bool, TimeSpan, CancellationToken, Task<object?>>? _runtimeHandler;
 
     public event EventHandler<CustomEventTriggeredEventArgs>? CustomEventTriggered;
 
@@ -140,6 +141,14 @@ public class EventTriggerActivity : TopicFlowActivity, ICustomEventTriggeredActi
         }
     }
 
+    internal IDisposable AttachRuntimeHandler(
+        Func<string, object?, bool, TimeSpan, CancellationToken, Task<object?>> handler) {
+        ArgumentNullException.ThrowIfNull(handler);
+        if (Interlocked.CompareExchange(ref _runtimeHandler, handler, null) is not null)
+            throw new InvalidOperationException($"Event trigger activity '{Id}' is already attached to a runtime.");
+        return new RuntimeHandlerLease(this, handler);
+    }
+
     protected override async Task<ActivityResult> RunActivity(
         TopicWorkflowContext context,
         object? input = null,
@@ -177,6 +186,39 @@ public class EventTriggerActivity : TopicFlowActivity, ICustomEventTriggeredActi
             _logger?.LogDebug(
                 "[EventTriggerActivity] Resolved event data type = {Type}",
                 resolvedEventData?.GetType().Name ?? "null");
+
+            var runtimeHandler = Volatile.Read(ref _runtimeHandler);
+            if (runtimeHandler is not null) {
+                if (_waitForResponse) {
+                    TransitionTo(ActivityState.WaitingForUserInput, _eventName);
+                    context.SetValue($"{Id}_WaitingForEvent", _eventName);
+                    context.SetValue($"{Id}_ResponseKey", _responseContextKey);
+                }
+
+                try {
+                    var response = await runtimeHandler(
+                        _eventName, resolvedEventData, _waitForResponse, _responseTimeout, cancellationToken);
+
+                    if (_waitForResponse) {
+                        if (!string.IsNullOrEmpty(_responseContextKey))
+                            context.SetValue(_responseContextKey, response);
+                        ClearWaitingMarkers(context);
+                    }
+
+                    TransitionTo(ActivityState.Completed, response ?? resolvedEventData ?? _eventName);
+                    return ActivityResult.Continue(
+                        $"Event '{_eventName}' triggered successfully",
+                        new { Event = _eventName, Data = resolvedEventData, Response = response });
+                } catch (TimeoutException) {
+                    ClearWaitingMarkers(context);
+                    TransitionTo(ActivityState.Failed, "Timeout waiting for response");
+                    return ActivityResult.Cancelled($"Timeout waiting for response to '{_eventName}'");
+                } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                    ClearWaitingMarkers(context);
+                    TransitionTo(ActivityState.Failed, "Cancelled externally");
+                    return ActivityResult.Cancelled($"Cancelled externally while waiting for '{_eventName}'");
+                }
+            }
 
             // Optional: dump JSON payload preview (safe serialization)
             try {
@@ -272,6 +314,22 @@ public class EventTriggerActivity : TopicFlowActivity, ICustomEventTriggeredActi
 
     public (string EventName, string? ResponseKey, bool IsWaiting) GetWaitingInfo() =>
         (_eventName, _responseContextKey, CurrentState == ActivityState.WaitingForUserInput);
+
+    private void ClearWaitingMarkers(TopicWorkflowContext context) {
+        context.RemoveValue($"{Id}_WaitingForEvent");
+        context.RemoveValue($"{Id}_ResponseKey");
+    }
+
+    private sealed class RuntimeHandlerLease(
+        EventTriggerActivity owner,
+        Func<string, object?, bool, TimeSpan, CancellationToken, Task<object?>> handler) : IDisposable {
+        private int _disposed;
+
+        public void Dispose() {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                Interlocked.CompareExchange(ref owner._runtimeHandler, null, handler);
+        }
+    }
 
     public override string ToString() {
         var mode = _waitForResponse ? "WaitForResponse" : "FireAndForget";

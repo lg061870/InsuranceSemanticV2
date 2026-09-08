@@ -40,3 +40,15 @@ channel serviced by one tracked dispatch pump. The lease owns and removes every 
 It reproduces the legacy card sequence—previous card read-only, current card active, card
 payload, then prompt state—without forwarding mutable workflow context. The concrete
 runtime created during UI binding (CC-306) owns attachment and lease disposal.
+
+CC-305 extends that compatibility lease to legacy `EventTriggerActivity` instances.
+Fire-and-forget activities are translated to
+`HostNotification<LegacyEventTriggerPayload>` and complete once the immutable output has
+been accepted by the dispatcher; they never wait for a host consumer. Wait-for-response
+activities are translated to
+`HostInteractionRequest<LegacyEventTriggerPayload, JsonElement>` and resume only after
+the host submits the matching request ID through `IHostInteractionCoordinator`.
+Timeout and cancellation clear both correlation state and legacy waiting markers. The
+adapter logs a structured warning on every use and detaches its runtime handler with the
+lease. New topics should use domain-owned typed contracts instead of this retirement-only
+envelope.
