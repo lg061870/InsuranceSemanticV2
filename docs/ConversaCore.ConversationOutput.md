@@ -17,5 +17,9 @@ CC-300: CC-303 adds strongly typed notification payloads, while CC-304 adds type
 and response payloads plus completion semantics.
 
 `IConversationOutputSubscription.ReadAllAsync` now streams `ConversationOutput` rather
-than `object`. Per-conversation ordering, fan-out, cancellation, disposal, and subscriber
-isolation are implemented by CC-301; translating legacy activity events is CC-302.
+than `object`. The scoped `ConversationOutputDispatcher` serializes publication and fans
+each output out to independent unbounded subscription channels. Publication never invokes
+or waits for consumer code. Cancelling or disposing a subscription removes only that
+reader; disposing the dispatcher completes all readers. Outputs for a different
+conversation are rejected before publication. Translating legacy activity events is
+CC-302.

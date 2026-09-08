@@ -10,7 +10,7 @@ namespace ConversaCore.Tests.Runtime;
 public sealed class RuntimeFoundationRegistrationTests
 {
     [Fact]
-    public void Foundation_uses_target_lifetimes_without_activating_topics_at_startup()
+    public async Task Foundation_uses_target_lifetimes_without_activating_topics_at_startup()
     {
         var activations = 0;
         var services = new ServiceCollection();
@@ -21,19 +21,21 @@ public sealed class RuntimeFoundationRegistrationTests
             .AddTopic<ITopic>("topic", _ => { activations++; return new ProbeTopic(); })
             .AddConversationRuntimeFoundation();
 
-        using var root = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        await using var root = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         Assert.Equal(0, activations);
         var catalog = root.GetRequiredService<ITopicCatalog>();
         Assert.Equal(0, activations);
 
-        using var first = root.CreateScope();
-        using var second = root.CreateScope();
+        await using var first = root.CreateAsyncScope();
+        await using var second = root.CreateAsyncScope();
         Assert.Same(catalog, first.ServiceProvider.GetRequiredService<ITopicCatalog>());
         Assert.Same(catalog, second.ServiceProvider.GetRequiredService<ITopicCatalog>());
         Assert.NotSame(first.ServiceProvider.GetRequiredService<IConversationSession>(),
             second.ServiceProvider.GetRequiredService<IConversationSession>());
         Assert.NotSame(first.ServiceProvider.GetRequiredService<IWorkflowRunner>(),
             second.ServiceProvider.GetRequiredService<IWorkflowRunner>());
+        Assert.NotSame(first.ServiceProvider.GetRequiredService<IConversationOutputDispatcher>(),
+            second.ServiceProvider.GetRequiredService<IConversationOutputDispatcher>());
         Assert.NotSame(first.ServiceProvider.GetRequiredService<IConversationMessageCoordinator>(),
             second.ServiceProvider.GetRequiredService<IConversationMessageCoordinator>());
         Assert.Equal(0, activations);
