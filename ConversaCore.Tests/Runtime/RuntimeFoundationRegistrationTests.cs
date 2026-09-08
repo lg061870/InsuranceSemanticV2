@@ -36,6 +36,8 @@ public sealed class RuntimeFoundationRegistrationTests
             second.ServiceProvider.GetRequiredService<IWorkflowRunner>());
         Assert.NotSame(first.ServiceProvider.GetRequiredService<IConversationOutputDispatcher>(),
             second.ServiceProvider.GetRequiredService<IConversationOutputDispatcher>());
+        Assert.NotSame(first.ServiceProvider.GetRequiredService<ILegacyTopicOutputAdapter>(),
+            second.ServiceProvider.GetRequiredService<ILegacyTopicOutputAdapter>());
         Assert.NotSame(first.ServiceProvider.GetRequiredService<IConversationMessageCoordinator>(),
             second.ServiceProvider.GetRequiredService<IConversationMessageCoordinator>());
         Assert.Equal(0, activations);

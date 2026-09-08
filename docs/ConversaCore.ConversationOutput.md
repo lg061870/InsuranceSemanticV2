@@ -23,3 +23,11 @@ or waits for consumer code. Cancelling or disposing a subscription removes only 
 reader; disposing the dispatcher completes all readers. Outputs for a different
 conversation are rejected before publication. Translating legacy activity events is
 CC-302.
+
+`LegacyTopicOutputAdapter` is the temporary CC-302 bridge for existing `TopicFlow`
+implementations. An attachment lease subscribes to topic and activity lifecycle, message,
+and adaptive-card events, snapshots them into typed outputs, and feeds an ordered internal
+channel serviced by one tracked dispatch pump. The lease owns and removes every handler.
+It reproduces the legacy card sequence—previous card read-only, current card active, card
+payload, then prompt state—without forwarding mutable workflow context. The concrete
+runtime created during UI binding (CC-306) owns attachment and lease disposal.

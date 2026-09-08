@@ -190,12 +190,24 @@ public sealed record TopicLifecycleOutput : ConversationOutput
 /// <summary>Stable public states for an activity execution.</summary>
 public enum ConversationActivityState
 {
+    /// <summary>The activity is inactive.</summary>
+    Idle,
     /// <summary>The activity exists but has not started.</summary>
     Created,
     /// <summary>The activity is executing.</summary>
     Running,
+    /// <summary>The activity rendered its visual output.</summary>
+    Rendered,
     /// <summary>The activity awaits user input.</summary>
     WaitingForInput,
+    /// <summary>The activity awaits a nested activity.</summary>
+    WaitingForSubactivity,
+    /// <summary>The activity collected user input.</summary>
+    InputCollected,
+    /// <summary>The activity failed input validation.</summary>
+    ValidationFailed,
+    /// <summary>The activity emitted its trigger.</summary>
+    Triggered,
     /// <summary>The activity completed successfully.</summary>
     Completed,
     /// <summary>The activity failed.</summary>

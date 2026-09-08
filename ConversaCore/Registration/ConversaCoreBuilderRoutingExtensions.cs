@@ -33,6 +33,7 @@ public static class ConversaCoreBuilderRoutingExtensions
         builder.AddTopicRouting(options);
         builder.Services.TryAddScoped<IConversationSession, ConversationSession>();
         builder.Services.TryAddScoped<IConversationOutputDispatcher, ConversationOutputDispatcher>();
+        builder.Services.TryAddScoped<ILegacyTopicOutputAdapter, LegacyTopicOutputAdapter>();
         builder.Services.TryAddScoped<ITopicActivator, TopicActivator>();
         builder.Services.TryAddScoped<IWorkflowRunner, WorkflowRunner>();
         builder.Services.TryAddScoped<IConversationMessageCoordinator, ConversationMessageCoordinator>();
