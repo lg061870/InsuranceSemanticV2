@@ -15,8 +15,15 @@ event enums so the new API can remain stable while compatibility adapters are re
 categories and their common identity/version/correlation metadata. They are abstract in
 CC-300. `HostNotification<TPayload>` supplies the CC-303 one-way contract: it freezes the
 serializable typed payload at construction and returns fresh typed values from an immutable
-JSON snapshot, preventing caller/consumer mutation from changing dispatched data. CC-304
-adds typed interaction request and response payloads plus completion semantics.
+JSON snapshot, preventing caller/consumer mutation from changing dispatched data.
+
+`HostInteractionRequest<TRequest,TResponse>` supplies the correlated two-way contract.
+`HostInteractionCoordinator` allocates a unique request ID, registers it in the scoped
+session, dispatches the frozen typed request, and awaits exactly one response matching the
+declared type. Wrong-type replies are rejected without consuming the request; unknown,
+duplicate, expired, and late replies throw `HostInteractionNotPendingException`. Timeout,
+caller cancellation, dispatch failure, and coordinator disposal all remove pending session
+state. Concurrent requests are resolved only through their own correlation IDs.
 
 `IConversationOutputSubscription.ReadAllAsync` now streams `ConversationOutput` rather
 than `object`. The scoped `ConversationOutputDispatcher` serializes publication and fans

@@ -1,62 +1,50 @@
+using System.Text.Json;
+
 namespace ConversaCore.Runtime;
 
-/// <summary>
-/// Carries the host application's answer to a previously dispatched correlated host
-/// interaction request, for delivery through
-/// <see cref="IConversationRuntime.RespondToHostInteractionAsync"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>WP2-scoped placeholder (CC-200).</b> Correlated host interactions
-/// (<c>HostInteractionRequest&lt;TRequest,TResponse&gt;</c>) are defined by CC-304, which
-/// has not run yet; today there is no typed request/response pair, no pending-correlation
-/// registry, and no timeout/cancellation/duplicate-response policy. This type carries only
-/// the minimum shape needed to compile and use <see cref="IConversationRuntime"/> today: a
-/// correlation identifier plus an untyped payload. WP3 will very likely replace
-/// <see cref="Payload"/> with a typed response tied to the originating request's declared
-/// response type, and will add the duplicate/late-response rejection behavior described in
-/// target architecture section 9.2 and ADR-004. Treat this as a stopgap, not a final
-/// design.
-/// </para>
-/// <para>
-/// <see cref="RequestId"/> is the correlation ID a future host interaction dispatcher
-/// assigns when it pauses a topic awaiting a host response (see ADR-004: "Every host
-/// interaction carries a correlation ID. The response completes exactly one pending
-/// request."). No such dispatcher exists yet in this codebase; this type only reserves the
-/// shape a caller will need to supply once one does.
-/// </para>
-/// </remarks>
-public sealed class HostInteractionResponse
+/// <summary>Immutable response envelope for a correlated host interaction.</summary>
+/// <remarks>The payload is frozen as JSON when constructed. The coordinator deserializes it as
+/// the response type declared by the matching <see cref="HostInteractionRequest{TRequest,TResponse}"/>.</remarks>
+public class HostInteractionResponse
 {
-    /// <summary>
-    /// The correlation ID of the pending host interaction this response completes. Must
-    /// not be null, empty, or whitespace.
-    /// </summary>
-    public string RequestId { get; }
+    private readonly JsonElement _payloadSnapshot;
+    private readonly Type? _payloadType;
 
-    /// <summary>
-    /// The host's response payload. Untyped for now because no per-request response type
-    /// is defined yet (see remarks); a future implementation will very likely replace this
-    /// with a typed value validated against the originating request. May be null for
-    /// interactions that carry no response data beyond acknowledgment.
-    /// </summary>
-    public object? Payload { get; }
-
-    /// <summary>
-    /// Creates a new host interaction response.
-    /// </summary>
-    /// <param name="requestId">The correlation ID of the pending host interaction. Must not be null, empty, or whitespace.</param>
-    /// <param name="payload">The host's response payload, or null when the interaction carries no response data.</param>
-    /// <exception cref="ArgumentException">
-    /// Thrown when <paramref name="requestId"/> is null, empty, or consists only of
-    /// whitespace.
-    /// </exception>
+    /// <summary>Creates a response envelope from a serializable payload.</summary>
     public HostInteractionResponse(string requestId, object? payload = null)
     {
-        if (string.IsNullOrWhiteSpace(requestId))
-            throw new ArgumentException("Request ID must not be null, empty, or whitespace.", nameof(requestId));
-
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
         RequestId = requestId;
-        Payload = payload;
+        _payloadType = payload?.GetType();
+        _payloadSnapshot = payload is null
+            ? JsonSerializer.SerializeToElement<object?>(null)
+            : JsonSerializer.SerializeToElement(payload, payload.GetType()).Clone();
     }
+
+    /// <summary>Gets the correlation identifier copied from the request.</summary>
+    public string RequestId { get; }
+
+    /// <summary>Gets a fresh copy of the payload using its construction-time runtime type.</summary>
+    public object? Payload => _payloadType is null ? null : _payloadSnapshot.Deserialize(_payloadType);
+
+    /// <summary>Gets the immutable serialized response payload.</summary>
+    public JsonElement PayloadSnapshot => _payloadSnapshot.Clone();
+
+    internal TResponse ReadPayload<TResponse>() where TResponse : notnull =>
+        _payloadSnapshot.Deserialize<TResponse>()
+        ?? throw new JsonException($"Host interaction response could not be read as {typeof(TResponse).FullName}.");
+}
+
+/// <summary>A strongly typed host response that remains compatible with the runtime envelope.</summary>
+public sealed class HostInteractionResponse<TResponse> : HostInteractionResponse
+    where TResponse : notnull
+{
+    /// <summary>Creates and freezes a typed response.</summary>
+    public HostInteractionResponse(string requestId, TResponse payload) : base(requestId, payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+    }
+
+    /// <summary>Gets a fresh typed copy of the frozen response payload.</summary>
+    public new TResponse Payload => ReadPayload<TResponse>();
 }

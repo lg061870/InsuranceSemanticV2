@@ -37,10 +37,9 @@ namespace ConversaCore.Runtime;
 /// </para>
 /// <para>
 /// The alternative chosen instead: define the full six-operation surface now, and
-/// introduce genuinely minimal, clearly-documented placeholder types
-/// (<see cref="CardSubmission"/> and <see cref="HostInteractionResponse"/>) for command
-/// payloads that CC-304 has not finalized. CC-300 has replaced the subscription's original
-/// object stream with typed <see cref="ConversationOutput"/> values.
+/// introduce genuinely minimal, clearly-documented command payloads. CC-300 replaced the
+/// subscription's original object stream with typed <see cref="ConversationOutput"/> values,
+/// and CC-304 made <see cref="HostInteractionResponse"/> an immutable correlated envelope.
 /// </para>
 /// <para><b>Command surface, mapped from the legacy implementation.</b></para>
 /// <para>

@@ -25,6 +25,7 @@ public sealed class ConversationSession : IConversationSession
     private readonly IConversationContext _context;
     private readonly ILogger<ConversationSession>? _logger;
     private readonly HashSet<string> _pendingHostInteractionIds = new();
+    private readonly object _pendingHostInteractionSync = new();
 
     /// <inheritdoc />
     public string ConversationId => _context.ConversationId;
@@ -42,7 +43,10 @@ public sealed class ConversationSession : IConversationSession
     public int TopicCallDepth => _context.GetTopicCallDepth();
 
     /// <inheritdoc />
-    public IReadOnlyCollection<string> PendingHostInteractionIds => _pendingHostInteractionIds.ToArray();
+    public IReadOnlyCollection<string> PendingHostInteractionIds
+    {
+        get { lock (_pendingHostInteractionSync) return _pendingHostInteractionIds.ToArray(); }
+    }
 
     /// <summary>
     /// Creates a new conversation session over an existing conversation context.
@@ -108,10 +112,11 @@ public sealed class ConversationSession : IConversationSession
     {
         ValidateRequestId(requestId);
 
-        if (!_pendingHostInteractionIds.Add(requestId))
+        lock (_pendingHostInteractionSync)
         {
-            throw new InvalidOperationException(
-                $"Host interaction '{requestId}' is already registered as pending for conversation '{ConversationId}'.");
+            if (!_pendingHostInteractionIds.Add(requestId))
+                throw new InvalidOperationException(
+                    $"Host interaction '{requestId}' is already registered as pending for conversation '{ConversationId}'.");
         }
 
         _logger?.LogDebug(
@@ -124,7 +129,7 @@ public sealed class ConversationSession : IConversationSession
     public bool IsHostInteractionPending(string requestId)
     {
         ValidateRequestId(requestId);
-        return _pendingHostInteractionIds.Contains(requestId);
+        lock (_pendingHostInteractionSync) return _pendingHostInteractionIds.Contains(requestId);
     }
 
     /// <inheritdoc />
@@ -132,7 +137,8 @@ public sealed class ConversationSession : IConversationSession
     {
         ValidateRequestId(requestId);
 
-        var resolved = _pendingHostInteractionIds.Remove(requestId);
+        bool resolved;
+        lock (_pendingHostInteractionSync) resolved = _pendingHostInteractionIds.Remove(requestId);
 
         if (resolved)
         {
@@ -157,7 +163,7 @@ public sealed class ConversationSession : IConversationSession
     {
         _context.Reset();
         ActiveTopic = null;
-        _pendingHostInteractionIds.Clear();
+        lock (_pendingHostInteractionSync) _pendingHostInteractionIds.Clear();
 
         _logger?.LogInformation(
             "[ConversationSession] Session reset for conversation {ConversationId}",
