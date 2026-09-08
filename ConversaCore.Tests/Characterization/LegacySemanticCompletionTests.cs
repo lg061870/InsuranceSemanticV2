@@ -19,7 +19,7 @@ namespace ConversaCore.Tests.Characterization;
 /// <see cref="LegacyOrchestrationTests.AsyncCompletion_InsertsFollowupIntoActiveFlow_AndForwardsOriginalEvent"/>
 /// only calls <c>DomainAgentService.HandleAsyncActivityCompleted</c> directly with a hand-built
 /// <see cref="AsyncQueryCompletedEventArgs"/>. It never proves that a real activity, doing real
-/// background work, raises that event on its own.
+/// semantic work, raises that event on its own.
 ///
 /// This test instead builds a real <see cref="SemanticQueryActivity{TRuleSet, TInput, TOutput}"/> —
 /// the exact production activity type <c>MarketingT1Topic</c> uses for its background semantic
@@ -33,7 +33,7 @@ namespace ConversaCore.Tests.Characterization;
 /// the fake implementation returns a canned response on an already-completed <see cref="Task"/>.
 ///
 /// Observable pipeline exercised for real (no step is short-circuited or called directly):
-/// activity.RunActivity (background Task.Run) -&gt; SemanticActivity.AsyncCompleted -&gt;
+/// activity.RunActivity (awaited compatibility path) -&gt; SemanticActivity.AsyncCompleted -&gt;
 /// TopicFlow.Add's forwarding subscription -&gt; TopicFlow.AsyncActivityCompleted -&gt;
 /// DomainAgentService.HandleAsyncActivityCompleted -&gt; flow.InsertNext(followup) -&gt;
 /// DomainAgentService.AsyncActivityCompleted.
@@ -74,15 +74,15 @@ public class LegacySemanticCompletionTests {
         // (the same one a live host calls), not through any internal shortcut.
         await agent.Message("trigger the background semantic query");
 
-        // The semantic activity's background Task.Run has not necessarily
-        // finished when Message() returns (RunInBackground fires-and-forgets).
-        // Wait on the real forwarded event instead of an arbitrary sleep.
+        // CC-210 makes the compatibility path awaitable even when the legacy
+        // RunInBackground flag is set. The forwarded event is therefore complete
+        // before Message() returns; retaining the TCS verifies the real event path.
         var forwarded = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert: the real activity code raised the completion end to end.
         Assert.Same(followup, forwarded.Activity);
         Assert.Contains(followup, flow.GetAllActivities());
-        Assert.Equal(ActivityState.Created, followup.CurrentState);
+        Assert.Equal(ActivityState.Completed, followup.CurrentState);
 
         // And the real semantic pipeline actually executed (prompt building,
         // the fake model call, JSON parsing, context storage) rather than

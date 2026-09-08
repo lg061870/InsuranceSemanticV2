@@ -43,3 +43,8 @@ also remains later work.
 
 This is framework-only. No InsuranceAgent code is changed; reference-domain
 migration waits for the completed framework and revised domain requirements.
+
+`AddConversationRuntimeFoundation(options)` wires the immutable catalog as a
+singleton and the session, activator, router, runner, and message coordinator as
+scoped services. Registration stores descriptors/factories only and does not
+construct topics. The public `IConversationRuntime` facade remains later work.

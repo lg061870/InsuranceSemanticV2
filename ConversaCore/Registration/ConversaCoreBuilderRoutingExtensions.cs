@@ -22,4 +22,19 @@ public static class ConversaCoreBuilderRoutingExtensions
             sp.GetService<ITopicSemanticRanker>()));
         return builder;
     }
+
+    /// <summary>Wires the implemented WP2 runtime foundation using its target lifetimes.</summary>
+    /// <remarks>This registers no public <see cref="IConversationRuntime"/> implementation;
+    /// facade assembly remains a later task. No topic factory is invoked during registration.</remarks>
+    public static ConversaCoreBuilder AddConversationRuntimeFoundation(
+        this ConversaCoreBuilder builder, TopicRouterOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.AddTopicRouting(options);
+        builder.Services.TryAddScoped<IConversationSession, ConversationSession>();
+        builder.Services.TryAddScoped<ITopicActivator, TopicActivator>();
+        builder.Services.TryAddScoped<IWorkflowRunner, WorkflowRunner>();
+        builder.Services.TryAddScoped<IConversationMessageCoordinator, ConversationMessageCoordinator>();
+        return builder;
+    }
 }
