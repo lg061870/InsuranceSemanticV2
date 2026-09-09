@@ -22,7 +22,8 @@ public sealed record ToolDescriptor
         ToolAuthorizationPolicy? authorization = null,
         ToolConfirmationPolicy? confirmation = null,
         ToolReliabilityPolicy? reliability = null,
-        ToolDataPolicy? dataPolicy = null)
+        ToolDataPolicy? dataPolicy = null,
+        Type? implementationType = null)
     {
         if (string.IsNullOrWhiteSpace(toolId))
             throw new ArgumentException("Tool ID must not be null, empty, or whitespace.", nameof(toolId));
@@ -52,6 +53,7 @@ public sealed record ToolDescriptor
         Confirmation = confirmation ?? new ToolConfirmationPolicy();
         Reliability = reliability ?? new ToolReliabilityPolicy();
         DataPolicy = dataPolicy ?? new ToolDataPolicy();
+        ImplementationType = implementationType;
     }
 
     /// <summary>Gets the stable identifier used by registration and allowlists.</summary>
@@ -92,4 +94,7 @@ public sealed record ToolDescriptor
 
     /// <summary>Gets sensitivity and audit metadata.</summary>
     public ToolDataPolicy DataPolicy { get; }
+
+    /// <summary>Gets the implementation type, when registered by assembly scan.</summary>
+    public Type? ImplementationType { get; }
 }

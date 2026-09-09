@@ -171,7 +171,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 
 - [x] **CC-400 — Define tool contracts.** Added the immutable typed contracts in `ConversaCore.Tools`: `IConversaTool<TRequest,TResult>`, `ToolDescriptor`, `ToolExecutionContext`, and `ToolResult<TResult>`. Policy/side-effect metadata and execution enforcement remain CC-401 through CC-403.
 - [x] **CC-401 — Define side-effect and policy metadata.** `ToolDescriptor` now carries immutable read/mutate, authorization, confirmation, timeout/retry/idempotency, sensitivity, and audit metadata with validation; enforcement remains CC-403.
-- [ ] **CC-402 — Implement `IToolCatalog`.** Store immutable validated descriptors and precompiled schemas; add explicit and assembly-scanning registration.
+- [ ] **CC-402 — Implement `IToolCatalog`.** Partial progress: singleton immutable descriptor lookup and explicit `AddTool` registration are implemented without tool activation. Assembly scanning and schema compilation remain before completion.
 - [ ] **CC-403 — Implement `IToolExecutor`.** Resolve tool instances per invocation, validate input, enforce policy, propagate cancellation, classify errors, and emit telemetry.
 - [ ] **CC-404 — Implement deterministic `InvokeToolActivity`.** Map topic state to typed request, invoke one declared tool, and store a typed result without exposing the executor internals.
 - [ ] **CC-405 — Add topic tool allowlists.** Validate that every invoked or selectable tool is declared by the topic.

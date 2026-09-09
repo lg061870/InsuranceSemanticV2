@@ -341,6 +341,10 @@ Semantic tool discovery follows these rules:
 
 Tool descriptors, schemas, and embeddings are built or cached at startup. ConversaCore must not scan and semantically compare a global catalog on every message.
 
+CC-402 provides the singleton immutable `IToolCatalog` over descriptor metadata. Explicit
+descriptor registration does not activate tool instances; executor resolution remains a
+per-invocation concern owned by CC-403.
+
 ### 10.4 Results and conversation responses
 
 Tools return domain DTOs and structured errors, not final conversational prose. The topic or a response activity decides how to present the result. A returned tool result is available to the current conversation; it does not train the model or become permanent memory unless an explicit persistence feature stores it.
