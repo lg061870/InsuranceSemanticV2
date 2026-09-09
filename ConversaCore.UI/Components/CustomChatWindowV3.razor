@@ -146,6 +146,9 @@
     /// <summary>The preferred framework-owned runtime. When omitted, the scoped DI registration is used.</summary>
     [Parameter] public IConversationRuntime? Runtime { get; set; }
 
+    /// <summary>Receives every typed domain-specific host notification or interaction request.</summary>
+    [Parameter] public EventCallback<ConversationHostOutputContext> OnHostOutput { get; set; }
+
     /// <summary>Temporary compatibility fallback for applications not yet migrated to IConversationRuntime.</summary>
     [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
     [Parameter] public DomainAgentService? AgentService { get; set; }
@@ -502,6 +505,10 @@
         CancellationToken cancellationToken) {
         try {
             await foreach (var output in subscription.ReadAllAsync(cancellationToken)) {
+                if (output is HostOutput hostOutput) {
+                    await DispatchHostOutputAsync(hostOutput, cancellationToken);
+                    continue;
+                }
                 await InvokeAsync(async () => {
                     var change = _outputState.Apply(output);
                     if (change.ClearBusyIndicator) {
@@ -517,6 +524,28 @@
             Logger.LogDebug("[ChatWindowV3] Runtime output subscription cancelled");
         } catch (Exception ex) {
             Logger.LogError(ex, "[ChatWindowV3] Runtime output subscription failed");
+        }
+    }
+
+    private async Task DispatchHostOutputAsync(HostOutput output, CancellationToken cancellationToken) {
+        if (!OnHostOutput.HasDelegate) {
+            Logger.LogWarning(
+                "[ChatWindowV3] Host output {OutputType} has no containing-site handler",
+                output.GetType().Name);
+            return;
+        }
+
+        try {
+            var runtime = _activeRuntime ?? throw new InvalidOperationException(
+                "Host output was received without an active conversation runtime.");
+            var context = new ConversationHostOutputContext(output, runtime);
+            await InvokeAsync(() => OnHostOutput.InvokeAsync(context));
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch (Exception ex) {
+            Logger.LogError(ex,
+                "[ChatWindowV3] Containing-site handler failed for host output {OutputType}",
+                output.GetType().Name);
         }
     }
 

@@ -11,7 +11,8 @@ The standard UI-facing outputs are `MessageOutput`, `AdaptiveCardOutput`,
 `ActivityLifecycleOutput`. Public state enums are intentionally separate from legacy
 event enums so the new API can remain stable while compatibility adapters are retired.
 
-`HostNotificationOutput` and `HostInteractionRequestOutput` establish the two host-event
+`HostOutput` is the common marker for the only domain-specific UI hook.
+`HostNotificationOutput` and `HostInteractionRequestOutput` establish its two host-event
 categories and their common identity/version/correlation metadata. They are abstract in
 CC-300. `HostNotification<TPayload>` supplies the CC-303 one-way contract: it freezes the
 serializable typed payload at construction and returns fresh typed values from an immutable
@@ -52,3 +53,9 @@ Timeout and cancellation clear both correlation state and legacy waiting markers
 adapter logs a structured warning on every use and detaches its runtime handler with the
 lease. New topics should use domain-owned typed contracts instead of this retirement-only
 envelope.
+
+ConversaCore.UI exposes those two forms through one `OnHostOutput` callback. Its
+`ConversationHostOutputContext` carries the immutable `HostOutput` and provides a typed
+`RespondAsync` operation only when the output is an interaction request. Responses retain
+the request ID and flow through `IConversationRuntime`; responding to a notification is
+rejected locally. Host outputs are not inserted into the generic chat transcript.

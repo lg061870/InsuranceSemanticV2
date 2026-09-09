@@ -238,8 +238,9 @@ ConversationOutput
 ├── PromptStateOutput
 ├── TopicLifecycleOutput
 ├── ActivityLifecycleOutput
-├── HostNotificationOutput
-└── HostInteractionRequestOutput
+└── HostOutput
+    ├── HostNotificationOutput
+    └── HostInteractionRequestOutput
 ```
 
 ConversaCore.UI automatically handles standard messages, cards, prompt state, and lifecycle state. The domain application does not manually forward these events.

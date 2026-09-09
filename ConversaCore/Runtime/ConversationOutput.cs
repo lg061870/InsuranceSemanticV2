@@ -242,9 +242,17 @@ public sealed record ActivityLifecycleOutput : ConversationOutput
     public string? Detail { get; }
 }
 
+/// <summary>Base contract for the only domain-specific output hook exposed to a containing host.</summary>
+public abstract record HostOutput : ConversationOutput
+{
+    /// <summary>Initializes common host-output metadata.</summary>
+    protected HostOutput(string conversationId, DateTimeOffset? occurredAtUtc = null)
+        : base(conversationId, occurredAtUtc) { }
+}
+
 /// <summary>Base output for a versioned, one-way notification to the containing host.</summary>
 /// <remarks>CC-303 adds the strongly typed payload specialization.</remarks>
-public abstract record HostNotificationOutput : ConversationOutput
+public abstract record HostNotificationOutput : HostOutput
 {
     /// <summary>Initializes host-notification identity.</summary>
     protected HostNotificationOutput(string conversationId, string eventName, int version,
@@ -264,7 +272,7 @@ public abstract record HostNotificationOutput : ConversationOutput
 
 /// <summary>Base output for an awaitable, correlated request to the containing host.</summary>
 /// <remarks>CC-304 adds typed request/response payloads and completion behavior.</remarks>
-public abstract record HostInteractionRequestOutput : ConversationOutput
+public abstract record HostInteractionRequestOutput : HostOutput
 {
     /// <summary>Initializes host-interaction identity and correlation metadata.</summary>
     protected HostInteractionRequestOutput(string conversationId, string requestId, string interactionName,

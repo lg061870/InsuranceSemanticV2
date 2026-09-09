@@ -24,6 +24,35 @@ subscribes to its typed output stream, and sends start, message, card-submit, an
 commands directly. The `Runtime` parameter can be supplied explicitly for advanced
 composition or tests.
 
+### Host events
+
+`OnHostOutput` is the single domain-specific hook. Standard messages and cards are
+rendered by the component; only typed `HostNotification<TPayload>` and
+`HostInteractionRequest<TRequest,TResponse>` values reach this callback.
+
+```razor
+<CustomChatWindowV3 OnHostOutput="HandleHostOutput" />
+
+@code {
+    private async Task HandleHostOutput(ConversationHostOutputContext context)
+    {
+        switch (context.Output)
+        {
+            case HostNotification<ProgressChanged> notification:
+                UpdateProgress(notification.Payload);
+                break;
+            case HostInteractionRequest<ConfirmAppointment, bool> request:
+                var confirmed = await ShowConfirmationDialog(request.Request);
+                await context.RespondAsync(confirmed);
+                break;
+        }
+    }
+}
+```
+
+Calling `RespondAsync` for a notification is rejected. Interaction responses retain the
+request correlation ID and are validated by the runtime against the declared response type.
+
 ## Chat Styles
 
 ### 1. SidebarChat (Default)
@@ -251,6 +280,7 @@ Each style applies a specific class to the container:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `Runtime` | `IConversationRuntime?` | DI resolution | Optional explicit runtime; otherwise the scoped registration is used |
+| `OnHostOutput` | `EventCallback<ConversationHostOutputContext>` | unset | Single typed hook for domain-specific host output and correlated responses |
 | `Style` | `ChatStyle` | `SidebarChat` | Visual style of the chat interface |
 | `AgentService` | `DomainAgentService?` | `null` | Obsolete migration fallback only |
 | `SubscribeToEvents` | `Action<CustomChatWindowV3>?` | `null` | Obsolete migration fallback only |
