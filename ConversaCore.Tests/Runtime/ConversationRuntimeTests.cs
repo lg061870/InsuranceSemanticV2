@@ -201,6 +201,39 @@ public sealed class ConversationRuntimeTests
         Assert.Equal("start", session.ActiveTopic?.TopicId);
     }
 
+    [Fact]
+    public async Task EventTriggerDemoTopic_UsesNonBlockingNotificationsAndCorrelatedInteraction()
+    {
+        var services = Services();
+        new ConversaCoreBuilder(services)
+            .AddTopic<EventTriggerDemoTopic>("event-trigger-demo", sp =>
+                new EventTriggerDemoTopic(sp.GetRequiredService<ILogger<EventTriggerDemoTopic>>()))
+            .AddConversationRuntime("event-trigger-demo");
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var runtime = scope.ServiceProvider.GetRequiredService<IConversationRuntime>();
+        var subscription = runtime.Subscribe();
+        await using var outputs = subscription.ReadAllAsync().GetAsyncEnumerator();
+
+        var start = runtime.StartAsync();
+        var notification = await ReadUntilAsync<HostNotificationOutput>(outputs);
+        Assert.Equal("demo.progress", notification.EventName);
+        Assert.False(start.IsCompleted);
+
+        var request = await ReadUntilAsync<HostInteractionRequestOutput>(outputs);
+        Assert.Equal("demo.confirm", request.InteractionName);
+        await runtime.RespondToHostInteractionAsync(
+            new HostInteractionResponse(request.RequestId, "approved"));
+        await start;
+
+        var completed = await ReadUntilAsync<TopicLifecycleOutput>(
+            outputs,
+            output => output.TopicId == "event-trigger-demo" &&
+                      output.State == ConversationTopicState.Completed);
+        Assert.Equal("event-trigger-demo", completed.TopicId);
+    }
+
     private static ServiceCollection Services()
     {
         var services = new ServiceCollection();
@@ -284,6 +317,36 @@ public sealed class ConversationRuntimeTests
         }
 
         public override Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default) =>
+            Task.FromResult(1f);
+    }
+
+    /// <summary>
+    /// Framework-owned replacement for the historical EventTriggerDemoTopic sample.
+    /// It deliberately exercises both host-output paths without depending on a domain app.
+    /// </summary>
+    private sealed class EventTriggerDemoTopic : ConversaCore.TopicFlow.TopicFlow
+    {
+        public EventTriggerDemoTopic(ILogger<EventTriggerDemoTopic> logger)
+            : base(new TopicWorkflowContext(), logger, "event-trigger-demo")
+        {
+            Add(EventTriggerActivity.CreateFireAndForget(
+                "demo.progress",
+                new { Step = "notification" },
+                logger: logger));
+            Add(EventTriggerActivity.CreateWaitForResponse(
+                "demo-confirm",
+                "demo.confirm",
+                "approval",
+                new { Prompt = "Approve the demo continuation?" },
+                responseTimeout: TimeSpan.FromSeconds(10),
+                logger: logger));
+            Add(new SimpleActivity("demo-complete", (context, _) =>
+                Task.FromResult<object?>(context.GetValue<object>("approval"))));
+        }
+
+        public override Task<float> CanHandleAsync(
+            string message,
+            CancellationToken cancellationToken = default) =>
             Task.FromResult(1f);
     }
 

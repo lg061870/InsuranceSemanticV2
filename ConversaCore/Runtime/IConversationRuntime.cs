@@ -18,7 +18,8 @@ namespace ConversaCore.Runtime;
 /// coordinator; it does not create topic instances until <see cref="StartAsync"/> or
 /// <see cref="ResetAsync"/> is invoked. The typed
 /// <see cref="ConversationOutput"/> hierarchy is now defined by CC-300; detailed host-event
-/// contracts and tool contracts remain WP3 and WP4 work respectively.
+/// contracts and tool contracts are now available through the completed WP3/WP4 framework
+/// surfaces; reference-application migration remains intentionally deferred.
 /// </para>
 /// <para><b>Scoping decision: minimal placeholders, not a reduced interface.</b></para>
 /// <para>
