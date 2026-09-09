@@ -73,7 +73,19 @@ public sealed class ToolExecutor : IToolExecutor
             timeout.CancelAfter(descriptor.Reliability.Timeout);
             _logger.LogInformation("Executing tool {ToolId} version {Version} correlation {CorrelationId}",
                 descriptor.ToolId, descriptor.Version, context.CorrelationId);
-            var result = await typedTool.ExecuteAsync(request, context, timeout.Token).ConfigureAwait(false);
+            ToolResult<TResult> result = default!;
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    result = await typedTool.ExecuteAsync(request, context, timeout.Token).ConfigureAwait(false);
+                    break;
+                }
+                catch (ToolTransientException) when (attempt < descriptor.Reliability.MaxRetries)
+                {
+                    _logger.LogWarning("Transient tool failure for {ToolId}; retry {Attempt}", descriptor.ToolId, attempt + 1);
+                }
+            }
             Emit(ToolDiagnosticKind.Completed);
             Emit(ToolDiagnosticKind.Latency);
             return result;

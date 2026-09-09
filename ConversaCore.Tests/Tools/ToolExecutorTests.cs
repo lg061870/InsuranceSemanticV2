@@ -94,6 +94,22 @@ public sealed class ToolExecutorTests
         Assert.Equal("idempotency_required", key.ErrorCode);
     }
 
+    [Fact]
+    public async Task Executor_RetriesTransientFailuresWithinDeclaredBudget()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        var descriptor = new ToolDescriptor("retry", "1", "Retry", "Retry", typeof(Request), typeof(string),
+            reliability: new ToolReliabilityPolicy { MaxRetries = 1, Timeout = TimeSpan.FromSeconds(1) });
+        new ConversaCoreBuilder(services).AddTool<RetryTool>(descriptor);
+        using var provider = services.BuildServiceProvider();
+        RetryTool.Attempts = 0;
+        var result = await provider.GetRequiredService<IToolExecutor>().ExecuteAsync<Request, string>(
+            "retry", new Request("x"), Context(provider));
+        Assert.True(result.Succeeded);
+        Assert.Equal(2, RetryTool.Attempts);
+    }
+
     private sealed record Request([property: Required] string Value);
 
     private sealed class EchoTool : IConversaTool<Request, string>
@@ -102,6 +118,17 @@ public sealed class ToolExecutorTests
         public ValueTask<ToolResult<string>> ExecuteAsync(Request request, ToolExecutionContext context, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(ToolResult<string>.Success(request.Value));
+        }
+    }
+
+    private sealed class RetryTool : IConversaTool<Request, string>
+    {
+        public static int Attempts { get; set; }
+        public ToolDescriptor Descriptor => throw new NotSupportedException();
+        public ValueTask<ToolResult<string>> ExecuteAsync(Request request, ToolExecutionContext context, CancellationToken cancellationToken = default)
+        {
+            if (++Attempts == 1) throw new ToolTransientException("temporary");
             return ValueTask.FromResult(ToolResult<string>.Success(request.Value));
         }
     }
