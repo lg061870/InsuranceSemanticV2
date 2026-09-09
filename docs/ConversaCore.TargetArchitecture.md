@@ -325,6 +325,10 @@ SelectAndInvokeToolActivity<TResult>
 
 The first is deterministic and preferred when the workflow knows which capability is required. The second performs constrained semantic selection when a topic intentionally allows several alternatives.
 
+CC-404 implements the deterministic form: request and execution-context factories are
+owned by the activity, one stable tool ID is invoked, and the complete typed result is
+stored under a workflow context key for the topic to interpret.
+
 This preserves a concise topic-authoring API while keeping the capability reusable across topics.
 
 ### 10.3 Bounded discovery
