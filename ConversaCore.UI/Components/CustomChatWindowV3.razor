@@ -7,6 +7,7 @@
 @using ConversaCore.TopicFlow
 @using ConversaCore.Agentic
 @using ConversaCore.Runtime
+@using ConversaCore.UI.Lifecycle
 @using ConversaCore.UI.Models
 @using Microsoft.Extensions.DependencyInjection
 
@@ -177,7 +178,6 @@
     private bool IsTyping { get; set; } = false;
     private bool IsProcessing { get; set; } = false;
     private ChatMessage? messageBeingEdited = null;
-    private bool _conversationStarted = false;
     private bool showResetConfirmation = false;
     private bool IsPromptEnabled => _outputState.IsPromptEnabled;
     private bool isMinimized = true; // Start minimized for FloatingChat (icon mode)
@@ -192,9 +192,11 @@
 
     private List<string> CurrentSuggestions { get; set; } = new();
     private IConversationRuntime? _activeRuntime;
-    private IConversationOutputSubscription? _outputSubscription;
-    private CancellationTokenSource? _outputCancellation;
-    private Task? _outputPump;
+    private ConversationOutputSubscriptionOwner? _runtimeSubscriptionOwner;
+    private readonly EventSubscriptionScope _legacySubscriptions = new();
+    private readonly object _lifecycleGate = new();
+    private bool _initializationStarted;
+    private Task? _disposeTask;
 
     private DomainAgentService? LegacyAgentService => AgentService;
     private Action<CustomChatWindowV3>? LegacySubscribeToEvents => SubscribeToEvents;
@@ -214,11 +216,10 @@
     protected override async Task OnAfterRenderAsync(bool firstRender) {
         await base.OnAfterRenderAsync(firstRender);
 
-        if (firstRender && !_conversationStarted) {
+        if (firstRender && TryBeginInitialization()) {
             _activeRuntime = Runtime ?? ServiceProvider.GetService<IConversationRuntime>();
             if (_activeRuntime is not null) {
                 await InitializeRuntimeAsync(_activeRuntime);
-                _conversationStarted = true;
                 return;
             }
 
@@ -231,7 +232,6 @@
                     IsFromUser = false,
                     Timestamp = DateTime.Now
                 });
-                _conversationStarted = true;
                 StateHasChanged();
                 return;
             }
@@ -249,7 +249,10 @@
             Logger?.LogInformation("[ChatWindowV3] Subscribing to agent outbound events");
 
             // Bot messages
-            legacyAgent.ActivityMessageReady += (s, e) => {
+            _legacySubscriptions.Add<ActivityMessageEventArgs>(
+                handler => legacyAgent.ActivityMessageReady += handler,
+                handler => legacyAgent.ActivityMessageReady -= handler,
+                (s, e) => {
                 Logger?.LogInformation("[ChatWindowV3] ActivityMessageReady: {Content}", e.Message.Content);
 
                 _ = InvokeAsync(() => {
@@ -259,10 +262,13 @@
                     Messages.Add(e.Message);
                     StateHasChanged();
                 });
-            };
+            });
 
             // Adaptive cards
-            legacyAgent.ActivityAdaptiveCardReady += (s, e) => {
+            _legacySubscriptions.Add<ActivityAdaptiveCardEventArgs>(
+                handler => legacyAgent.ActivityAdaptiveCardReady += handler,
+                handler => legacyAgent.ActivityAdaptiveCardReady -= handler,
+                (s, e) => {
                 Logger?.LogInformation(
                     "[ChatWindowV3] ActivityAdaptiveCardReady: CardId={CardId}, RenderMode={RenderMode}",
                     e.CardId,
@@ -307,10 +313,13 @@
                         e.CardId
                     );
                 });
-            };
+            });
 
             // Card state changes
-            legacyAgent.CardStateChanged += (s, e) => {
+            _legacySubscriptions.Add<CardStateChangedEventArgs>(
+                handler => legacyAgent.CardStateChanged += handler,
+                handler => legacyAgent.CardStateChanged -= handler,
+                (s, e) => {
                 Logger?.LogInformation(
                     "[ChatWindowV3] Card state changed: {CardId} -> {State}",
                     e.CardId,
@@ -348,10 +357,13 @@
                         }
                     }
                 });
-            };
+            });
 
             // Prompt state
-            legacyAgent.PromptInputStateChanged += (s, e) => {
+            _legacySubscriptions.Add<PromptInputStateChangedEventArgs>(
+                handler => legacyAgent.PromptInputStateChanged += handler,
+                handler => legacyAgent.PromptInputStateChanged -= handler,
+                (s, e) => {
                 Logger?.LogInformation(
                     "[ChatWindowV3] Prompt state changed: Enabled={IsEnabled} (CardId={CardId})",
                     e.IsEnabled,
@@ -362,10 +374,13 @@
                     _outputState.SetPromptEnabled(e.IsEnabled);
                     StateHasChanged();
                 });
-            };
+            });
 
             // Custom events (e.g., suggestion chips)
-            legacyAgent.CustomEventTriggered += (s, e) => {
+            _legacySubscriptions.Add<CustomEventTriggeredEventArgs>(
+                handler => legacyAgent.CustomEventTriggered += handler,
+                handler => legacyAgent.CustomEventTriggered -= handler,
+                (s, e) => {
                 Logger?.LogInformation("[ChatWindowV3] CustomEventTriggered: {EventName}", e.EventName);
 
                 if (e.EventName == "UpdateSuggestions")
@@ -415,10 +430,13 @@
                         }
                     });
                 }
-            };
+            });
 
             // Conversation reset
-            legacyAgent.ConversationReset += (s, e) => {
+            _legacySubscriptions.Add<ConversationResetEventArgs>(
+                handler => legacyAgent.ConversationReset += handler,
+                handler => legacyAgent.ConversationReset -= handler,
+                (s, e) => {
                 Logger?.LogInformation(
                     "[ChatWindowV3] ConversationReset at {ResetTime}",
                     e.ResetTime
@@ -440,25 +458,29 @@
                     StateHasChanged();
                     Logger?.LogInformation("[ChatWindowV3] Messages cleared");
                 });
-            };
+            });
 
             // Lifecycle logging
-            legacyAgent.ActivityCompleted += (s, e) =>
-                Logger?.LogDebug("[ChatWindowV3] ActivityCompleted");
+            _legacySubscriptions.Add<ActivityCompletedEventArgs>(
+                handler => legacyAgent.ActivityCompleted += handler,
+                handler => legacyAgent.ActivityCompleted -= handler,
+                (s, e) => Logger?.LogDebug("[ChatWindowV3] ActivityCompleted"));
 
-            legacyAgent.TopicLifecycleChanged += (s, e) =>
-                Logger?.LogDebug(
+            _legacySubscriptions.Add<TopicLifecycleEventArgs>(
+                handler => legacyAgent.TopicLifecycleChanged += handler,
+                handler => legacyAgent.TopicLifecycleChanged -= handler,
+                (s, e) => Logger?.LogDebug(
                     "[ChatWindowV3] TopicLifecycleChanged: {TopicName} -> {State}",
                     e.TopicName,
-                    e.State
-                );
+                    e.State));
 
-            legacyAgent.ActivityLifecycleChanged += (s, e) =>
-                Logger?.LogDebug(
+            _legacySubscriptions.Add<ActivityLifecycleEventArgs>(
+                handler => legacyAgent.ActivityLifecycleChanged += handler,
+                handler => legacyAgent.ActivityLifecycleChanged -= handler,
+                (s, e) => Logger?.LogDebug(
                     "[ChatWindowV3] ActivityLifecycleChanged: {ActivityId} -> {State}",
                     e.ActivityId,
-                    e.State
-                );
+                    e.State));
 
             // ========== START CONVERSATION ==========
             Logger?.LogInformation(
@@ -469,8 +491,6 @@
                 this,
                 new ConversationStartRequestedEventArgs(CancellationToken.None)
             );
-
-            _conversationStarted = true;
 
                 Logger?.LogInformation(
                     "[ChatWindowV3] ✅ Event-driven initialization complete"
@@ -485,12 +505,21 @@
         try {
             Logger.LogInformation("[ChatWindowV3] Binding directly to conversation runtime {ConversationId}",
                 runtime.ConversationId);
-            _outputCancellation = new CancellationTokenSource();
-            _outputSubscription = runtime.Subscribe();
-            _outputPump = ConsumeRuntimeOutputAsync(_outputSubscription, _outputCancellation.Token);
-            await runtime.StartAsync(_outputCancellation.Token);
+            _runtimeSubscriptionOwner = new ConversationOutputSubscriptionOwner(
+                runtime,
+                HandleRuntimeOutputAsync,
+                Logger);
+            await _runtimeSubscriptionOwner.StartAsync();
         } catch (Exception ex) {
             Logger.LogError(ex, "[ChatWindowV3] Runtime initialization failed");
+            if (_runtimeSubscriptionOwner is not null) {
+                try {
+                    await _runtimeSubscriptionOwner.DisposeAsync();
+                } catch (Exception disposalException) {
+                    Logger.LogError(disposalException,
+                        "[ChatWindowV3] Failed to clean up after runtime initialization failure");
+                }
+            }
             Messages.Add(new ChatMessage {
                 Content = "⚠️ The conversation could not be started. Please try again.",
                 IsFromUser = false,
@@ -500,31 +529,34 @@
         }
     }
 
-    private async Task ConsumeRuntimeOutputAsync(
-        IConversationOutputSubscription subscription,
-        CancellationToken cancellationToken) {
-        try {
-            await foreach (var output in subscription.ReadAllAsync(cancellationToken)) {
-                if (output is HostOutput hostOutput) {
-                    await DispatchHostOutputAsync(hostOutput, cancellationToken);
-                    continue;
-                }
-                await InvokeAsync(async () => {
-                    var change = _outputState.Apply(output);
-                    if (change.ClearBusyIndicator) {
-                        IsTyping = false;
-                        IsProcessing = false;
-                    }
-                    if (change.StateChanged) StateHasChanged();
-                    if (change.ScrollToBottom)
-                        await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
-                });
-            }
-        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
-            Logger.LogDebug("[ChatWindowV3] Runtime output subscription cancelled");
-        } catch (Exception ex) {
-            Logger.LogError(ex, "[ChatWindowV3] Runtime output subscription failed");
+    private bool TryBeginInitialization() {
+        lock (_lifecycleGate) {
+            if (_initializationStarted || _disposeTask is not null)
+                return false;
+
+            _initializationStarted = true;
+            return true;
         }
+    }
+
+    private async Task HandleRuntimeOutputAsync(
+        ConversationOutput output,
+        CancellationToken cancellationToken) {
+        if (output is HostOutput hostOutput) {
+            await DispatchHostOutputAsync(hostOutput, cancellationToken);
+            return;
+        }
+
+        await InvokeAsync(async () => {
+            var change = _outputState.Apply(output);
+            if (change.ClearBusyIndicator) {
+                IsTyping = false;
+                IsProcessing = false;
+            }
+            if (change.StateChanged) StateHasChanged();
+            if (change.ScrollToBottom)
+                await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+        });
     }
 
     private async Task DispatchHostOutputAsync(HostOutput output, CancellationToken cancellationToken) {
@@ -557,17 +589,29 @@
     }
 
 
-    public async ValueTask DisposeAsync() {
+    public ValueTask DisposeAsync() {
+        lock (_lifecycleGate)
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+    }
+
+    private async Task DisposeCoreAsync() {
         try {
-            Logger.LogInformation("[ChatWindowV3] Disposing conversation output subscription");
-            _outputCancellation?.Cancel();
-            if (_outputSubscription is not null)
-                await _outputSubscription.DisposeAsync();
-            if (_outputPump is not null)
-                await _outputPump;
-            _outputCancellation?.Dispose();
+            Logger.LogInformation("[ChatWindowV3] Disposing conversation subscriptions");
+            _legacySubscriptions.Dispose();
         } catch (Exception ex) {
-            Logger.LogError(ex, "[ChatWindowV3] Dispose error: {Message}", ex.Message);
+            Logger.LogError(ex, "[ChatWindowV3] Legacy subscription disposal error: {Message}", ex.Message);
+        }
+
+        try {
+            if (_runtimeSubscriptionOwner is not null)
+                await _runtimeSubscriptionOwner.DisposeAsync();
+        } catch (Exception ex) {
+            Logger.LogError(ex, "[ChatWindowV3] Runtime subscription disposal error: {Message}", ex.Message);
+        } finally {
+            UserMessageReceived = null;
+            ConversationStartRequested = null;
+            ConversationResetRequested = null;
+            CardSubmitted = null;
         }
     }
     

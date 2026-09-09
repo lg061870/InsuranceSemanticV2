@@ -415,6 +415,8 @@ The insurance start/compliance sequence currently inserted by `InsuranceAgentSer
 
 Startup may validate and compile descriptors. It must not create a temporary scope and retain its scoped topic instances in a singleton registry.
 
+`ConversaCore.UI` owns exactly one output subscription for each chat component/circuit. Component initialization is idempotent; disposal cancels the output pump, releases the subscription, and detaches every temporary compatibility event handler. A failing host callback is logged and isolated from later output delivery.
+
 ## 14. Reliability, security, and observability
 
 ### 14.1 Reliability
