@@ -329,6 +329,10 @@ CC-404 implements the deterministic form: request and execution-context factorie
 owned by the activity, one stable tool ID is invoked, and the complete typed result is
 stored under a workflow context key for the topic to interpret.
 
+CC-405 requires the executor to receive the framework-supplied topic allowlist and reject
+undeclared tool IDs before resolving or invoking an implementation. Allowlist membership
+is never inferred from model output.
+
 This preserves a concise topic-authoring API while keeping the capability reusable across topics.
 
 ### 10.3 Bounded discovery

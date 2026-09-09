@@ -24,6 +24,8 @@ public sealed class ToolExecutor : IToolExecutor
         ArgumentNullException.ThrowIfNull(context);
         if (!_catalog.TryGetDescriptor(toolId, out var descriptor) || descriptor is null)
             return ToolResult<TResult>.Failure("tool_not_declared", "The requested tool is not registered.");
+        if (context.AllowedToolIds.Count > 0 && !context.AllowedToolIds.Contains(descriptor.ToolId))
+            return ToolResult<TResult>.Failure("tool_not_allowed", "The current topic has not declared this tool.");
         if (descriptor.RequestType != typeof(TRequest) || descriptor.ResultType != typeof(TResult))
             return ToolResult<TResult>.Failure("tool_type_mismatch", "The request or result type does not match the tool contract.");
         if (request is null)

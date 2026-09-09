@@ -31,4 +31,7 @@ public sealed record ToolExecutionContext
 
     /// <summary>Gets the caller-supplied idempotency key, when applicable.</summary>
     public string? IdempotencyKey { get; init; }
+
+    /// <summary>Gets the immutable tool IDs declared by the current topic.</summary>
+    public IReadOnlySet<string> AllowedToolIds { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 }

@@ -62,6 +62,20 @@ public sealed class ToolExecutorTests
         ConversationId = "conversation", Subject = "subject", CorrelationId = Guid.NewGuid().ToString(), Services = services
     };
 
+    [Fact]
+    public async Task Executor_RejectsToolOutsideTopicAllowlist()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        var descriptor = new ToolDescriptor("echo", "1", "Echo", "Echoes text", typeof(Request), typeof(string));
+        new ConversaCoreBuilder(services).AddTool<EchoTool>(descriptor);
+        using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<IToolExecutor>().ExecuteAsync<Request, string>(
+            "echo", new Request("hello"), Context(provider) with
+            { AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "other" } });
+        Assert.Equal("tool_not_allowed", result.ErrorCode);
+    }
+
     private sealed record Request([property: Required] string Value);
 
     private sealed class EchoTool : IConversaTool<Request, string>
