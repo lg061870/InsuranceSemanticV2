@@ -178,7 +178,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 - [x] **CC-406 — Implement optional bounded selection.** Added explicitly enabled `IToolSelector`/`ToolSelector` ranking only the topic-supplied allowlist, with score validation, thresholding, deterministic tie-breaking, and cancellation propagation.
 - [x] **CC-407 — Add selection prefilter and caching.** `ToolSelector` caches allowlist candidate snapshots, applies descriptor text prefiltering, caps semantic input at configurable top-K, and reuses ToolCatalog descriptor/type metadata caches.
 - [x] **CC-408 — Add mutation safety.** Mutating execution now requires framework-validated identity, declared confirmation when required, and configured idempotency keys before implementation resolution/execution.
-- [ ] **CC-409 — Add tool observability.** Emit invocation, completion, latency, policy rejection, and failure diagnostics with payload redaction.
+- [x] **CC-409 — Add tool observability.** Added injectable payload-free diagnostics for invocation, completion, latency, policy rejection, and failure; descriptor sensitivity is retained and observer failures are isolated.
 - [ ] **CC-410 — Refactor the Zapier seam.** Retain `IIntegrationService` as transport and implement a Zapier tool plus the generic invocation activity; deprecate direct provider/workflow coupling.
 - [ ] **CC-411 — Add tool tests.** Cover success, validation, authorization, cancellation, timeout, retry, idempotency, redaction, allowlist rejection, and semantic-selection confinement.
 - [ ] **CC-412 — Add a dentist reference test.** Implement lookup and booking fakes proving that data returns to the topic and the website receives only the optional visual notification.
