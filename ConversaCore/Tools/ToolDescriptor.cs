@@ -17,7 +17,12 @@ public sealed record ToolDescriptor
         Type requestType,
         Type resultType,
         string? requestSchema = null,
-        string? resultSchema = null)
+        string? resultSchema = null,
+        ToolSideEffect sideEffect = ToolSideEffect.ReadOnly,
+        ToolAuthorizationPolicy? authorization = null,
+        ToolConfirmationPolicy? confirmation = null,
+        ToolReliabilityPolicy? reliability = null,
+        ToolDataPolicy? dataPolicy = null)
     {
         if (string.IsNullOrWhiteSpace(toolId))
             throw new ArgumentException("Tool ID must not be null, empty, or whitespace.", nameof(toolId));
@@ -36,6 +41,17 @@ public sealed record ToolDescriptor
         ResultType = resultType;
         RequestSchema = string.IsNullOrWhiteSpace(requestSchema) ? null : requestSchema.Trim();
         ResultSchema = string.IsNullOrWhiteSpace(resultSchema) ? null : resultSchema.Trim();
+        if (!Enum.IsDefined(sideEffect))
+            throw new ArgumentOutOfRangeException(nameof(sideEffect));
+        if (reliability is not null && (reliability.Timeout <= TimeSpan.Zero || reliability.MaxRetries < 0))
+            throw new ArgumentException("Tool timeout must be positive and retry count must not be negative.", nameof(reliability));
+        if (confirmation?.Required == true && string.IsNullOrWhiteSpace(confirmation.Purpose))
+            throw new ArgumentException("A confirming tool must declare a confirmation purpose.", nameof(confirmation));
+        SideEffect = sideEffect;
+        Authorization = authorization ?? new ToolAuthorizationPolicy();
+        Confirmation = confirmation ?? new ToolConfirmationPolicy();
+        Reliability = reliability ?? new ToolReliabilityPolicy();
+        DataPolicy = dataPolicy ?? new ToolDataPolicy();
     }
 
     /// <summary>Gets the stable identifier used by registration and allowlists.</summary>
@@ -61,4 +77,19 @@ public sealed record ToolDescriptor
 
     /// <summary>Gets optional serialized result schema metadata.</summary>
     public string? ResultSchema { get; }
+
+    /// <summary>Gets the read-only or mutating side-effect classification.</summary>
+    public ToolSideEffect SideEffect { get; }
+
+    /// <summary>Gets the authorization requirements evaluated by the executor.</summary>
+    public ToolAuthorizationPolicy Authorization { get; }
+
+    /// <summary>Gets the explicit confirmation requirement.</summary>
+    public ToolConfirmationPolicy Confirmation { get; }
+
+    /// <summary>Gets timeout, retry, and idempotency requirements.</summary>
+    public ToolReliabilityPolicy Reliability { get; }
+
+    /// <summary>Gets sensitivity and audit metadata.</summary>
+    public ToolDataPolicy DataPolicy { get; }
 }

@@ -297,8 +297,9 @@ public interface IConversaTool<TRequest, TResult>
 CC-400 defines these typed contracts in `ConversaCore.Tools`. `ToolDescriptor` is immutable
 registration metadata, `ToolExecutionContext` carries only trusted conversation identity,
 correlation, and scoped domain-service access, and `ToolResult<TResult>` represents an
-explicit typed success or safe failure. Policy and side-effect metadata remain CC-401;
-cataloging and execution remain CC-402/403.
+explicit typed success or safe failure. CC-401 adds immutable declarative side-effect,
+authorization, confirmation, reliability, sensitivity, and audit metadata; enforcement
+remains in CC-403.
 
 `ToolDescriptor` should contain:
 
