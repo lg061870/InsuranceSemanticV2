@@ -175,7 +175,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 - [x] **CC-403 — Implement `IToolExecutor`.** Added scoped per-invocation resolution, DataAnnotations validation, authorization/confirmation/idempotency enforcement, timeout/cancellation handling, safe error classification, and structured redacted logging.
 - [x] **CC-404 — Implement deterministic `InvokeToolActivity`.** Added the generic activity that maps workflow state to a typed request, invokes exactly one declared tool through `IToolExecutor`, and stores the typed `ToolResult` without exposing catalog or executor internals.
 - [x] **CC-405 — Add topic tool allowlists.** `ToolExecutionContext` carries the framework-supplied topic allowlist and `ToolExecutor` rejects undeclared IDs before resolution or execution.
-- [ ] **CC-406 — Implement optional bounded selection.** Add a semantic selection activity that runs only when explicitly enrolled and only over eligible tools in the topic allowlist.
+- [x] **CC-406 — Implement optional bounded selection.** Added explicitly enabled `IToolSelector`/`ToolSelector` ranking only the topic-supplied allowlist, with score validation, thresholding, deterministic tie-breaking, and cancellation propagation.
 - [ ] **CC-407 — Add selection prefilter and caching.** Cache descriptors/schemas/embeddings, apply cheap eligibility and ranking first, and limit model input to top-K candidates.
 - [ ] **CC-408 — Add mutation safety.** Require validated trusted identity, recorded confirmation when declared, and idempotency keys before mutating execution.
 - [ ] **CC-409 — Add tool observability.** Emit invocation, completion, latency, policy rejection, and failure diagnostics with payload redaction.

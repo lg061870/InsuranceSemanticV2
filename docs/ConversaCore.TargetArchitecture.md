@@ -344,6 +344,11 @@ Semantic tool discovery follows these rules:
 3. Selection runs only at an explicit tool-choice activity.
 4. The framework prefilters candidates using cached descriptors, deterministic eligibility, and optionally embeddings.
 5. Only a small top-K candidate list is supplied to the model.
+
+CC-406 implements the opt-in selection boundary: the ranker receives only descriptors
+whose IDs are supplied by the current topic allowlist, and invalid or unknown scores are
+rejected. Disabled selection does not call the ranker; authorization and confirmation
+remain executor policy, never model decisions.
 6. Model output selects a candidate; it never grants authorization or bypasses validation.
 7. Mutating tools require policy checks and, where declared, explicit user confirmation.
 

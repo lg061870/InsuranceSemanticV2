@@ -20,6 +20,14 @@ public static class ConversaCoreBuilderToolExtensions
         return builder;
     }
 
+    /// <summary>Registers the bounded selector and its semantic ranking seam.</summary>
+    public static ConversaCoreBuilder AddToolSelection(this ConversaCoreBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.Services.TryAddScoped<IToolSelector, ToolSelector>();
+        return builder;
+    }
+
     /// <summary>Registers a typed tool implementation and immutable descriptor.</summary>
     public static ConversaCoreBuilder AddTool<TTool>(this ConversaCoreBuilder builder, ToolDescriptor descriptor)
         where TTool : class
