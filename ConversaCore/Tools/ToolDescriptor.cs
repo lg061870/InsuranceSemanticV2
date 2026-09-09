@@ -96,5 +96,5 @@ public sealed record ToolDescriptor
     public ToolDataPolicy DataPolicy { get; }
 
     /// <summary>Gets the implementation type, when registered by assembly scan.</summary>
-    public Type? ImplementationType { get; }
+    public Type? ImplementationType { get; init; }
 }

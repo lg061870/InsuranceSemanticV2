@@ -16,7 +16,18 @@ public static class ConversaCoreBuilderToolExtensions
         builder.Services.AddSingleton(descriptor);
         builder.Services.Replace(ServiceDescriptor.Singleton<IToolCatalog>(sp =>
             new ToolCatalog(sp.GetServices<ToolDescriptor>())));
+        builder.Services.TryAddScoped<IToolExecutor, ToolExecutor>();
         return builder;
+    }
+
+    /// <summary>Registers a typed tool implementation and immutable descriptor.</summary>
+    public static ConversaCoreBuilder AddTool<TTool>(this ConversaCoreBuilder builder, ToolDescriptor descriptor)
+        where TTool : class
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(descriptor);
+        builder.Services.AddTransient<TTool>();
+        return builder.AddTool(descriptor with { ImplementationType = typeof(TTool) });
     }
 
     /// <summary>Scans the containing assembly for attributed tool implementations without constructing them.</summary>
@@ -35,6 +46,7 @@ public static class ConversaCoreBuilderToolExtensions
 
             builder.AddTool(new ToolDescriptor(attribute.ToolId, attribute.Version, attribute.DisplayName,
                 attribute.Description, contract.GetGenericArguments()[0], contract.GetGenericArguments()[1], implementationType: type));
+            builder.Services.AddTransient(type);
         }
         return builder;
     }

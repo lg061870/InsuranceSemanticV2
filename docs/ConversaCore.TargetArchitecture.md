@@ -345,6 +345,11 @@ CC-402 provides the singleton immutable `IToolCatalog` over descriptor metadata.
 descriptor registration does not activate tool instances; executor resolution remains a
 per-invocation concern owned by CC-403.
 
+CC-403 provides the scoped `IToolExecutor`: it validates request objects, checks trusted
+policy/claim and confirmation inputs, enforces timeout and idempotency requirements,
+resolves the registered implementation per invocation, propagates caller cancellation,
+and returns safe classified failures without logging payloads.
+
 ### 10.4 Results and conversation responses
 
 Tools return domain DTOs and structured errors, not final conversational prose. The topic or a response activity decides how to present the result. A returned tool result is available to the current conversation; it does not train the model or become permanent memory unless an explicit persistence feature stores it.

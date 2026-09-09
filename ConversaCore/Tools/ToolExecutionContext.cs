@@ -19,4 +19,16 @@ public sealed record ToolExecutionContext
 
     /// <summary>Gets the scoped service provider for domain dependencies.</summary>
     public required IServiceProvider Services { get; init; }
+
+    /// <summary>Gets trusted authorization policies granted to the subject.</summary>
+    public IReadOnlySet<string> GrantedPolicies { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Gets trusted claims granted to the subject.</summary>
+    public IReadOnlySet<string> GrantedClaims { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Gets whether the host recorded the declared confirmation.</summary>
+    public bool ConfirmationGranted { get; init; }
+
+    /// <summary>Gets the caller-supplied idempotency key, when applicable.</summary>
+    public string? IdempotencyKey { get; init; }
 }
