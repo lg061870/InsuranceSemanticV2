@@ -363,6 +363,11 @@ policy/claim and confirmation inputs, enforces timeout and idempotency requireme
 resolves the registered implementation per invocation, propagates caller cancellation,
 and returns safe classified failures without logging payloads.
 
+Mutating execution additionally requires a framework-validated subject binding. When the
+descriptor declares confirmation or an idempotency key, those must be recorded in the
+trusted execution context before the tool can run; model output cannot supply or elevate
+any of these prerequisites.
+
 ### 10.4 Results and conversation responses
 
 Tools return domain DTOs and structured errors, not final conversational prose. The topic or a response activity decides how to present the result. A returned tool result is available to the current conversation; it does not train the model or become permanent memory unless an explicit persistence feature stores it.

@@ -22,6 +22,9 @@ public sealed class ToolExecutor : IToolExecutor
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(toolId);
         ArgumentNullException.ThrowIfNull(context);
+        if (string.IsNullOrWhiteSpace(context.ConversationId) || string.IsNullOrWhiteSpace(context.Subject) ||
+            string.IsNullOrWhiteSpace(context.CorrelationId))
+            return ToolResult<TResult>.Failure("invalid_execution_context", "The trusted execution context is incomplete.");
         if (!_catalog.TryGetDescriptor(toolId, out var descriptor) || descriptor is null)
             return ToolResult<TResult>.Failure("tool_not_declared", "The requested tool is not registered.");
         if (context.AllowedToolIds.Count > 0 && !context.AllowedToolIds.Contains(descriptor.ToolId))
@@ -40,9 +43,13 @@ public sealed class ToolExecutor : IToolExecutor
             return ToolResult<TResult>.Failure("not_authorized", "The subject is missing a required tool claim.");
         if (descriptor.Confirmation.Required && !context.ConfirmationGranted)
             return ToolResult<TResult>.Failure("confirmation_required", "Explicit confirmation is required for this tool.");
-        if (descriptor.SideEffect == ToolSideEffect.Mutating && descriptor.Reliability.RequiresIdempotencyKey &&
-            string.IsNullOrWhiteSpace(context.IdempotencyKey))
-            return ToolResult<TResult>.Failure("idempotency_required", "An idempotency key is required for this operation.");
+        if (descriptor.SideEffect == ToolSideEffect.Mutating)
+        {
+            if (!context.TrustedIdentityValidated)
+                return ToolResult<TResult>.Failure("identity_not_validated", "The subject identity was not validated for this operation.");
+            if (descriptor.Reliability.RequiresIdempotencyKey && string.IsNullOrWhiteSpace(context.IdempotencyKey))
+                return ToolResult<TResult>.Failure("idempotency_required", "An idempotency key is required for this operation.");
+        }
         if (descriptor.ImplementationType is null)
             return ToolResult<TResult>.Failure("tool_not_activated", "The tool has no registered implementation.");
 

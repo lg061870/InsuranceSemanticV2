@@ -54,7 +54,7 @@ public sealed class ToolExecutorTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.ThrowsAsync<OperationCanceledException>(() => executor.ExecuteAsync<Request, string>(
-            "mutate", new Request("x"), Context(provider) with { ConfirmationGranted = true }, cancellation.Token).AsTask());
+            "mutate", new Request("x"), Context(provider) with { ConfirmationGranted = true, TrustedIdentityValidated = true }, cancellation.Token).AsTask());
     }
 
     private static ToolExecutionContext Context(IServiceProvider services) => new()
@@ -74,6 +74,24 @@ public sealed class ToolExecutorTests
             "echo", new Request("hello"), Context(provider) with
             { AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "other" } });
         Assert.Equal("tool_not_allowed", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Executor_RequiresValidatedIdentityAndIdempotencyForMutations()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        var descriptor = new ToolDescriptor("mutate", "1", "Mutate", "Mutate", typeof(Request), typeof(string),
+            sideEffect: ToolSideEffect.Mutating,
+            reliability: new ToolReliabilityPolicy { RequiresIdempotencyKey = true });
+        new ConversaCoreBuilder(services).AddTool<EchoTool>(descriptor);
+        using var provider = services.BuildServiceProvider();
+        var executor = provider.GetRequiredService<IToolExecutor>();
+        var identity = await executor.ExecuteAsync<Request, string>("mutate", new Request("x"), Context(provider));
+        var key = await executor.ExecuteAsync<Request, string>("mutate", new Request("x"),
+            Context(provider) with { TrustedIdentityValidated = true });
+        Assert.Equal("identity_not_validated", identity.ErrorCode);
+        Assert.Equal("idempotency_required", key.ErrorCode);
     }
 
     private sealed record Request([property: Required] string Value);
