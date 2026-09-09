@@ -59,3 +59,12 @@ ConversaCore.UI exposes those two forms through one `OnHostOutput` callback. Its
 `RespondAsync` operation only when the output is an interaction request. Responses retain
 the request ID and flow through `IConversationRuntime`; responding to a notification is
 rejected locally. Host outputs are not inserted into the generic chat transcript.
+
+The UI contract suite exercises the assembled boundary rather than a domain-agent
+forwarding layer. It connects the real ordered dispatcher, component subscription owner,
+presentation projection, host-output context, and interaction coordinator. The contract
+matrix covers ordered message/card replacement, prompt disable/enable, presentation reset
+plus runtime reset, non-blocking notification publication, correlated host response,
+interaction timeout cleanup, disconnect disposal, and a fresh subscription on reconnect.
+Lower-level tests retain responsibility for invalid payload/type cases and concurrent
+dispatcher ordering, so failures remain attributable to one layer.
