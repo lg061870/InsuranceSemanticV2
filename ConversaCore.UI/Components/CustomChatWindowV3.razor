@@ -6,14 +6,17 @@
 @using ConversaCore.Services
 @using ConversaCore.TopicFlow
 @using ConversaCore.Agentic
+@using ConversaCore.Runtime
 @using ConversaCore.UI.Models
+@using Microsoft.Extensions.DependencyInjection
 
-@implements IDisposable
+@implements IAsyncDisposable
 
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject ILogger<CustomChatWindowV3> Logger
 @inject IChatInteropService ChatInteropService
+@inject IServiceProvider ServiceProvider
 
 <!-- ========== CHAT WINDOW LAYOUT ========== -->
 <div class="chat-window-container @GetStyleClass() @(hasStartedConversation ? "conversation-started" : "")">
@@ -140,7 +143,12 @@
 
 @code {
     // ========== PARAMETERS ========== 
-    [Parameter] public required DomainAgentService AgentService { get; set; }
+    /// <summary>The preferred framework-owned runtime. When omitted, the scoped DI registration is used.</summary>
+    [Parameter] public IConversationRuntime? Runtime { get; set; }
+
+    /// <summary>Temporary compatibility fallback for applications not yet migrated to IConversationRuntime.</summary>
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Parameter] public DomainAgentService? AgentService { get; set; }
     
     /// <summary>
     /// The visual style of the chat interface (SidebarChat, FloatingChat, or ChatWindow).
@@ -148,11 +156,12 @@
     [Parameter] public ChatStyle Style { get; set; } = ChatStyle.SidebarChat;
     
     // Allow consumer to provide a subscribe method via parameter
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
     [Parameter] public Action<CustomChatWindowV3>? SubscribeToEvents { get; set; }
 
     // ========== STATE ========== 
-    private ChatSessionStateBase SessionState { get; set; } = new DefaultChatSessionState();
-    private List<ChatMessage> Messages { get; set; } = new();
+    private readonly ConversationOutputViewState _outputState = new();
+    private List<ChatMessage> Messages => _outputState.Messages;
     private string _currentMessage = "";
     private string CurrentMessage 
     { 
@@ -167,8 +176,7 @@
     private ChatMessage? messageBeingEdited = null;
     private bool _conversationStarted = false;
     private bool showResetConfirmation = false;
-    private bool IsPromptEnabled { get; set; } = true;
-    private readonly string resetButtonLogMessage = "Button clicked";
+    private bool IsPromptEnabled => _outputState.IsPromptEnabled;
     private bool isMinimized = true; // Start minimized for FloatingChat (icon mode)
     private bool hasStartedConversation = false; // For ChatWindow style
 
@@ -180,6 +188,13 @@
     private ElementReference messageInputRef;
 
     private List<string> CurrentSuggestions { get; set; } = new();
+    private IConversationRuntime? _activeRuntime;
+    private IConversationOutputSubscription? _outputSubscription;
+    private CancellationTokenSource? _outputCancellation;
+    private Task? _outputPump;
+
+    private DomainAgentService? LegacyAgentService => AgentService;
+    private Action<CustomChatWindowV3>? LegacySubscribeToEvents => SubscribeToEvents;
 
     protected override void OnParametersSet()
     {
@@ -193,10 +208,31 @@
         // FloatingChat starts minimized (as icon)
     }
 
-    protected override void OnAfterRender(bool firstRender) {
-        base.OnAfterRender(firstRender);
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        await base.OnAfterRenderAsync(firstRender);
 
         if (firstRender && !_conversationStarted) {
+            _activeRuntime = Runtime ?? ServiceProvider.GetService<IConversationRuntime>();
+            if (_activeRuntime is not null) {
+                await InitializeRuntimeAsync(_activeRuntime);
+                _conversationStarted = true;
+                return;
+            }
+
+            var legacyAgent = LegacyAgentService;
+            if (legacyAgent is null) {
+                Logger.LogError(
+                    "[ChatWindowV3] No IConversationRuntime registration or legacy AgentService was supplied");
+                Messages.Add(new ChatMessage {
+                    Content = "⚠️ The conversation runtime is not configured.",
+                    IsFromUser = false,
+                    Timestamp = DateTime.Now
+                });
+                _conversationStarted = true;
+                StateHasChanged();
+                return;
+            }
+
             try {
                 Logger?.LogInformation("[ChatWindowV3] 🔄 First render - initializing event-driven architecture");
 
@@ -204,13 +240,13 @@
             Logger?.LogInformation("[ChatWindowV3] Wiring agent event subscriptions");
 
             // Call the consumer-provided subscription method if available
-            SubscribeToEvents?.Invoke(this);
+            LegacySubscribeToEvents?.Invoke(this);
 
             // ========== SUBSCRIBE UI TO AGENT EVENTS ==========
             Logger?.LogInformation("[ChatWindowV3] Subscribing to agent outbound events");
 
             // Bot messages
-            AgentService.ActivityMessageReady += (s, e) => {
+            legacyAgent.ActivityMessageReady += (s, e) => {
                 Logger?.LogInformation("[ChatWindowV3] ActivityMessageReady: {Content}", e.Message.Content);
 
                 _ = InvokeAsync(() => {
@@ -223,7 +259,7 @@
             };
 
             // Adaptive cards
-            AgentService.ActivityAdaptiveCardReady += (s, e) => {
+            legacyAgent.ActivityAdaptiveCardReady += (s, e) => {
                 Logger?.LogInformation(
                     "[ChatWindowV3] ActivityAdaptiveCardReady: CardId={CardId}, RenderMode={RenderMode}",
                     e.CardId,
@@ -271,7 +307,7 @@
             };
 
             // Card state changes
-            AgentService.CardStateChanged += (s, e) => {
+            legacyAgent.CardStateChanged += (s, e) => {
                 Logger?.LogInformation(
                     "[ChatWindowV3] Card state changed: {CardId} -> {State}",
                     e.CardId,
@@ -312,7 +348,7 @@
             };
 
             // Prompt state
-            AgentService.PromptInputStateChanged += (s, e) => {
+            legacyAgent.PromptInputStateChanged += (s, e) => {
                 Logger?.LogInformation(
                     "[ChatWindowV3] Prompt state changed: Enabled={IsEnabled} (CardId={CardId})",
                     e.IsEnabled,
@@ -320,13 +356,13 @@
                 );
 
                 _ = InvokeAsync(() => {
-                    IsPromptEnabled = e.IsEnabled;
+                    _outputState.SetPromptEnabled(e.IsEnabled);
                     StateHasChanged();
                 });
             };
 
             // Custom events (e.g., suggestion chips)
-            AgentService.CustomEventTriggered += (s, e) => {
+            legacyAgent.CustomEventTriggered += (s, e) => {
                 Logger?.LogInformation("[ChatWindowV3] CustomEventTriggered: {EventName}", e.EventName);
 
                 if (e.EventName == "UpdateSuggestions")
@@ -379,7 +415,7 @@
             };
 
             // Conversation reset
-            AgentService.ConversationReset += (s, e) => {
+            legacyAgent.ConversationReset += (s, e) => {
                 Logger?.LogInformation(
                     "[ChatWindowV3] ConversationReset at {ResetTime}",
                     e.ResetTime
@@ -391,7 +427,7 @@
                 );
 
                 _ = InvokeAsync(() => {
-                    Messages.Clear();
+                    _outputState.Clear();
                     // For ChatWindow style, return to initial prompt mode
                     if (Style == ChatStyle.ChatWindow)
                     {
@@ -404,17 +440,17 @@
             };
 
             // Lifecycle logging
-            AgentService.ActivityCompleted += (s, e) =>
+            legacyAgent.ActivityCompleted += (s, e) =>
                 Logger?.LogDebug("[ChatWindowV3] ActivityCompleted");
 
-            AgentService.TopicLifecycleChanged += (s, e) =>
+            legacyAgent.TopicLifecycleChanged += (s, e) =>
                 Logger?.LogDebug(
                     "[ChatWindowV3] TopicLifecycleChanged: {TopicName} -> {State}",
                     e.TopicName,
                     e.State
                 );
 
-            AgentService.ActivityLifecycleChanged += (s, e) =>
+            legacyAgent.ActivityLifecycleChanged += (s, e) =>
                 Logger?.LogDebug(
                     "[ChatWindowV3] ActivityLifecycleChanged: {ActivityId} -> {State}",
                     e.ActivityId,
@@ -442,6 +478,48 @@
         }
     }
 
+    private async Task InitializeRuntimeAsync(IConversationRuntime runtime) {
+        try {
+            Logger.LogInformation("[ChatWindowV3] Binding directly to conversation runtime {ConversationId}",
+                runtime.ConversationId);
+            _outputCancellation = new CancellationTokenSource();
+            _outputSubscription = runtime.Subscribe();
+            _outputPump = ConsumeRuntimeOutputAsync(_outputSubscription, _outputCancellation.Token);
+            await runtime.StartAsync(_outputCancellation.Token);
+        } catch (Exception ex) {
+            Logger.LogError(ex, "[ChatWindowV3] Runtime initialization failed");
+            Messages.Add(new ChatMessage {
+                Content = "⚠️ The conversation could not be started. Please try again.",
+                IsFromUser = false,
+                Timestamp = DateTime.Now
+            });
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConsumeRuntimeOutputAsync(
+        IConversationOutputSubscription subscription,
+        CancellationToken cancellationToken) {
+        try {
+            await foreach (var output in subscription.ReadAllAsync(cancellationToken)) {
+                await InvokeAsync(async () => {
+                    var change = _outputState.Apply(output);
+                    if (change.ClearBusyIndicator) {
+                        IsTyping = false;
+                        IsProcessing = false;
+                    }
+                    if (change.StateChanged) StateHasChanged();
+                    if (change.ScrollToBottom)
+                        await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
+                });
+            }
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            Logger.LogDebug("[ChatWindowV3] Runtime output subscription cancelled");
+        } catch (Exception ex) {
+            Logger.LogError(ex, "[ChatWindowV3] Runtime output subscription failed");
+        }
+    }
+
     private string GetAvatarUrl()
     {
         // Prefer external CDN if reachable; fallback to embedded RCL asset
@@ -450,12 +528,17 @@
     }
 
 
-    public void Dispose() {
+    public async ValueTask DisposeAsync() {
         try {
-            Logger?.LogInformation("[ChatWindowV3] Disposing - unsubscribing from agent events");
-            // Events will be automatically unsubscribed when component disposes
+            Logger.LogInformation("[ChatWindowV3] Disposing conversation output subscription");
+            _outputCancellation?.Cancel();
+            if (_outputSubscription is not null)
+                await _outputSubscription.DisposeAsync();
+            if (_outputPump is not null)
+                await _outputPump;
+            _outputCancellation?.Dispose();
         } catch (Exception ex) {
-            Logger?.LogError(ex, "[ChatWindowV3] Dispose error: {Message}", ex.Message);
+            Logger.LogError(ex, "[ChatWindowV3] Dispose error: {Message}", ex.Message);
         }
     }
     
@@ -492,8 +575,13 @@
         await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
 
         try {
-            Logger?.LogInformation("[ChatWindowV3] Raising UserMessageReceived event: {Message}", userMessageText);
-            UserMessageReceived?.Invoke(this, new UserMessageReceivedEventArgs(userMessageText, CancellationToken.None));
+            if (_activeRuntime is not null) {
+                Logger?.LogInformation("[ChatWindowV3] Sending message through IConversationRuntime");
+                await _activeRuntime.SendMessageAsync(userMessageText);
+            } else {
+                Logger?.LogInformation("[ChatWindowV3] Raising legacy UserMessageReceived event");
+                UserMessageReceived?.Invoke(this, new UserMessageReceivedEventArgs(userMessageText, CancellationToken.None));
+            }
         } catch (Exception ex) {
             Logger?.LogError(ex, "[ChatWindowV3] Error processing message");
             Messages.Add(new ChatMessage {
@@ -503,7 +591,11 @@
             });
             StateHasChanged();
         } finally {
-            // Leave IsProcessing/IsTyping to be cleared by the first bot response
+            if (_activeRuntime is not null) {
+                IsProcessing = false;
+                IsTyping = false;
+                StateHasChanged();
+            }
             Logger?.LogInformation("[ChatWindowV3] SendMessage completed");
         }
     }
@@ -511,7 +603,7 @@
     // ========== UTILITY ========== 
     private void ClearChat() {
         Logger?.LogInformation("[ChatWindowV3] ClearChat: clearing {Count} messages", Messages.Count);
-        Messages.Clear();
+        _outputState.Clear();
         StateHasChanged();
     }
 
@@ -533,12 +625,14 @@
         StateHasChanged();
 
         try {
-            Messages.Clear();
+            _outputState.Clear();
             StateHasChanged();
             await Task.Delay(100);
 
-            Logger?.LogInformation("[ChatWindowV3] Raising ConversationResetRequested event");
-            ConversationResetRequested?.Invoke(this, new ConversationResetRequestedEventArgs(CancellationToken.None));
+            if (_activeRuntime is not null)
+                await _activeRuntime.ResetAsync();
+            else
+                ConversationResetRequested?.Invoke(this, new ConversationResetRequestedEventArgs(CancellationToken.None));
 
             Logger?.LogInformation("[ChatWindowV3] Reset completed");
 
@@ -608,18 +702,42 @@
         await ChatInteropService.ScrollToBottomAsync(messagesContainerRef);
 
         // Raise user message event so the conversation engine receives the choice
-        UserMessageReceived?.Invoke(this, new UserMessageReceivedEventArgs(option, CancellationToken.None));
+        if (_activeRuntime is not null)
+            await _activeRuntime.SendMessageAsync(option);
+        else
+            UserMessageReceived?.Invoke(this, new UserMessageReceivedEventArgs(option, CancellationToken.None));
     }
 
-    private Task OnAdaptiveCardSubmit(Dictionary<string, object> data) {
+    private async Task OnAdaptiveCardSubmit(string? cardId, Dictionary<string, object> data) {
         Logger?.LogInformation("[ChatWindowV3] OnAdaptiveCardSubmit: {Keys}", string.Join(",", data.Keys));
         Logger?.LogInformation("[ChatWindowV3] Raising CardSubmitted event");
         // Show typing/busy indicator while the back-end processes the card
         IsProcessing = true;
         IsTyping = true;
         StateHasChanged();
-        CardSubmitted?.Invoke(this, new CardSubmittedEventArgs(data, CancellationToken.None));
-        return Task.CompletedTask;
+        try {
+            if (_activeRuntime is not null) {
+                if (string.IsNullOrWhiteSpace(cardId))
+                    throw new InvalidOperationException("The submitted adaptive card has no runtime card identifier.");
+                await _activeRuntime.SubmitCardAsync(new CardSubmission(cardId, data));
+            } else {
+                CardSubmitted?.Invoke(this, new CardSubmittedEventArgs(data, CancellationToken.None));
+            }
+        } catch (Exception ex) {
+            Logger?.LogError(ex, "[ChatWindowV3] Error processing adaptive-card submission");
+            Messages.Add(new ChatMessage {
+                Content = "⚠️ The form could not be submitted. Please try again.",
+                IsFromUser = false,
+                Timestamp = DateTime.Now
+            });
+            StateHasChanged();
+        } finally {
+            if (_activeRuntime is not null) {
+                IsProcessing = false;
+                IsTyping = false;
+                StateHasChanged();
+            }
+        }
     }
 
     // ========== PUBLIC METHODS ==========
@@ -718,7 +836,7 @@
                                     <AdaptiveCardRenderer CardJson="@message.AdaptiveCardJson"
                                                           CardContainerId="@($"card-{message.Timestamp.Ticks}")"
                                                           Disabled="@(!message.IsActive)"
-                                                          OnSubmit="OnAdaptiveCardSubmit"
+                                                          OnSubmit="@(data => OnAdaptiveCardSubmit(message.CardId, data))"
                                                           OnAction="HandleCardAction" />
 
                                 </div>

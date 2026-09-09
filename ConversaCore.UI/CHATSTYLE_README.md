@@ -16,10 +16,13 @@ The ConversaCore UI library now supports **three different chat interface styles
 @using ConversaCore.UI.Components
 @using ConversaCore.UI.Models
 
-<CustomChatWindowV3 AgentService="@YourAgentService"
-                  Style="@ChatStyle.SidebarChat"
-                  SubscribeToEvents="@(w => YourAgentService.SubscribeToChatWindowEvents(w))" />
+<CustomChatWindowV3 Style="@ChatStyle.SidebarChat" />
 ```
+
+Register a scoped `IConversationRuntime` in the host. The component resolves it from DI,
+subscribes to its typed output stream, and sends start, message, card-submit, and reset
+commands directly. The `Runtime` parameter can be supplied explicitly for advanced
+composition or tests.
 
 ## Chat Styles
 
@@ -247,9 +250,10 @@ Each style applies a specific class to the container:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `AgentService` | `DomainAgentService` | *Required* | The agent service handling conversations |
+| `Runtime` | `IConversationRuntime?` | DI resolution | Optional explicit runtime; otherwise the scoped registration is used |
 | `Style` | `ChatStyle` | `SidebarChat` | Visual style of the chat interface |
-| `SubscribeToEvents` | `Action<CustomChatWindowV3>?` | `null` | Callback to wire up event subscriptions |
+| `AgentService` | `DomainAgentService?` | `null` | Obsolete migration fallback only |
+| `SubscribeToEvents` | `Action<CustomChatWindowV3>?` | `null` | Obsolete migration fallback only |
 
 ### ChatStyle Enum
 

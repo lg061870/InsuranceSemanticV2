@@ -47,6 +47,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ConversaCore\ConversaCore.csproj" />
+    <ProjectReference Include="..\ConversaCore.UI\ConversaCore.UI.csproj" />
   </ItemGroup>
 
 </Project>
