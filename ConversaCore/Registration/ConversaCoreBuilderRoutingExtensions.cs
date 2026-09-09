@@ -40,4 +40,25 @@ public static class ConversaCoreBuilderRoutingExtensions
         builder.Services.TryAddScoped<IConversationMessageCoordinator, ConversationMessageCoordinator>();
         return builder;
     }
+
+    /// <summary>
+    /// Registers the complete scoped conversation runtime with an explicit start topic.
+    /// Register domain topics before building the service provider; topic factories remain lazy.
+    /// </summary>
+    /// <param name="builder">The ConversaCore registration builder.</param>
+    /// <param name="startTopicId">Stable ID of the topic activated on start and reset.</param>
+    /// <param name="routingOptions">Optional routing and fallback configuration.</param>
+    /// <returns>The same builder for fluent registration.</returns>
+    public static ConversaCoreBuilder AddConversationRuntime(
+        this ConversaCoreBuilder builder,
+        string startTopicId,
+        TopicRouterOptions? routingOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(startTopicId);
+        builder.AddConversationRuntimeFoundation(routingOptions);
+        builder.Services.Replace(ServiceDescriptor.Singleton(new ConversationRuntimeOptions(startTopicId)));
+        builder.Services.TryAddScoped<IConversationRuntime, ConversationRuntime>();
+        return builder;
+    }
 }

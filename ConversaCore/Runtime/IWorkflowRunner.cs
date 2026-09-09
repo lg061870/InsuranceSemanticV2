@@ -23,6 +23,10 @@ public interface IWorkflowRunner
     Task<WorkflowExecutionOutcome> InterruptAndDeliverAsync(TopicDescriptor topic, string message,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Validates and delivers a card submission to the active adaptive-card activity.</summary>
+    Task<WorkflowExecutionOutcome> SubmitCardAsync(CardSubmission submission,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Cancels active runner work and clears retained execution state.</summary>
     Task CancelAsync(CancellationToken cancellationToken = default);
 

@@ -1,6 +1,10 @@
 using ConversaCore.Models;
 using ConversaCore.Registration;
+using ConversaCore.Events;
+using ConversaCore.Core;
+using ConversaCore.TopicFlow;
 using ConversaCore.Topics;
+using Flow = ConversaCore.TopicFlow.TopicFlow;
 
 namespace ConversaCore.Runtime;
 
@@ -9,29 +13,33 @@ namespace ConversaCore.Runtime;
 /// is the live <see cref="ITopic"/> created for the current conversation; descriptor metadata stays
 /// in <see cref="IConversationSession"/>. It invokes <see cref="ITopic.ProcessMessageAsync"/> as the
 /// isolated compatibility seam for existing topics, rather than wiring activity events itself.</remarks>
-public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
+public sealed class WorkflowRunner : IWorkflowRunner, IDisposable, IAsyncDisposable
 {
     private readonly IConversationSession _session;
     private readonly ITopicActivator _activator;
     private readonly ITopicCatalog _catalog;
     private readonly IWorkflowOutputDispatcher _outputDispatcher;
+    private readonly ILegacyTopicOutputAdapter? _legacyOutputAdapter;
     private readonly IServiceProvider _services;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly object _cancellationSync = new();
     private readonly Stack<SuspendedExecution> _suspendedParents = new();
     private CancellationTokenSource _executionCancellation = new();
     private ITopic? _activeExecution;
+    private IAsyncDisposable? _activeOutputLease;
     private bool _disposed;
 
     /// <summary>Creates a runner for exactly one scoped conversation.</summary>
     public WorkflowRunner(IConversationSession session, ITopicActivator activator, ITopicCatalog catalog, IServiceProvider services,
-        IWorkflowOutputDispatcher? outputDispatcher = null)
+        IWorkflowOutputDispatcher? outputDispatcher = null,
+        ILegacyTopicOutputAdapter? legacyOutputAdapter = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _activator = activator ?? throw new ArgumentNullException(nameof(activator));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _outputDispatcher = outputDispatcher ?? NullWorkflowOutputDispatcher.Instance;
+        _legacyOutputAdapter = legacyOutputAdapter;
     }
 
     /// <inheritdoc />
@@ -85,11 +93,70 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         {
             if (_activeExecution is null || _session.ActiveTopic is null)
                 throw new InvalidOperationException("No active workflow execution is available to interrupt.");
-            _suspendedParents.Push(new SuspendedExecution(_session.ActiveTopic, _activeExecution,
-                RunnerOwnsSessionCall: false, SuspensionKind.Interruption));
-            _activeExecution = await _activator.ActivateAsync(topic.TopicId, _services, operation.Token).ConfigureAwait(false);
-            _session.SetActiveTopic(topic);
-            return await ExecuteActiveAsync(topic, _activeExecution, message, operation.Token).ConfigureAwait(false);
+            var parent = new SuspendedExecution(_session.ActiveTopic, _activeExecution,
+                _activeOutputLease, RunnerOwnsSessionCall: false, SuspensionKind.Interruption);
+            _suspendedParents.Push(parent);
+            _activeExecution = null;
+            _activeOutputLease = null;
+            try
+            {
+                await ActivateAsync(topic, operation.Token).ConfigureAwait(false);
+            }
+            catch
+            {
+                _suspendedParents.Pop();
+                Restore(parent);
+                throw;
+            }
+            return await ExecuteActiveAsync(topic, _activeExecution ?? throw new InvalidOperationException(
+                "Topic activation completed without an active execution."), message, operation.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<WorkflowExecutionOutcome> SubmitCardAsync(
+        CardSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(submission);
+        ThrowIfDisposed();
+        using var operation = CreateOperationCancellation(cancellationToken);
+        await _operationGate.WaitAsync(operation.Token).ConfigureAwait(false);
+        try
+        {
+            if (_activeExecution is not Flow flow || _session.ActiveTopic is null)
+                throw new InvalidOperationException("No active TopicFlow is available to receive a card submission.");
+
+            var activity = flow.GetCurrentActivity();
+            if (activity is not IAdaptiveCardActivity cardActivity)
+                throw new InvalidOperationException("The active workflow activity does not accept adaptive-card input.");
+            if (!string.Equals(activity.Id, submission.CardId, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"Card '{submission.CardId}' is not the active card '{activity.Id}'.");
+
+            operation.Token.ThrowIfCancellationRequested();
+            cardActivity.OnInputCollected(new AdaptiveCardInputCollectedEventArgs(
+                submission.Data.ToDictionary(pair => pair.Key, pair => pair.Value)));
+
+            if (activity.CurrentState == ActivityState.WaitingForUserInput)
+                return new WorkflowExecutionOutcome(
+                    _session.ActiveTopic,
+                    WorkflowExecutionState.WaitingForInput,
+                    null,
+                    null,
+                    true,
+                    null);
+
+            return await ExecuteActiveAsync(
+                _session.ActiveTopic,
+                _activeExecution ?? throw new InvalidOperationException(
+                    "Card submission completed without an active execution."),
+                string.Empty,
+                operation.Token).ConfigureAwait(false);
         }
         finally
         {
@@ -116,9 +183,10 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
                 throw new InvalidOperationException("Cannot replace a workflow while a parent is awaiting subtopic completion.");
             // A new activation supersedes an old, nonterminal execution only when the caller has
             // already made that routing/interrupt decision. CC-207 supplies that policy.
-            _activeExecution = await _activator.ActivateAsync(topic.TopicId, _services, operation.Token).ConfigureAwait(false);
-            _session.SetActiveTopic(topic);
-            return await ExecuteActiveAsync(topic, _activeExecution, message, operation.Token).ConfigureAwait(false);
+            await ReleaseActiveExecutionAsync().ConfigureAwait(false);
+            await ActivateAsync(topic, operation.Token).ConfigureAwait(false);
+            return await ExecuteActiveAsync(topic, _activeExecution ?? throw new InvalidOperationException(
+                "Topic activation completed without an active execution."), message, operation.Token).ConfigureAwait(false);
         }
         finally
         {
@@ -131,9 +199,10 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         ThrowIfDisposed();
         lock (_cancellationSync) _executionCancellation.Cancel();
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Exception? failure = null;
         try
         {
-            _activeExecution = null;
+            failure = await ReleaseRetainedExecutionsAsync().ConfigureAwait(false);
             _suspendedParents.Clear();
             if (resetSession) _session.Reset(); else _session.SetActiveTopic(null);
             lock (_cancellationSync)
@@ -142,7 +211,12 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
                 _executionCancellation = new CancellationTokenSource();
             }
         }
+        catch (Exception exception)
+        {
+            failure = Combine(failure, exception);
+        }
         finally { _operationGate.Release(); }
+        if (failure is not null) throw failure;
     }
 
     private CancellationTokenSource CreateOperationCancellation(CancellationToken callerToken)
@@ -174,15 +248,16 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
                 .ConfigureAwait(false);
         }
 
-        if (state == WorkflowExecutionState.Completed || (state == WorkflowExecutionState.NotHandled && !retainWhenUnhandled))
-        {
-            _activeExecution = null;
-            _session.SetActiveTopic(null);
-        }
+        var releasesActivation = state == WorkflowExecutionState.Completed ||
+                                 (state == WorkflowExecutionState.NotHandled && !retainWhenUnhandled);
+        if (releasesActivation) _session.SetActiveTopic(null);
 
         await _outputDispatcher.DispatchAsync(outcome, cancellationToken).ConfigureAwait(false);
-        if (state == WorkflowExecutionState.Completed || (state == WorkflowExecutionState.NotHandled && !retainWhenUnhandled))
+        if (releasesActivation)
+        {
+            await ReleaseActiveExecutionAsync().ConfigureAwait(false);
             return await ResumeParentIfNeededAsync(outcome, cancellationToken).ConfigureAwait(false);
+        }
         return outcome;
     }
 
@@ -201,11 +276,24 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         if (runnerOwnsSessionCall)
             _session.PushTopicCall(parentDescriptor.TopicId, childDescriptor.TopicId);
 
-        _suspendedParents.Push(new SuspendedExecution(parentDescriptor, parentExecution, runnerOwnsSessionCall,
-            SuspensionKind.Subtopic));
-        _activeExecution = await _activator.ActivateAsync(childDescriptor.TopicId, _services, cancellationToken).ConfigureAwait(false);
-        _session.SetActiveTopic(childDescriptor);
-        return await ExecuteActiveAsync(childDescriptor, _activeExecution, string.Empty, cancellationToken).ConfigureAwait(false);
+        var parent = new SuspendedExecution(parentDescriptor, parentExecution, _activeOutputLease, runnerOwnsSessionCall,
+            SuspensionKind.Subtopic);
+        _suspendedParents.Push(parent);
+        _activeExecution = null;
+        _activeOutputLease = null;
+        try
+        {
+            await ActivateAsync(childDescriptor, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            _suspendedParents.Pop();
+            if (runnerOwnsSessionCall) _session.PopTopicCall();
+            Restore(parent);
+            throw;
+        }
+        return await ExecuteActiveAsync(childDescriptor, _activeExecution ?? throw new InvalidOperationException(
+            "Subtopic activation completed without an active execution."), string.Empty, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<WorkflowExecutionOutcome> ResumeParentIfNeededAsync(WorkflowExecutionOutcome childOutcome,
@@ -218,8 +306,7 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
         if (parent.RunnerOwnsSessionCall)
             _session.PopTopicCall(childOutcome);
 
-        _activeExecution = parent.Execution;
-        _session.SetActiveTopic(parent.Descriptor);
+        Restore(parent);
         // Existing ITopic exposes text input only. New typed child-result delivery is deliberately
         // deferred; legacy TopicFlow uses these conventional messages to advance its cursor.
         var resumeMessage = parent.Kind == SuspensionKind.Subtopic ? "Sub-topic completed" : "Interrupted topic completed";
@@ -239,15 +326,140 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
     }
 
     /// <inheritdoc />
-    public void Dispose()
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
     {
-        if (_disposed) return;
-        _disposed = true;
-        lock (_cancellationSync) _executionCancellation.Cancel();
+        lock (_cancellationSync)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _executionCancellation.Cancel();
+        }
+
+        await _operationGate.WaitAsync().ConfigureAwait(false);
+        Exception? failure = null;
+        try
+        {
+            failure = await ReleaseRetainedExecutionsAsync().ConfigureAwait(false);
+            _session.SetActiveTopic(null);
+        }
+        catch (Exception exception)
+        {
+            failure = Combine(failure, exception);
+        }
+        finally
+        {
+            _executionCancellation.Dispose();
+            _operationGate.Release();
+            _operationGate.Dispose();
+        }
+        if (failure is not null) throw failure;
+    }
+
+    private async Task ActivateAsync(TopicDescriptor descriptor, CancellationToken cancellationToken)
+    {
+        var execution = await _activator
+            .ActivateAsync(descriptor.TopicId, _services, cancellationToken)
+            .ConfigureAwait(false);
+        IAsyncDisposable? outputLease = null;
+        try
+        {
+            outputLease = _legacyOutputAdapter?.Attach(descriptor, execution);
+        }
+        catch
+        {
+            await ReleaseExecutionAsync(execution, null).ConfigureAwait(false);
+            throw;
+        }
+
+        _activeExecution = execution;
+        _activeOutputLease = outputLease;
+        _session.SetActiveTopic(descriptor);
+    }
+
+    private async Task ReleaseActiveExecutionAsync()
+    {
+        var execution = _activeExecution;
+        var outputLease = _activeOutputLease;
         _activeExecution = null;
-        _suspendedParents.Clear();
-        _executionCancellation.Dispose();
-        _operationGate.Dispose();
+        _activeOutputLease = null;
+        if (execution is not null)
+            await ReleaseExecutionAsync(execution, outputLease).ConfigureAwait(false);
+        else if (outputLease is not null)
+            await outputLease.DisposeAsync().ConfigureAwait(false);
+    }
+
+    private async Task<Exception?> ReleaseRetainedExecutionsAsync()
+    {
+        Exception? failure = null;
+        try
+        {
+            await ReleaseActiveExecutionAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failure = Combine(failure, exception);
+        }
+
+        while (_suspendedParents.Count > 0)
+        {
+            var parent = _suspendedParents.Pop();
+            try
+            {
+                await ReleaseAsync(parent).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failure = Combine(failure, exception);
+            }
+        }
+
+        return failure;
+    }
+
+    private static Exception Combine(Exception? current, Exception next) =>
+        current is null ? next : new AggregateException(current, next);
+
+    private static Task ReleaseAsync(SuspendedExecution execution) =>
+        ReleaseExecutionAsync(execution.Execution, execution.OutputLease);
+
+    private static async Task ReleaseExecutionAsync(ITopic execution, IAsyncDisposable? outputLease)
+    {
+        Exception? failure = null;
+        try
+        {
+            if (outputLease is not null)
+                await outputLease.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+        }
+
+        try
+        {
+            if (execution is IAsyncDisposable asyncDisposable)
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            else if (execution is ITerminable terminable)
+                await terminable.TerminateAsync().ConfigureAwait(false);
+            else if (execution is IDisposable disposable)
+                disposable.Dispose();
+        }
+        catch (Exception exception)
+        {
+            failure = failure is null ? exception : new AggregateException(failure, exception);
+        }
+
+        if (failure is not null) throw failure;
+    }
+
+    private void Restore(SuspendedExecution execution)
+    {
+        _activeExecution = execution.Execution;
+        _activeOutputLease = execution.OutputLease;
+        _session.SetActiveTopic(execution.Descriptor);
     }
 
     private sealed class NullWorkflowOutputDispatcher : IWorkflowOutputDispatcher
@@ -263,5 +475,5 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable
     private enum SuspensionKind { Subtopic, Interruption }
 
     private sealed record SuspendedExecution(TopicDescriptor Descriptor, ITopic Execution,
-        bool RunnerOwnsSessionCall, SuspensionKind Kind);
+        IAsyncDisposable? OutputLease, bool RunnerOwnsSessionCall, SuspensionKind Kind);
 }

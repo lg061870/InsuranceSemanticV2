@@ -174,6 +174,14 @@ The exact names can change during API design, but these rules cannot:
 - Output is delivered through an asynchronous, disposable subscription rather than `async void` event chains.
 - Domain behavior enters through registered topics, tools, and host-event contracts—not overrides.
 
+ConversaCore registers the facade with `AddConversationRuntime(startTopicId, routingOptions)`.
+The registration is scoped and lazy: resolving the runtime validates the configured start
+descriptor but does not activate a topic. `StartAsync` is idempotent within the scope and
+`ResetAsync` cancels and disposes the current activation and its legacy output lease before
+starting a fresh activation. Disposal attempts every retained activation and lease, and
+then disposes host-interaction and output services so one cleanup failure cannot strand the
+remaining conversation resources.
+
 For migration, the existing `DomainAgentService` can temporarily wrap `IConversationRuntime`. It should be marked obsolete once the new UI adapter is functional and removed in the next breaking release.
 
 ## 7. Topic discovery, activation, and routing

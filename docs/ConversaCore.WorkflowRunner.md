@@ -38,8 +38,11 @@ CC-206 owns pushing/popping the topic call stack and resuming a parent after a
 subtopic. CC-207 decides whether a new activation may interrupt a retained
 one. CC-208 owns reset/cancellation cleanup, CC-209 awaits real-topic
 initialization, CC-210 removes legacy async event paths, and WP3 owns public
-typed output, cards, and host interactions. `IConversationRuntime` assembly
-also remains later work.
+typed output, cards, and host interactions. `IConversationRuntime` now assembles these
+services as the scoped public facade; `AddConversationRuntime(startTopicId, options)`
+validates the start descriptor lazily and retains no topic instance until start/reset.
+Runner reset and disposal release every active/suspended activation and output lease even
+when an earlier release fails, then preserve the failure for the caller.
 
 This is framework-only. No InsuranceAgent code is changed; reference-domain
 migration waits for the completed framework and revised domain requirements.
@@ -47,4 +50,6 @@ migration waits for the completed framework and revised domain requirements.
 `AddConversationRuntimeFoundation(options)` wires the immutable catalog as a
 singleton and the session, activator, router, runner, and message coordinator as
 scoped services. Registration stores descriptors/factories only and does not
-construct topics. The public `IConversationRuntime` facade remains later work.
+construct topics. The public `IConversationRuntime` facade is registered separately
+by `AddConversationRuntime(startTopicId, options)` so legacy orchestration remains
+opt-in.

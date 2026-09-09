@@ -10,12 +10,13 @@ namespace ConversaCore.Runtime;
 /// instead.
 /// </summary>
 /// <remarks>
-/// <para><b>Scope of this ticket (CC-200).</b></para>
+/// <para><b>Framework implementation.</b></para>
 /// <para>
-/// This file defines the contract only. It intentionally does not implement
-/// <see cref="IConversationRuntime"/> — that is CC-201 (the conversation session),
-/// CC-205 (the workflow runner that actually executes topic activities), and the later
-/// tickets that assemble a concrete implementation from them. The typed
+/// ConversaCore supplies the concrete scoped implementation through
+/// <c>AddConversationRuntime(startTopicId)</c>. The facade composes the session, router,
+/// workflow runner, output dispatcher, legacy output lease, and host-interaction
+/// coordinator; it does not create topic instances until <see cref="StartAsync"/> or
+/// <see cref="ResetAsync"/> is invoked. The typed
 /// <see cref="ConversationOutput"/> hierarchy is now defined by CC-300; detailed host-event
 /// contracts and tool contracts remain WP3 and WP4 work respectively.
 /// </para>
@@ -81,9 +82,10 @@ public interface IConversationRuntime
     string ConversationId { get; }
 
     /// <summary>
-    /// Starts the conversation: activates whatever registered start topic (or start
-    /// composition) applies, running any startup/compliance flow the domain application
-    /// has registered. Analogous to the legacy
+    /// Starts the conversation exactly once for this runtime instance: activates the
+    /// explicitly registered start topic. Concurrent calls share the same task, including
+    /// its cancellation outcome; after a failed or cancelled start, the caller may retry.
+    /// Analogous to the legacy
     /// <c>DomainAgentService.StartConversationAsync</c>, but framework-owned rather than
     /// an abstract method a domain subclass must implement.
     /// </summary>
@@ -128,9 +130,11 @@ public interface IConversationRuntime
     Task RespondToHostInteractionAsync(HostInteractionResponse response, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Resets the conversation to its initial state: clears active topic, topic stack,
+    /// Resets the conversation to its initial state: cancels in-flight work, clears active topic, topic stack,
     /// pending interactions, and shared conversation state, then restarts the conversation
-    /// (equivalent to calling <see cref="StartAsync"/> again). Analogous to the legacy
+    /// and pending interactions, then starts the configured start topic again. The task
+    /// cancelled by reset is not converted into a successful completion; callers awaiting
+    /// that older command observe <see cref="OperationCanceledException"/>. Analogous to the legacy
     /// <c>DomainAgentService.ResetConversationAsync</c>, but without reflection-based state
     /// forcing (target architecture section 7.3: "Reset never uses reflection").
     /// </summary>
