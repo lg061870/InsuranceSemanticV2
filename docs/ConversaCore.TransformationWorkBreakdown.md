@@ -201,7 +201,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 ### Tasks
 
 - [x] **CC-500 — Freeze an InsuranceAgent migration matrix.** Added [InsuranceAgent → ConversaCore migration matrix](InsuranceAgent.ConversaCoreMigrationMatrix.md) covering current registrations, start-flow mutation, host events, persistence, integrations, topic identity, target mechanisms, and the gated migration order.
-- [ ] **CC-501 — Move startup/compliance composition into topics.** Replace activities inserted by `InsuranceAgentServiceV2` with a registered `ConversationStartTopic` and explicit subtopic composition.
+- [ ] **CC-501 — Move startup/compliance composition into topics.** Added the registered `InsuranceConversationStartTopic` composition as the first extraction; final service/page cutover and removal of the legacy mutation remain in CC-502.
 - [ ] **CC-502 — Replace the domain agent injection.** Inject the framework runtime into the page/UI component and remove `SubscribeToChatWindowEvents` usage.
 - [ ] **CC-503 — Define typed insurance host contracts.** Convert progress, customer-console, navigation, and qualification-complete notifications to immutable payloads.
 - [ ] **CC-504 — Move lead creation into a tool.** Return the created lead ID to conversation state so later operations do not depend on page-local `currentLeadId`.

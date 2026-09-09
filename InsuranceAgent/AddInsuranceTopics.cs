@@ -40,6 +40,12 @@ public static class InsuranceTopicRegistrationExtensions {
             sp.GetRequiredService<IConversationContext>()
         ));
 
+        AddTopic(sp => new InsuranceConversationStartTopic(
+            sp.GetRequiredService<TopicWorkflowContext>(),
+            sp.GetRequiredService<ILogger<InsuranceConversationStartTopic>>(),
+            sp.GetRequiredService<IConversationContext>()
+        ));
+
         AddTopic(sp => new BeneficiaryInfoDemoTopic(
             sp.GetRequiredService<TopicWorkflowContext>(),
             sp.GetRequiredService<ILogger<BeneficiaryInfoDemoTopic>>(),
