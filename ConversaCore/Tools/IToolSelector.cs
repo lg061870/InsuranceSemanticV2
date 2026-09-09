@@ -16,6 +16,9 @@ public sealed record ToolSelectionOptions
 
     /// <summary>Gets the inclusive score required for selection.</summary>
     public float MinimumScore { get; init; } = 0.5f;
+
+    /// <summary>Gets the maximum number of descriptors exposed to semantic ranking.</summary>
+    public int MaxCandidates { get; init; } = 20;
 }
 
 /// <summary>Result of a bounded semantic tool selection.</summary>

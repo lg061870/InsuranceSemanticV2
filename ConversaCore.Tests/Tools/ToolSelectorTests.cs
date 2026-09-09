@@ -30,6 +30,23 @@ public sealed class ToolSelectorTests
             "find", new HashSet<string> { "first" }, new ToolSelectionOptions { Enabled = true }));
     }
 
+    [Fact]
+    public async Task Selector_AppliesCheapPrefilterAndTopKBeforeRanking()
+    {
+        var ranker = new RecordingRanker { Scores = new Dictionary<string, float> { ["alpha"] = .9f } };
+        var selector = new ToolSelector(new ToolCatalog(new[]
+        {
+            new ToolDescriptor("alpha", "1", "Alpha", "alpha lookup", typeof(string), typeof(string)),
+            new ToolDescriptor("beta", "1", "Beta", "beta lookup", typeof(string), typeof(string)),
+            new ToolDescriptor("gamma", "1", "Gamma", "gamma lookup", typeof(string), typeof(string))
+        }), ranker);
+
+        await selector.SelectAsync("alpha", new HashSet<string> { "alpha", "beta", "gamma" },
+            new ToolSelectionOptions { Enabled = true, MaxCandidates = 1 });
+
+        Assert.Equal(["alpha"], ranker.Candidates);
+    }
+
     private static ToolDescriptor Descriptor(string id) => new(id, "1", id, id, typeof(string), typeof(string));
 
     private sealed class RecordingRanker : IToolSemanticRanker

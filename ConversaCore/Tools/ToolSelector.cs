@@ -1,10 +1,12 @@
 namespace ConversaCore.Tools;
+using System.Collections.Concurrent;
 
 /// <summary>Bounded selector that never exposes the global catalog to the ranker.</summary>
 public sealed class ToolSelector : IToolSelector
 {
     private readonly IToolCatalog _catalog;
     private readonly IToolSemanticRanker _ranker;
+    private readonly ConcurrentDictionary<string, ToolDescriptor[]> _candidateCache = new(StringComparer.Ordinal);
 
     /// <summary>Creates a selector over an immutable catalog and semantic ranker.</summary>
     public ToolSelector(IToolCatalog catalog, IToolSemanticRanker ranker)
@@ -23,10 +25,20 @@ public sealed class ToolSelector : IToolSelector
         if (!options.Enabled) return null;
         if (float.IsNaN(options.MinimumScore) || options.MinimumScore is < 0 or > 1)
             throw new ArgumentOutOfRangeException(nameof(options), "Minimum score must be finite and within [0,1].");
+        if (options.MaxCandidates <= 0)
+            throw new ArgumentOutOfRangeException(nameof(options), "Maximum candidates must be positive.");
 
-        var candidates = _catalog.Descriptors
+        var cacheKey = string.Join('\u001f', allowedToolIds.Order(StringComparer.OrdinalIgnoreCase));
+        var bounded = _candidateCache.GetOrAdd(cacheKey, _ => _catalog.Descriptors
             .Where(d => allowedToolIds.Contains(d.ToolId))
-            .ToArray();
+            .OrderBy(d => d.ToolId, StringComparer.OrdinalIgnoreCase)
+            .ToArray());
+        var words = request.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var matches = bounded.Where(d => words.Any(word =>
+            d.ToolId.Contains(word, StringComparison.OrdinalIgnoreCase) ||
+            d.DisplayName.Contains(word, StringComparison.OrdinalIgnoreCase) ||
+            d.Description.Contains(word, StringComparison.OrdinalIgnoreCase))).ToArray();
+        var candidates = (matches.Length == 0 ? bounded : matches).Take(options.MaxCandidates).ToArray();
         if (candidates.Length == 0) return null;
         var scores = await _ranker.RankAsync(request, candidates, cancellationToken).ConfigureAwait(false);
         var candidateIds = candidates.Select(c => c.ToolId).ToHashSet(StringComparer.OrdinalIgnoreCase);
