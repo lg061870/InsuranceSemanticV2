@@ -5,6 +5,9 @@ namespace ConversaCore.Integrations.Zapier;
 /// </summary>
 public class ZapierWebhookRequest
 {
+    /// <summary>Absolute webhook URL supplied by trusted configuration or workflow state.</summary>
+    public string? WebhookUrl { get; set; }
+
     /// <summary>
     /// Data to send to Zapier - can be any JSON-serializable object
     /// </summary>
@@ -19,6 +22,12 @@ public class ZapierWebhookRequest
     /// Timestamp of the event
     /// </summary>
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Transport timeout in seconds.</summary>
+    public int TimeoutSeconds { get; set; } = 30;
+
+    /// <summary>Transport retry count.</summary>
+    public int RetryCount { get; set; } = 3;
 }
 
 /// <summary>

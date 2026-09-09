@@ -8,6 +8,7 @@ namespace ConversaCore.Integrations.Zapier;
 /// <summary>
 /// Activity that triggers a Zapier webhook and optionally waits for response
 /// </summary>
+[Obsolete("Use ZapierWebhookTool with IToolExecutor and InvokeToolActivity instead.")]
 public class ZapierWebhookActivity : TopicFlowActivity
 {
     private readonly IIntegrationService _integrationService;
