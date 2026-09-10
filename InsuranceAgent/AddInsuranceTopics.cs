@@ -8,6 +8,7 @@ using InsuranceAgent.Topics;
 using InsuranceAgent.Topics.BeneficiaryRepeatDemo;
 using InsuranceAgent.Topics.Demo;
 using Microsoft.SemanticKernel;
+using ConversaCore.Tools;
 
 namespace InsuranceAgent.Extensions;
 
@@ -148,7 +149,8 @@ public static class InsuranceTopicRegistrationExtensions {
             sp.GetRequiredService<ILogger<MarketingT1Topic>>(),
             sp.GetRequiredService<IConversationContext>(),
             sp.GetRequiredService<Kernel>(),
-            sp.GetRequiredService<InsuranceRuleRepository>()
+            sp.GetRequiredService<InsuranceRuleRepository>(),
+            sp.GetRequiredService<IToolExecutor>()
         ));
 
         AddTopic(sp => new SemanticActivitiesDemoTopic(

@@ -8,12 +8,14 @@ using ConversaCore.Integrations.Core;
 using ConversaCore.Integrations.Models;
 using ConversaCore.Registration;
 using ConversaCore.Registration.Compatibility;
+using ConversaCore.Tools;
 using InsuranceAgent.Configuration;
 using InsuranceAgent.Extensions;
 using InsuranceAgent.Mappings;
 using InsuranceAgent.Repositories;
 using InsuranceAgent.Services;
 using InsuranceAgent.Topics;
+using InsuranceAgent.Tools;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.AI;
 using System.Diagnostics;
@@ -88,6 +90,11 @@ internal class Program {
 
         // Framework-owned runtime for the migrated InsuranceAgent start flow.
         new ConversaCoreBuilder(builder.Services)
+            .AddTool<CreateLeadTool>(new ToolDescriptor(
+                "insurance.lead.create", "1", "Create insurance lead",
+                "Creates a lead from collected insurance qualification details.",
+                typeof(CreateLeadRequest), typeof(CreateLeadResult),
+                sideEffect: ToolSideEffect.Mutating))
             .AddTopicsFromLegacyRegistrations(new[]
             {
                 "ConversationStart",

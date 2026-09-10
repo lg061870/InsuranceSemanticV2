@@ -11,6 +11,8 @@ using InsuranceAgent.Repositories;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.SemanticKernel;
 using System.Threading.Tasks;
+using ConversaCore.Tools;
+using InsuranceAgent.Tools;
 
 namespace InsuranceAgent.Topics;
 
@@ -24,6 +26,7 @@ public class MarketingT1Topic : TopicFlow {
     private readonly IConversationContext _conversationContext;
     private readonly Kernel _kernel;
     private readonly InsuranceRuleRepository _insuranceRuleRepository;
+    private readonly IToolExecutor _toolExecutor;
 
     public static readonly string[] IntentKeywords = new[]
     {
@@ -36,12 +39,14 @@ public class MarketingT1Topic : TopicFlow {
         ILogger<MarketingT1Topic> logger,
         IConversationContext conversationContext,
         Kernel kernel,
-        InsuranceRuleRepository insuranceRuleRepository)
+        InsuranceRuleRepository insuranceRuleRepository,
+        IToolExecutor toolExecutor)
         : base(context, logger, name: "MarketingT1Topic") {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _conversationContext = conversationContext ?? throw new ArgumentNullException(nameof(conversationContext));
         _kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
         _insuranceRuleRepository = insuranceRuleRepository ?? throw new ArgumentNullException(nameof(insuranceRuleRepository));
+        _toolExecutor = toolExecutor ?? throw new ArgumentNullException(nameof(toolExecutor));
 
         Context.SetValue("TopicName", "Marketing Path Type 1");
         Context.SetValue("marketing_path_type", "T1");
@@ -114,6 +119,23 @@ public class MarketingT1Topic : TopicFlow {
                 leadIntent: Context.GetValue<string>("lead_intent")
             )
         ));
+
+        Add(new InvokeToolActivity<CreateLeadTool, CreateLeadRequest, CreateLeadResult>(
+            "CreateLead",
+            "insurance.lead.create",
+            _toolExecutor,
+            context => new CreateLeadRequest(
+                context.GetValue<LeadDetailsModel>("LeadDetailsModel")
+                    ?? throw new InvalidOperationException("Lead details are required before lead creation."),
+                context.GetValue<ContactInfoModel>("ContactInfoModel")),
+            context => new ToolExecutionContext {
+                ConversationId = context.GetValue<string>("ConversationId") ?? "insurance",
+                Subject = "insurance-host",
+                CorrelationId = Guid.NewGuid().ToString("N"),
+                Services = EmptyServiceProvider.Instance,
+                AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "insurance.lead.create" }
+            },
+            "insurance.lead.create.result"));
 
         // contact_info_submitted
         Add(EventTriggerActivity.CreateFireAndForget(
@@ -397,6 +419,12 @@ public class MarketingT1Topic : TopicFlow {
         );
 
         _logger.LogInformation("[MarketingT1Topic] ✅ Initialized full flow with semantic reasoning checkpoints.");
+    }
+
+    private sealed class EmptyServiceProvider : IServiceProvider
+    {
+        public static EmptyServiceProvider Instance { get; } = new();
+        public object? GetService(Type serviceType) => null;
     }
 
 
