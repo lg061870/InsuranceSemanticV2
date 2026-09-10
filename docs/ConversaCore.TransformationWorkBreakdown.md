@@ -208,7 +208,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 - [ ] **CC-505 — Move profile persistence into tools.** Contact, life goals, coverage intent, health, dependents, employment, and beneficiary writes now execute as topic-owned tools; focused tool and insurance end-to-end coverage remains before closure.
 - [ ] **CC-506 — Migrate dialogs and questions.** The active insurance questions remain standard adaptive-card activities and consent retry now resets the scoped runtime directly; demo-only correlated interaction coverage and final E2E evidence remain before closure.
 - [ ] **CC-507 — Preserve visual reactions.** `MarketingT1Topic` now publishes typed qualification-progress, completion, and `CustomerConsole` host notifications; the site handles them through `OnHostOutput` without workflow context.
-- [ ] **CC-508 — Migrate Zapier usage.** Invoke the new Zapier tool when a response or durable execution is part of the workflow; use a host notification only for visual feedback.
+- [ ] **CC-508 — Migrate Zapier usage.** `ZapierIntegrationDemoTopic` now invokes the registered `zapier.webhook` tool and derives confirmation from its typed result; configured-endpoint E2E evidence remains before closure.
 - [ ] **CC-509 — Repair topic identity and registration.** Resolve missing T2/T3 registrations, inconsistent runtime names such as `MarketingTypeTwoTopic`, and references to nonexistent topics.
 - [ ] **CC-510 — Remove agent-owned async follow-up repairs.** Move semantic follow-up insertion/execution into the framework runner.
 - [ ] **CC-511 — Verify the live-agent boundary.** Keep human-agent operation separate; define only the qualified-lead handoff contract needed by InsuranceAgent.

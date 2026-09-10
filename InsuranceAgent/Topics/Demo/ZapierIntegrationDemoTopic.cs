@@ -4,6 +4,7 @@ using ConversaCore.TopicFlow;
 using Microsoft.Extensions.Logging;
 using ConversaCore.TopicFlow.Activities;
 using ConversaCore.Integrations.Core;
+using ConversaCore.Tools;
 
 namespace InsuranceAgent.Topics.Demo;
 
@@ -24,17 +25,20 @@ public class ZapierIntegrationDemoTopic : TopicFlow
     };
 
     private readonly ILogger<ZapierIntegrationDemoTopic> _topicLogger;
-    private readonly IIntegrationService _integrationService;
+    private readonly IToolExecutor _toolExecutor;
+    private readonly IServiceProvider _serviceProvider;
 
     public ZapierIntegrationDemoTopic(
         TopicWorkflowContext context,
         ILogger<ZapierIntegrationDemoTopic> logger,
         IConversationContext conversationContext,
-        IIntegrationService integrationService) 
+        IToolExecutor toolExecutor,
+        IServiceProvider serviceProvider)
         : base(context, logger, "ZapierIntegrationDemoTopic")
     {
         _topicLogger = logger;
-        _integrationService = integrationService;
+        _toolExecutor = toolExecutor;
+        _serviceProvider = serviceProvider;
         
         BuildWorkflow();
     }
@@ -109,33 +113,34 @@ Let's see it in action!";
                 return Task.FromResult<object?>("Data prepared for Zapier webhook");
             }));
 
-        // Activity 5: Trigger Zapier webhook (fire-and-forget)
-        // Note: In real implementation, ZapierWebhookActivity would need ILoggerFactory injected
-        Add(SimpleActivity.Create(
+        // Activity 5: Execute the durable webhook through the registered tool boundary.
+        Add(new InvokeToolActivity<ZapierWebhookTool, ZapierWebhookRequest, ZapierWebhookResponse>(
             "trigger-zapier-webhook",
-            async ctx =>
-            {
-                var webhookUrl = ctx.GetValue<string>("zapier_webhook_url");
-                var data = ctx.GetValue<object>("zapier_data");
-                
-                _topicLogger.LogInformation("Simulating Zapier webhook trigger to {Url}", webhookUrl);
-                
-                // In production, this would use ZapierWebhookActivity
-                // For demo, we simulate the webhook call
-                ctx.SetValue("zapier_response", new 
-                { 
-                    status = "triggered",
-                    timestamp = DateTime.UtcNow,
-                    webhook_url = webhookUrl
-                });
-                
-                await Task.Delay(500); // Simulate async call
-            }));
+            "zapier.webhook",
+            _toolExecutor,
+            ctx => new ZapierWebhookRequest {
+                WebhookUrl = ctx.GetValue<string>("zapier_webhook_url"),
+                Data = ctx.GetValue<object>("zapier_data") ?? new { },
+                EventType = "insurance_quote_requested"
+            },
+            _ => new ToolExecutionContext {
+                ConversationId = "insurance",
+                Subject = "insurance-host",
+                CorrelationId = Guid.NewGuid().ToString("N"),
+                Services = _serviceProvider,
+                TrustedIdentityValidated = true,
+                AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "zapier.webhook" }
+            },
+            "zapier_response"));
 
         // Activity 6: Confirmation message
-        Add(new SimpleActivity(
-            "confirmation",
-            "✅ Webhook triggered successfully! Your data has been sent to Zapier and will be processed by your Zap."));
+        Add(SimpleActivity.Create("confirmation", ctx => {
+            var result = ctx.GetValue<ToolResult<ZapierWebhookResponse>>("zapier_response");
+            var message = result?.Succeeded == true
+                ? "✅ Webhook triggered successfully! Your data has been sent to Zapier and will be processed by your Zap."
+                : "The Zapier webhook could not be completed. Please verify the configured endpoint and try again.";
+            return Task.FromResult<object?>(message);
+        }));
 
         // Activity 7: Show what happens next
         Add(SimpleActivity.Create(

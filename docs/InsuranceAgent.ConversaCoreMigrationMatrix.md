@@ -15,7 +15,7 @@ planning artifact only; it does not change InsuranceAgent behavior.
 | Lead identity | `Home.razor:400-432` creates a lead and stores the returned ID in page field `currentLeadId`. | Lead-creation tool returns a typed lead ID into conversation state. |
 | Profile persistence | `Home.razor:448-547` persists life goals, coverage, health, dependents, employment, and beneficiaries from event callbacks using `currentLeadId`. | Typed mutating tools with validated identity, confirmation/idempotency policy where applicable, and typed results. |
 | Visual reactions | `Home.razor:187-236` updates progress, opens the customer console, and handles qualification completion. | Standard runtime outputs for generic progress/completion; typed host notifications for site-specific panels. |
-| Integrations | `Topics/Demo/ZapierIntegrationDemoTopic.cs` depends directly on `IIntegrationService`; `AddInsuranceTopics.cs:167-174` wires it manually. | `ZapierWebhookTool` invoked through `InvokeToolActivity`; visual feedback remains a host notification. |
+| Integrations | `Topics/Demo/ZapierIntegrationDemoTopic.cs` now invokes the registered `ZapierWebhookTool`; `IIntegrationService` is transport-only. | Typed `ZapierWebhookTool` result drives workflow confirmation; visual feedback remains a host notification. |
 | Topic identity | T2 exists but is not registered; its class/base names differ. T3 is referenced conceptually but has no implementation. | Stable IDs, startup validation, explicit decision to register/retire each path. |
 
 ## Topic registration and disposition

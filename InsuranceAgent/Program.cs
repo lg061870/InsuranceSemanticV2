@@ -6,6 +6,7 @@ using ConversaCore.Services;
 using ConversaCore.Topics;
 using ConversaCore.Integrations.Core;
 using ConversaCore.Integrations.Models;
+using ConversaCore.Integrations.Zapier;
 using ConversaCore.Registration;
 using ConversaCore.Registration.Compatibility;
 using ConversaCore.Tools;
@@ -124,6 +125,10 @@ internal class Program {
                 "insurance.profile.beneficiaries.save", "1", "Save beneficiaries",
                 "Persists the collected beneficiary profile section.",
                 typeof(SaveBeneficiariesRequest), typeof(ProfileWriteResult), sideEffect: ToolSideEffect.Mutating))
+            .AddTool<ZapierWebhookTool>(new ToolDescriptor(
+                "zapier.webhook", "1", "Zapier webhook",
+                "Triggers a configured Zapier webhook.",
+                typeof(ZapierWebhookRequest), typeof(ZapierWebhookResponse), sideEffect: ToolSideEffect.Mutating))
             .AddTopicsFromLegacyRegistrations(new[]
             {
                 "ConversationStart",

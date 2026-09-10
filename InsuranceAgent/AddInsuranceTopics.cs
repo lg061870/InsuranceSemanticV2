@@ -173,7 +173,8 @@ public static class InsuranceTopicRegistrationExtensions {
             sp.GetRequiredService<TopicWorkflowContext>(),
             sp.GetRequiredService<ILogger<ZapierIntegrationDemoTopic>>(),
             sp.GetRequiredService<IConversationContext>(),
-            sp.GetRequiredService<IIntegrationService>()
+            sp.GetRequiredService<IToolExecutor>(),
+            sp
         ));
 
         return services;
