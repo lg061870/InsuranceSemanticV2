@@ -166,6 +166,24 @@ public class MarketingT1Topic : TopicFlow {
             )
         ));
 
+        Add(new InvokeToolActivity<SaveLifeGoalsTool, SaveLifeGoalsRequest, ProfileWriteResult>(
+            "SaveLifeGoals",
+            "insurance.profile.life-goals.save",
+            _toolExecutor,
+            context => new SaveLifeGoalsRequest(
+                context.GetValue<ToolResult<CreateLeadResult>>("insurance.lead.create.result")?.Value?.LeadId
+                    ?? throw new InvalidOperationException("A created lead is required before profile persistence."),
+                context.GetValue<LifeGoalsModel>("LifeGoalsModel")
+                    ?? throw new InvalidOperationException("Life goals are required before persistence.")),
+            _ => new ToolExecutionContext {
+                ConversationId = "insurance",
+                Subject = "insurance-host",
+                CorrelationId = Guid.NewGuid().ToString("N"),
+                Services = EmptyServiceProvider.Instance,
+                AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "insurance.profile.life-goals.save" }
+            },
+            "insurance.profile.life-goals.save.result"));
+
         // life_goals_submitted
         Add(EventTriggerActivity.CreateFireAndForget(
             eventName: "life_goals_submitted",

@@ -95,6 +95,11 @@ internal class Program {
                 "Creates a lead from collected insurance qualification details.",
                 typeof(CreateLeadRequest), typeof(CreateLeadResult),
                 sideEffect: ToolSideEffect.Mutating))
+            .AddTool<SaveLifeGoalsTool>(new ToolDescriptor(
+                "insurance.profile.life-goals.save", "1", "Save life goals",
+                "Persists the collected life-goals profile section.",
+                typeof(SaveLifeGoalsRequest), typeof(ProfileWriteResult),
+                sideEffect: ToolSideEffect.Mutating))
             .AddTopicsFromLegacyRegistrations(new[]
             {
                 "ConversationStart",
