@@ -27,6 +27,7 @@ public class MarketingT1Topic : TopicFlow {
     private readonly Kernel _kernel;
     private readonly InsuranceRuleRepository _insuranceRuleRepository;
     private readonly IToolExecutor _toolExecutor;
+    private readonly IServiceProvider _serviceProvider;
 
     public static readonly string[] IntentKeywords = new[]
     {
@@ -40,13 +41,15 @@ public class MarketingT1Topic : TopicFlow {
         IConversationContext conversationContext,
         Kernel kernel,
         InsuranceRuleRepository insuranceRuleRepository,
-        IToolExecutor toolExecutor)
+        IToolExecutor toolExecutor,
+        IServiceProvider serviceProvider)
         : base(context, logger, name: "MarketingT1Topic") {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _conversationContext = conversationContext ?? throw new ArgumentNullException(nameof(conversationContext));
         _kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
         _insuranceRuleRepository = insuranceRuleRepository ?? throw new ArgumentNullException(nameof(insuranceRuleRepository));
         _toolExecutor = toolExecutor ?? throw new ArgumentNullException(nameof(toolExecutor));
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
 
         Context.SetValue("TopicName", "Marketing Path Type 1");
         Context.SetValue("marketing_path_type", "T1");
@@ -132,10 +135,18 @@ public class MarketingT1Topic : TopicFlow {
                 ConversationId = context.GetValue<string>("ConversationId") ?? "insurance",
                 Subject = "insurance-host",
                 CorrelationId = Guid.NewGuid().ToString("N"),
-                Services = EmptyServiceProvider.Instance,
+                Services = _serviceProvider,
+                TrustedIdentityValidated = true,
                 AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "insurance.lead.create" }
             },
             "insurance.lead.create.result"));
+
+        Add(ProfileTool<SaveContactInfoTool, SaveContactInfoRequest>(
+            "SaveContactInfo", "insurance.profile.contact.save",
+            context => new SaveContactInfoRequest(
+                GetLeadId(context),
+                context.GetValue<ContactInfoModel>("ContactInfoModel")
+                    ?? throw new InvalidOperationException("Contact information is required before persistence."))));
 
         // contact_info_submitted
         Add(EventTriggerActivity.CreateFireAndForget(
@@ -179,7 +190,8 @@ public class MarketingT1Topic : TopicFlow {
                 ConversationId = "insurance",
                 Subject = "insurance-host",
                 CorrelationId = Guid.NewGuid().ToString("N"),
-                Services = EmptyServiceProvider.Instance,
+                Services = _serviceProvider,
+                TrustedIdentityValidated = true,
                 AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "insurance.profile.life-goals.save" }
             },
             "insurance.profile.life-goals.save.result"));
@@ -203,6 +215,13 @@ public class MarketingT1Topic : TopicFlow {
                 weight: Context.GetValue<string>("weight")
             )
         ));
+
+        Add(ProfileTool<SaveHealthInfoTool, SaveHealthInfoRequest>(
+            "SaveHealthInfo", "insurance.profile.health.save",
+            context => new SaveHealthInfoRequest(
+                GetLeadId(context),
+                context.GetValue<HealthInfoModel>("HealthInfoModel")
+                    ?? throw new InvalidOperationException("Health information is required before persistence."))));
 
         var healthQuery = new SemanticQueryActivity<CombinedInsuranceRuleSet, LeadSummaryModel, QualifiedCarriers>(
             id: "HealthInfoQuery",
@@ -265,6 +284,13 @@ public class MarketingT1Topic : TopicFlow {
                 monthlyBudget: Context.GetValue<string>("monthly_budget")
             )
         ));
+
+        Add(ProfileTool<SaveCoverageIntentTool, SaveCoverageIntentRequest>(
+            "SaveCoverageIntent", "insurance.profile.coverage.save",
+            context => new SaveCoverageIntentRequest(
+                GetLeadId(context),
+                context.GetValue<CoverageIntentModel>("CoverageIntentModel")
+                    ?? throw new InvalidOperationException("Coverage intent is required before persistence."))));
 
         var coverageQuery = new SemanticQueryActivity<
             CombinedInsuranceRuleSet,
@@ -329,6 +355,13 @@ public class MarketingT1Topic : TopicFlow {
             }
         ));
 
+        Add(ProfileTool<SaveDependentsTool, SaveDependentsRequest>(
+            "SaveDependents", "insurance.profile.dependents.save",
+            context => new SaveDependentsRequest(
+                GetLeadId(context),
+                context.GetValue<DependentsModel>("DependentsModel")
+                    ?? throw new InvalidOperationException("Dependents are required before persistence."))));
+
         var dependentsQuery = new SemanticQueryActivity<
             CombinedInsuranceRuleSet,
             LeadSummaryModel,
@@ -365,6 +398,13 @@ public class MarketingT1Topic : TopicFlow {
             )
         ));
 
+        Add(ProfileTool<SaveEmploymentTool, SaveEmploymentRequest>(
+            "SaveEmployment", "insurance.profile.employment.save",
+            context => new SaveEmploymentRequest(
+                GetLeadId(context),
+                context.GetValue<EmploymentModel>("EmploymentModel")
+                    ?? throw new InvalidOperationException("Employment information is required before persistence."))));
+
         // employment_submitted
         Add(EventTriggerActivity.CreateFireAndForget(
             eventName: "employment_submitted",
@@ -383,6 +423,13 @@ public class MarketingT1Topic : TopicFlow {
                 percentage: Context.GetValue<int>("beneficiary_percentage")
             )
         ));
+
+        Add(ProfileTool<SaveBeneficiariesTool, SaveBeneficiariesRequest>(
+            "SaveBeneficiaries", "insurance.profile.beneficiaries.save",
+            context => new SaveBeneficiariesRequest(
+                GetLeadId(context),
+                context.GetValue<BeneficiaryInfoModel>("BeneficiaryInfoModel")
+                    ?? throw new InvalidOperationException("Beneficiary information is required before persistence."))));
 
         // beneficiaries_submitted (fire immediately after card submission)
         Add(EventTriggerActivity.CreateFireAndForget(
@@ -439,11 +486,32 @@ public class MarketingT1Topic : TopicFlow {
         _logger.LogInformation("[MarketingT1Topic] ✅ Initialized full flow with semantic reasoning checkpoints.");
     }
 
-    private sealed class EmptyServiceProvider : IServiceProvider
+    private InvokeToolActivity<TTool, TRequest, ProfileWriteResult> ProfileTool<TTool, TRequest>(
+        string activityId,
+        string toolId,
+        Func<TopicWorkflowContext, TRequest> requestFactory)
+        where TTool : class, IConversaTool<TRequest, ProfileWriteResult>
     {
-        public static EmptyServiceProvider Instance { get; } = new();
-        public object? GetService(Type serviceType) => null;
+        return new InvokeToolActivity<TTool, TRequest, ProfileWriteResult>(
+            activityId,
+            toolId,
+            _toolExecutor,
+            requestFactory,
+            _ => new ToolExecutionContext {
+                ConversationId = "insurance",
+                Subject = "insurance-host",
+                CorrelationId = Guid.NewGuid().ToString("N"),
+                Services = _serviceProvider,
+                TrustedIdentityValidated = true,
+                AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { toolId }
+            },
+            $"{toolId}.result");
     }
+
+    private static int GetLeadId(TopicWorkflowContext context) =>
+        context.GetValue<ToolResult<CreateLeadResult>>("insurance.lead.create.result")?.Value?.LeadId
+        ?? throw new InvalidOperationException("A created lead is required before profile persistence.");
+
 
 
     /// <summary>

@@ -43,7 +43,7 @@ planning artifact only; it does not change InsuranceAgent behavior.
 | `dependents_submitted` | Profile persistence tool plus progress output | CC-503, CC-505, CC-507 |
 | `employment_submitted` | Profile persistence tool plus progress output | CC-503, CC-505, CC-507 |
 | `beneficiaries_submitted` | Profile persistence tool plus progress output | CC-503, CC-505, CC-507 |
-| `contact_info_submitted` | Decide whether covered by lead creation or a dedicated persistence tool | CC-505 |
+| `contact_info_submitted` | Dedicated contact-profile persistence tool using the lead ID returned by lead creation | CC-505 |
 | `qualification_complete` | Standard completion/progress output, with optional typed host notification | CC-503, CC-507 |
 | Site-specific dialog/question | Correlated host interaction only when a standard prompt/card is insufficient | CC-506 |
 | Zapier webhook | Typed `ZapierWebhookTool` result returned to topic | CC-508 |

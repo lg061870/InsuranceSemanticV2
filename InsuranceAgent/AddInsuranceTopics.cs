@@ -150,7 +150,8 @@ public static class InsuranceTopicRegistrationExtensions {
             sp.GetRequiredService<IConversationContext>(),
             sp.GetRequiredService<Kernel>(),
             sp.GetRequiredService<InsuranceRuleRepository>(),
-            sp.GetRequiredService<IToolExecutor>()
+            sp.GetRequiredService<IToolExecutor>(),
+            sp
         ));
 
         AddTopic(sp => new SemanticActivitiesDemoTopic(

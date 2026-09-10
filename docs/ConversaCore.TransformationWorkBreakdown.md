@@ -204,8 +204,8 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 - [ ] **CC-501 — Move startup/compliance composition into topics.** Added the registered `InsuranceConversationStartTopic` composition as the first extraction; final service/page cutover and removal of the legacy mutation remain in CC-502.
 - [ ] **CC-502 — Replace the domain agent injection.** Inject the framework runtime into the page/UI component and remove `SubscribeToChatWindowEvents` usage.
 - [ ] **CC-503 — Define typed insurance host contracts.** Convert progress, customer-console, navigation, and qualification-complete notifications to immutable payloads.
-- [ ] **CC-504 — Move lead creation into a tool.** Return the created lead ID to conversation state so later operations do not depend on page-local `currentLeadId`.
-- [ ] **CC-505 — Move profile persistence into tools.** Migrate contact, life goals, coverage intent, health, dependents, employment, and beneficiary writes from `Home.razor`.
+- [ ] **CC-504 — Move lead creation into a tool.** `CreateLeadTool` now returns the created ID into conversation state and `Home.razor` no longer owns `currentLeadId`; end-to-end and failure-path evidence remains under CC-512.
+- [ ] **CC-505 — Move profile persistence into tools.** Contact, life goals, coverage intent, health, dependents, employment, and beneficiary writes now execute as topic-owned tools; focused tool and insurance end-to-end coverage remains before closure.
 - [ ] **CC-506 — Migrate dialogs and questions.** Use standard cards/prompts where sufficient; use correlated host interactions only for genuinely site-specific UI.
 - [ ] **CC-507 — Preserve visual reactions.** Keep qualification progress and `CustomerConsole` updates as host notifications handled by the site.
 - [ ] **CC-508 — Migrate Zapier usage.** Invoke the new Zapier tool when a response or durable execution is part of the workflow; use a host notification only for visual feedback.

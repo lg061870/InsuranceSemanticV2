@@ -100,6 +100,30 @@ internal class Program {
                 "Persists the collected life-goals profile section.",
                 typeof(SaveLifeGoalsRequest), typeof(ProfileWriteResult),
                 sideEffect: ToolSideEffect.Mutating))
+            .AddTool<SaveContactInfoTool>(new ToolDescriptor(
+                "insurance.profile.contact.save", "1", "Save contact information",
+                "Persists the collected contact profile section.",
+                typeof(SaveContactInfoRequest), typeof(ProfileWriteResult), sideEffect: ToolSideEffect.Mutating))
+            .AddTool<SaveCoverageIntentTool>(new ToolDescriptor(
+                "insurance.profile.coverage.save", "1", "Save coverage intent",
+                "Persists the collected coverage profile section.",
+                typeof(SaveCoverageIntentRequest), typeof(ProfileWriteResult), sideEffect: ToolSideEffect.Mutating))
+            .AddTool<SaveHealthInfoTool>(new ToolDescriptor(
+                "insurance.profile.health.save", "1", "Save health information",
+                "Persists the collected health profile section.",
+                typeof(SaveHealthInfoRequest), typeof(ProfileWriteResult), sideEffect: ToolSideEffect.Mutating))
+            .AddTool<SaveDependentsTool>(new ToolDescriptor(
+                "insurance.profile.dependents.save", "1", "Save dependents",
+                "Persists the collected dependents profile section.",
+                typeof(SaveDependentsRequest), typeof(ProfileWriteResult), sideEffect: ToolSideEffect.Mutating))
+            .AddTool<SaveEmploymentTool>(new ToolDescriptor(
+                "insurance.profile.employment.save", "1", "Save employment",
+                "Persists the collected employment profile section.",
+                typeof(SaveEmploymentRequest), typeof(ProfileWriteResult), sideEffect: ToolSideEffect.Mutating))
+            .AddTool<SaveBeneficiariesTool>(new ToolDescriptor(
+                "insurance.profile.beneficiaries.save", "1", "Save beneficiaries",
+                "Persists the collected beneficiary profile section.",
+                typeof(SaveBeneficiariesRequest), typeof(ProfileWriteResult), sideEffect: ToolSideEffect.Mutating))
             .AddTopicsFromLegacyRegistrations(new[]
             {
                 "ConversationStart",
