@@ -6,6 +6,7 @@
 @using ConversaCore.Events
 @using ConversaCore.Interfaces
 @using ConversaCore.Services
+@using ConversaCore.Runtime
 @using ConversaCore.TopicFlow
 @using ConversaCore.TopicFlow.Extensions
 @using ConversaCore.UI.Components
@@ -24,7 +25,7 @@
 @inject IJSRuntime JS
 @inject ILogger<Home> Logger
 @inject INavigationEventService NavEvents
-@inject InsuranceAgentServiceV2 InsuranceAgentService
+@inject IConversationRuntime ConversationRuntime
 @* @inject HybridChatService ChatService *@
 @inject AutoMapper.IMapper _mapper
 @inject LeadsService LeadsService
@@ -96,9 +97,9 @@
          =========================== -->
     <div class="w-1/3 h-full relative flex">
         <div class="flex-1 mx-4 my-2">
-            <CustomChatWindowV3 AgentService="@InsuranceAgentService"
+            <CustomChatWindowV3 Runtime="@ConversationRuntime"
                               Style="@ConversaCore.UI.Models.ChatStyle.SidebarChat"
-                              SubscribeToEvents="@(w => InsuranceAgentService.SubscribeToChatWindowEvents(w))" />
+                              />
         </div>
     </div>
 </div>
@@ -145,18 +146,15 @@
     protected override void OnInitialized() {
         // Unsubscribe first to prevent duplicate subscriptions
         NavEvents.NavigateRequested -= OnNavigateRequested;
-        InsuranceAgentService.CustomEventTriggered -= OnCustomEventReceived;
 
         // Now subscribe
         NavEvents.NavigateRequested += OnNavigateRequested;
-        InsuranceAgentService.CustomEventTriggered += OnCustomEventReceived;
         Logger.LogInformation("[Home] Initialized and subscribed to events");
     }
 
     public void Dispose() {
         Logger.LogInformation("[Home] Dispose() — unsubscribing events");
         NavEvents.NavigateRequested -= OnNavigateRequested;
-        InsuranceAgentService.CustomEventTriggered -= OnCustomEventReceived;
         _ = JS.InvokeVoidAsync("window.cleanupHomeComponent");
     }
     #endregion

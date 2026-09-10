@@ -6,11 +6,14 @@ using ConversaCore.Services;
 using ConversaCore.Topics;
 using ConversaCore.Integrations.Core;
 using ConversaCore.Integrations.Models;
+using ConversaCore.Registration;
+using ConversaCore.Registration.Compatibility;
 using InsuranceAgent.Configuration;
 using InsuranceAgent.Extensions;
 using InsuranceAgent.Mappings;
 using InsuranceAgent.Repositories;
 using InsuranceAgent.Services;
+using InsuranceAgent.Topics;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.AI;
 using System.Diagnostics;
@@ -83,6 +86,38 @@ internal class Program {
         Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 💬 Registering InsuranceTopics...");
         builder.Services.AddInsuranceTopics();
 
+        // Framework-owned runtime for the migrated InsuranceAgent start flow.
+        new ConversaCoreBuilder(builder.Services)
+            .AddTopicsFromLegacyRegistrations(new[]
+            {
+                "ConversationStart",
+                "BeneficiaryInfoDemoTopic",
+                "CaliforniaResidentTopic",
+                "BeneficiaryRepeatDemoTopic",
+                "BeneficiaryUserDrivenTopic",
+                "ComplianceTopic",
+                "ContactHealthTopic",
+                "ContactInfoTopic",
+                "CoverageIntentTopic",
+                "EmploymentTopic",
+                "DependentsTopic",
+                "HealthInfoTopic",
+                "InsuranceContextTopic",
+                "LeadDetailsTopic",
+                "LifeGoalsTopic",
+                "HandDownDemoTopic",
+                "RadioButtonDemoTopic",
+                "NewbieTopic",
+                "MarketingT1Topic",
+                "SemanticActivitiesDemoTopic",
+                "EventTriggerDemoTopic",
+                "ZapierIntegrationDemoTopic"
+            })
+            .AddTopic<InsuranceConversationStartTopic>(
+                "insurance.conversation.start",
+                options => options.DisplayName = "Insurance conversation start")
+            .AddConversationRuntime("insurance.conversation.start");
+
         builder.Services.Configure<OpenAIConfiguration>(
             configuration.GetSection(OpenAIConfiguration.SectionName));
 
@@ -90,8 +125,6 @@ internal class Program {
         // CORE SERVICES
         // ------------------------------------------------------------
         builder.Services.AddScoped<ISemanticKernelService, InsuranceSemanticKernelService>();
-        builder.Services.AddScoped<HybridChatService>(); // ← Required for V2, not needed for V3
-        builder.Services.AddScoped<InsuranceAgentServiceV2>();
         builder.Services.AddScoped<IChatInteropService, ConversaCore.UI.Services.ChatInteropService>();
         builder.Services.AddScoped<IDocumentEmbeddingService, InsuranceDocumentEmbeddingService>();
         builder.Services.AddScoped<INavigationEventService, NavigationEventService>();

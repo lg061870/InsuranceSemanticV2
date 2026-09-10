@@ -1,9 +1,9 @@
 @page "/chat-demo"
 @using ConversaCore.UI.Components
 @using ConversaCore.UI.Models
-@using InsuranceAgent.Services
+@using ConversaCore.Runtime
 
-@inject InsuranceAgentServiceV2 InsuranceAgentService
+@inject IConversationRuntime ConversationRuntime
 
 <div class="demo-container">
     <div class="demo-header">
@@ -13,9 +13,8 @@
     <div class="demo-content" @key="componentKey">
         <div class="chatwindow-demo-layout">
             <CustomChatWindowV3 @ref="chatWindowRef"
-                              AgentService="@InsuranceAgentService"
-                              Style="@currentStyle"
-                              SubscribeToEvents="@(w => InsuranceAgentService.SubscribeToChatWindowEvents(w))" />
+                              Runtime="@ConversationRuntime"
+                              Style="@currentStyle" />
         </div>
     </div>
 </div>
