@@ -344,7 +344,7 @@
     private async Task RequestConsentAgain() {
         currentView = ViewState.LandingPage;
         Logger.LogInformation("[Home] User retried consent");
-        await JS.InvokeVoidAsync("sendEventToBot", "requestConsentForm", new { retry = true });
+        await ConversationRuntime.ResetAsync();
     }
     #endregion
 
