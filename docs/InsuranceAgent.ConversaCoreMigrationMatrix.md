@@ -51,9 +51,9 @@ planning artifact only; it does not change InsuranceAgent behavior.
 ## Migration order and gates
 
 1. Freeze this matrix and identify the first vertical slice: start/compliance composition.
-2. Add typed insurance contracts and tools without removing the compatibility path.
-3. Move one lead/persistence path and prove the lead exists without `Home.razor` callbacks.
-4. Bind `Home.razor` to `IConversationRuntime`, then migrate remaining reactions and persistence.
+2. Add typed insurance contracts and tools without removing the compatibility path. Completed for the active T1 path; legacy demo topics remain isolated.
+3. Move one lead/persistence path and prove the lead exists without `Home.razor` callbacks. Implemented through deterministic tool activities; E2E proof is tracked by CC-512.
+4. Bind `Home.razor` to `IConversationRuntime`, then migrate remaining reactions and persistence. Completed for the active T1 page path.
 5. Remove `InsuranceAgentServiceV2` only after end-to-end and two-circuit tests pass.
 
 The matrix is intentionally conservative: legacy services remain until their replacement

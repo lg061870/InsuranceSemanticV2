@@ -1,3 +1,5 @@
+using InsuranceAgent.DomainTypes;
+
 namespace InsuranceAgent.Contracts;
 
 /// <summary>Immutable progress snapshot emitted by the insurance conversation.</summary>
@@ -6,7 +8,7 @@ public sealed record InsuranceProgressNotification(
     int Progress,
     string Message,
     string? NextStep = null,
-    object? Payload = null);
+    QualifiedCarriers? Payload = null);
 
 /// <summary>Immutable request for the host to display the customer console.</summary>
 public sealed record InsuranceCustomerConsoleNotification(string Message);
@@ -19,4 +21,4 @@ public sealed record InsuranceQualificationNotification(
     string Stage,
     int Progress,
     string Message,
-    object? Payload = null);
+    QualifiedCarriers? Payload = null);

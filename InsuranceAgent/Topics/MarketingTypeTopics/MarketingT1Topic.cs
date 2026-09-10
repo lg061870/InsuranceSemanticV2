@@ -12,7 +12,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.SemanticKernel;
 using System.Threading.Tasks;
 using ConversaCore.Tools;
+using ConversaCore.Runtime;
 using InsuranceAgent.Tools;
+using InsuranceAgent.Activities;
+using InsuranceAgent.Contracts;
 
 namespace InsuranceAgent.Topics;
 
@@ -23,11 +26,12 @@ namespace InsuranceAgent.Topics;
 /// </summary>
 public class MarketingT1Topic : TopicFlow {
     private readonly ILogger<MarketingT1Topic> _logger;
-    private readonly IConversationContext _conversationContext;
     private readonly Kernel _kernel;
     private readonly InsuranceRuleRepository _insuranceRuleRepository;
     private readonly IToolExecutor _toolExecutor;
     private readonly IServiceProvider _serviceProvider;
+    private readonly IConversationOutputDispatcher _outputDispatcher;
+    private readonly IConversationSession _conversationSession;
 
     public static readonly string[] IntentKeywords = new[]
     {
@@ -38,18 +42,20 @@ public class MarketingT1Topic : TopicFlow {
     public MarketingT1Topic(
         TopicWorkflowContext context,
         ILogger<MarketingT1Topic> logger,
-        IConversationContext conversationContext,
         Kernel kernel,
         InsuranceRuleRepository insuranceRuleRepository,
         IToolExecutor toolExecutor,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        IConversationOutputDispatcher outputDispatcher,
+        IConversationSession conversationSession)
         : base(context, logger, name: "MarketingT1Topic") {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _conversationContext = conversationContext ?? throw new ArgumentNullException(nameof(conversationContext));
         _kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
         _insuranceRuleRepository = insuranceRuleRepository ?? throw new ArgumentNullException(nameof(insuranceRuleRepository));
         _toolExecutor = toolExecutor ?? throw new ArgumentNullException(nameof(toolExecutor));
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+        _outputDispatcher = outputDispatcher ?? throw new ArgumentNullException(nameof(outputDispatcher));
+        _conversationSession = conversationSession ?? throw new ArgumentNullException(nameof(conversationSession));
 
         Context.SetValue("TopicName", "Marketing Path Type 1");
         Context.SetValue("marketing_path_type", "T1");
@@ -79,20 +85,16 @@ public class MarketingT1Topic : TopicFlow {
         var activeRuleSets = await RuleSelector.SelectRulesAsync(Context, _insuranceRuleRepository);
 
         // === INITIALIZATION ===
-        Add(EventTriggerActivity.CreateFireAndForget(
-            eventName: "customer_console_show",
-            data: new { message = "Displaying customer console for lead qualification" },
-            logger: _logger,
-            conversationContext: _conversationContext
-        ));
+        Add(Notify(
+            "ShowCustomerConsole",
+            "customer_console_show",
+            _ => new InsuranceCustomerConsoleNotification("Displaying customer console for lead qualification")));
 
         // === LEAD DETAILS ===
-        Add(EventTriggerActivity.CreateFireAndForget(
-            eventName: "lead_details_started",
-            data: new { stage = "lead-details", message = "Collecting lead details" },
-            logger: _logger,
-            conversationContext: _conversationContext
-        ));
+        Add(Notify(
+            "LeadDetailsStarted",
+            "lead_details_started",
+            _ => new InsuranceProgressNotification("lead-details", 0, "Collecting lead details")));
 
         // === CONTACT INFO ===
         Add(new AdaptiveCardActivity<ContactInfoCard, ContactInfoModel>(
@@ -149,20 +151,12 @@ public class MarketingT1Topic : TopicFlow {
                     ?? throw new InvalidOperationException("Contact information is required before persistence."))));
 
         // contact_info_submitted
-        Add(EventTriggerActivity.CreateFireAndForget(
-            eventName: "contact_info_submitted",
-            data: new { stage = "contact-info", progress = 10, message = "Contact info verified" },
-            logger: _logger,
-            conversationContext: _conversationContext
-        ));
+        Add(Notify("ContactInfoSubmitted", "contact_info_submitted",
+            _ => new InsuranceProgressNotification("contact-info", 10, "Contact info verified")));
 
         // lead_details_submitted
-        Add(EventTriggerActivity.CreateFireAndForget(
-            eventName: "lead_details_submitted",
-            data: new { stage = "lead-details", progress = 20, message = "Lead details collected" },
-            logger: _logger,
-            conversationContext: _conversationContext
-        ));
+        Add(Notify("LeadDetailsSubmitted", "lead_details_submitted",
+            _ => new InsuranceProgressNotification("lead-details", 20, "Lead details collected")));
 
         // === LIFE GOALS ===
         Add(new AdaptiveCardActivity<LifeGoalsCard, LifeGoalsModel>(
@@ -197,12 +191,8 @@ public class MarketingT1Topic : TopicFlow {
             "insurance.profile.life-goals.save.result"));
 
         // life_goals_submitted
-        Add(EventTriggerActivity.CreateFireAndForget(
-            eventName: "life_goals_submitted",
-            data: new { stage = "life-goals", progress = 40, message = "Life goals recorded" },
-            logger: _logger,
-            conversationContext: _conversationContext
-        ));
+        Add(Notify("LifeGoalsSubmitted", "life_goals_submitted",
+            _ => new InsuranceProgressNotification("life-goals", 40, "Life goals recorded")));
 
         // === HEALTH INFO ===
         Add(new AdaptiveCardActivity<HealthInfoCard, HealthInfoModel>(
@@ -261,16 +251,9 @@ public class MarketingT1Topic : TopicFlow {
         ));
 
         // assets_liabilities_submitted
-        Add(EventTriggerActivity.CreateFireAndForget(
-            eventName: "assets_liabilities_submitted",
-            data: new {
-                stage = "assets-liabilities",
-                progress = 60,
-                message = "Assets and liabilities information collected"
-            },
-            logger: _logger,
-            conversationContext: _conversationContext
-        ));
+        Add(Notify("AssetsLiabilitiesSubmitted", "assets_liabilities_submitted",
+            _ => new InsuranceProgressNotification(
+                "assets-liabilities", 60, "Assets and liabilities information collected")));
 
 
         // === COVERAGE INTENT ===
@@ -406,12 +389,8 @@ public class MarketingT1Topic : TopicFlow {
                     ?? throw new InvalidOperationException("Employment information is required before persistence."))));
 
         // employment_submitted
-        Add(EventTriggerActivity.CreateFireAndForget(
-            eventName: "employment_submitted",
-            data: new { stage = "employment", progress = 85, message = "Employment details collected" },
-            logger: _logger,
-            conversationContext: _conversationContext
-        ));
+        Add(Notify("EmploymentSubmitted", "employment_submitted",
+            _ => new InsuranceProgressNotification("employment", 85, "Employment details collected")));
 
         // === BENEFICIARIES ===
         Add(new AdaptiveCardActivity<BeneficiaryInfoCard, BeneficiaryInfoModel>(
@@ -432,12 +411,8 @@ public class MarketingT1Topic : TopicFlow {
                     ?? throw new InvalidOperationException("Beneficiary information is required before persistence."))));
 
         // beneficiaries_submitted (fire immediately after card submission)
-        Add(EventTriggerActivity.CreateFireAndForget(
-            eventName: "beneficiaries_submitted",
-            data: new { stage = "beneficiaries", progress = 87, message = "Beneficiary information collected" },
-            logger: _logger,
-            conversationContext: _conversationContext
-        ));
+        Add(Notify("BeneficiariesSubmitted", "beneficiaries_submitted",
+            _ => new InsuranceProgressNotification("beneficiaries", 87, "Beneficiary information collected")));
 
         var finalQuery = new SemanticQueryActivity<
             CombinedInsuranceRuleSet,
@@ -508,6 +483,13 @@ public class MarketingT1Topic : TopicFlow {
             $"{toolId}.result");
     }
 
+    private InsuranceHostNotificationActivity<TPayload> Notify<TPayload>(
+        string activityId,
+        string eventName,
+        Func<TopicWorkflowContext, TPayload> payloadFactory)
+        where TPayload : notnull =>
+        new(activityId, eventName, payloadFactory, _outputDispatcher, _conversationSession);
+
     private static int GetLeadId(TopicWorkflowContext context) =>
         context.GetValue<ToolResult<CreateLeadResult>>("insurance.lead.create.result")?.Value?.LeadId
         ?? throw new InvalidOperationException("A created lead is required before profile persistence.");
@@ -523,77 +505,44 @@ public class MarketingT1Topic : TopicFlow {
         int progress,
         string message,
         string queryOutputKey) {
-        Add(new EventTriggerActivity(
-            id: $"{eventName}_trigger",
-            eventName: eventName,
-            eventData: new Lazy<object?>(() => {
-                // ⚙️ Deferred evaluation of payload
-                var payload = Context.GetValue<QualifiedCarriers>(queryOutputKey);
-                return new {
-                    stage = eventName.Replace("_submitted", string.Empty).Replace('_', '-'),
-                    progress,
-                    message,
-                    payload
-                };
-            }),
-            waitForResponse: false,
-            logger: _logger,
-            conversationContext: _conversationContext
-        ));
+        var stage = eventName.Replace("_submitted", string.Empty).Replace('_', '-');
+        TopicFlowActivity activity = eventName == "qualification_complete"
+            ? Notify($"{eventName}_notification", eventName, context =>
+                new InsuranceQualificationNotification(
+                    stage, progress, message, context.GetValue<QualifiedCarriers>(queryOutputKey)))
+            : Notify($"{eventName}_notification", eventName, context =>
+                new InsuranceProgressNotification(
+                    stage, progress, message,
+                    Payload: context.GetValue<QualifiedCarriers>(queryOutputKey)));
+        Add(activity);
     }
 
-    public static Func<TopicWorkflowContext, Task<TopicFlowActivity?>> AttachQueryPayloadAsync(
-    string eventName,
-    int progress,
-    string message,
-    string queryOutputKey,
-    ILogger? logger = null,
-    IConversationContext? conversationContext = null) {
-        return async ctx =>
+    private Func<TopicWorkflowContext, Task<TopicFlowActivity?>> AttachQueryPayloadAsync(
+        string eventName,
+        int progress,
+        string message,
+        string queryOutputKey) {
+        return ctx =>
         {
             try {
-                // Retrieve payload safely
-                var payload = ctx.GetValue<object>(queryOutputKey);
-
-                var eventData = new Lazy<object?>(() => new
-                {
-                    stage = eventName.Replace("_submitted", string.Empty).Replace('_', '-'),
-                    progress,
-                    message,
-                    payload
-                });
-
-                // 🏗 Build but DO NOT execute the custom event trigger
-                var eventTrigger = new EventTriggerActivity(
-                    id: $"{eventName}_trigger",
-                    eventName: eventName,
-                    eventData: eventData,
-                    waitForResponse: false,
-                    logger: logger ?? NullLogger<EventTriggerActivity>.Instance,
-                    conversationContext: conversationContext
-                );
-
-                logger?.LogInformation(
-                    "[AttachQueryPayloadAsync] 🧩 Created EventTriggerActivity for {EventName} (deferred execution)",
-                    eventName
-                );
-
-                // 🧾 Optionally track metadata for diagnostics
+                var payload = ctx.GetValue<QualifiedCarriers>(queryOutputKey);
+                var stage = eventName.Replace("_submitted", string.Empty).Replace('_', '-');
+                TopicFlowActivity notification = eventName == "qualification_complete"
+                    ? Notify($"{eventName}_notification", eventName, _ =>
+                        new InsuranceQualificationNotification(stage, progress, message, payload))
+                    : Notify($"{eventName}_notification", eventName, _ =>
+                        new InsuranceProgressNotification(stage, progress, message, Payload: payload));
                 ctx.SetValue($"{eventName}_progress", progress);
                 ctx.SetValue($"{eventName}_message", message);
                 ctx.SetValue($"{eventName}_timestamp", DateTime.UtcNow.ToString("o"));
-
-                // ✅ Return the constructed (but unexecuted) activity
-                return eventTrigger;
+                return Task.FromResult<TopicFlowActivity?>(notification);
             } catch (Exception ex) {
-                logger?.LogError(
+                _logger.LogError(
                     ex,
-                    "[AttachQueryPayloadAsync] ❌ Failed to build event trigger for {EventName}",
+                    "Failed to build typed host notification for {EventName}",
                     eventName
                 );
-
-                // Return null to indicate failure (nothing to run)
-                return null;
+                return Task.FromResult<TopicFlowActivity?>(null);
             }
         };
     }

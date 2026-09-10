@@ -166,48 +166,65 @@
     }
 
     private async Task HandleHostOutputAsync(ConversationHostOutputContext hostOutput) {
-        if (hostOutput.Output is not HostNotification<LegacyEventTriggerPayload> notification)
-            return;
-
-        var eventName = notification.EventName.Trim().ToLowerInvariant();
-        var payload = notification.Payload;
-
         try {
-            switch (eventName) {
-                case "customer_console_show":
+            string eventName;
+            object? customerPayload = null;
+
+            switch (hostOutput.Output) {
+                case HostNotification<InsuranceCustomerConsoleNotification> console:
+                    eventName = console.EventName;
                     showCustomerConsole = true;
                     break;
-
-                case "qualification_complete":
-                    HandleProgressComplete(payload.Data);
+                case HostNotification<InsuranceQualificationNotification> complete:
+                    eventName = complete.EventName;
+                    ApplyProgress(new InsuranceProgressNotification(
+                        complete.Payload.Stage,
+                        complete.Payload.Progress,
+                        complete.Payload.Message,
+                        Payload: complete.Payload.Payload));
                     break;
-
+                case HostNotification<InsuranceProgressNotification> progress:
+                    eventName = progress.EventName;
+                    ApplyProgress(progress.Payload);
+                    customerPayload = progress.Payload.Payload;
+                    break;
+                case HostNotification<LegacyEventTriggerPayload> legacy:
+                    eventName = legacy.EventName;
+                    var migrated = JsonSerializer.Deserialize<InsuranceProgressNotification>(legacy.Payload.Data);
+                    if (migrated is not null)
+                        ApplyProgress(migrated);
+                    if (legacy.Payload.Data.ValueKind == JsonValueKind.Object &&
+                        legacy.Payload.Data.TryGetProperty("payload", out var rawPayload))
+                        customerPayload = JsonSerializer.Deserialize<QualifiedCarriers>(rawPayload.GetRawText());
+                    break;
                 default:
-                    var progress = JsonSerializer.Deserialize<InsuranceProgressNotification>(payload.Data);
-                    if (progress is not null && progress.Progress > 0)
-                        UpdateProgressFromDictionary(new Dictionary<string, object> {
-                            ["stage"] = progress.Stage,
-                            ["progress"] = progress.Progress,
-                            ["message"] = progress.Message,
-                            ["nextStep"] = progress.NextStep ?? string.Empty,
-                            ["payload"] = progress.Payload ?? string.Empty
-                        });
-                    break;
+                    return;
             }
-
-            object? customerPayload = null;
-            if (payload.Data.ValueKind == JsonValueKind.Object &&
-                payload.Data.TryGetProperty("payload", out var rawPayload))
-                customerPayload = JsonSerializer.Deserialize<QualifiedCarriers>(rawPayload.GetRawText());
 
             if (showCustomerConsole && customerConsoleRef is not null)
                 await customerConsoleRef.UpdateFromChatEvent(eventName, customerPayload);
         }
         catch (Exception ex) {
-            Logger.LogError(ex, "[Home] Failed to handle host notification {EventName}", eventName);
+            Logger.LogError(ex, "[Home] Failed to handle typed host notification");
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void ApplyProgress(InsuranceProgressNotification progress) {
+        if (progress.Progress <= 0)
+            return;
+
+        UpdateProgressFromDictionary(new Dictionary<string, object> {
+            ["stage"] = progress.Stage,
+            ["progress"] = progress.Progress,
+            ["message"] = progress.Message,
+            ["nextStep"] = progress.NextStep ?? string.Empty,
+            ["payload"] = (object?)progress.Payload ?? string.Empty
+        });
+
+        if (progress.Progress >= 100)
+            HandleProgressComplete(progress);
     }
 
     #endregion
