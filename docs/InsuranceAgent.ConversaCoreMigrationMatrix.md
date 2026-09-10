@@ -16,7 +16,7 @@ planning artifact only; it does not change InsuranceAgent behavior.
 | Profile persistence | `Home.razor:448-547` persists life goals, coverage, health, dependents, employment, and beneficiaries from event callbacks using `currentLeadId`. | Typed mutating tools with validated identity, confirmation/idempotency policy where applicable, and typed results. |
 | Visual reactions | `Home.razor:187-236` updates progress, opens the customer console, and handles qualification completion. | Standard runtime outputs for generic progress/completion; typed host notifications for site-specific panels. |
 | Integrations | `Topics/Demo/ZapierIntegrationDemoTopic.cs` now invokes the registered `ZapierWebhookTool`; `IIntegrationService` is transport-only. | Typed `ZapierWebhookTool` result drives workflow confirmation; visual feedback remains a host notification. |
-| Topic identity | T2 exists but is not registered; its class/base names differ. T3 is referenced conceptually but has no implementation. | Stable IDs, startup validation, explicit decision to register/retire each path. |
+| Topic identity | The supported start and marketing paths use stable `insurance.*` IDs; startup validates every required descriptor and concrete trigger target. | ConversaCore descriptors and catalog validation. |
 
 ## Topic registration and disposition
 
@@ -26,10 +26,10 @@ planning artifact only; it does not change InsuranceAgent behavior.
 | `ComplianceTopic` | Keep as a registered topic; compose it from the start topic with typed state. |
 | `BeneficiaryInfoDemoTopic`, `BeneficiaryRepeatDemoTopic`, `BeneficiaryUserDrivenTopic` | Retain as samples or migrate only if still used by a supported route. |
 | `CaliforniaResidentTopic`, `ContactHealthTopic`, `ContactInfoTopic`, `CoverageIntentTopic`, `EmploymentTopic`, `DependentsTopic`, `HealthInfoTopic`, `InsuranceContextTopic`, `LeadDetailsTopic`, `LifeGoalsTopic` | Keep as domain topics; replace page-triggered persistence with tools and explicit typed state. |
-| `MarketingT1Topic` | Preserve supported flow; remove constructor/background orchestration and use awaited framework lifecycle. |
-| `MarketingT2Topic` | Decide whether it is supported; if yes, register under a stable ID, otherwise retire its references. |
+| `MarketingT1Topic` | Supported and explicitly registered as `insurance.marketing.t1`; remove remaining constructor/background orchestration under CC-510. |
+| `MarketingT2Topic` | Supported and explicitly registered as `insurance.marketing.t2`; its downstream topic targets are startup-validated. |
 | `EventTriggerDemoTopic`, `SemanticActivitiesDemoTopic`, `HandDownDemoTopic`, `RadioButtonDemoTopic`, `NewbieTopic`, `ZapierIntegrationDemoTopic` | Audit as samples; migrate useful examples to the SDK/sample surface and mark incomplete experiments for later cleanup. |
-| T3 path | No implementation exists; remove dead references or create a separately scoped feature, not an implicit migration. |
+| T3 path | Explicit no-consent path registered as `insurance.marketing.t3`; it completes without creating a lead or profile data. |
 
 ## Host-event and persistence mapping
 

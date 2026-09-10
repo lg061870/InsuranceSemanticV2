@@ -28,12 +28,12 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics {
             TopicWorkflowContext context,
             ILogger<MarketingT2Topic> logger,
             IConversationContext conversationContext)
-            : base(context, logger, name: "MarketingTypeTwoTopic") {
+            : base(context, logger, name: InsuranceTopicIds.MarketingT2) {
 
             _logger = logger;
             _conversationContext = conversationContext;
 
-            Context.SetValue("MarketingTypeTwoTopic_create", DateTime.UtcNow.ToString("o"));
+            Context.SetValue("MarketingT2Topic_create", DateTime.UtcNow.ToString("o"));
             Context.SetValue("TopicName", "Marketing Path Type 2");
             Context.SetValue("marketing_path_type", "T2");
 
@@ -213,7 +213,7 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics {
         }
 
         public override async Task<TopicResult> RunAsync(CancellationToken cancellationToken = default) {
-            Context.SetValue("MarketingTypeTwoTopic_runasync", DateTime.UtcNow.ToString("o"));
+            Context.SetValue("MarketingT2Topic_runasync", DateTime.UtcNow.ToString("o"));
             var result = await base.RunAsync(cancellationToken);
 
             var nextTopic = Context.GetValue<string>("NextTopic");

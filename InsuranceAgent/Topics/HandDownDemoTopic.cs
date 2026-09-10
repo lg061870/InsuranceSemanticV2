@@ -95,7 +95,7 @@ namespace InsuranceAgent.Topics
             // Step 5: Trigger the next topic to demonstrate the complete workflow
             Add(new TriggerTopicActivity(
                 "complete-demo",
-                "CaliforniaResidentDemoTopic",
+                "CaliforniaResidentTopic",
                 _logger,
                 false,  // Legacy hand-off behavior - don't wait for completion
                 _conversationContext));

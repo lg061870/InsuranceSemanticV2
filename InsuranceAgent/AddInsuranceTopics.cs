@@ -145,17 +145,6 @@ public static class InsuranceTopicRegistrationExtensions {
             sp.GetRequiredService<IConversationContext>()
         ));
 
-        AddTopic(sp => new MarketingT1Topic(
-            sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<MarketingT1Topic>>(),
-            sp.GetRequiredService<Kernel>(),
-            sp.GetRequiredService<InsuranceRuleRepository>(),
-            sp.GetRequiredService<IToolExecutor>(),
-            sp,
-            sp.GetRequiredService<IConversationOutputDispatcher>(),
-            sp.GetRequiredService<IConversationSession>()
-        ));
-
         AddTopic(sp => new SemanticActivitiesDemoTopic(
             sp.GetRequiredService<TopicWorkflowContext>(),
             sp.GetRequiredService<ILogger<SemanticActivitiesDemoTopic>>(),

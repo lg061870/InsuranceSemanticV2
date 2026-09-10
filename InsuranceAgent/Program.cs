@@ -9,6 +9,7 @@ using ConversaCore.Integrations.Models;
 using ConversaCore.Integrations.Zapier;
 using ConversaCore.Registration;
 using ConversaCore.Registration.Compatibility;
+using ConversaCore.Runtime;
 using ConversaCore.Tools;
 using InsuranceAgent.Configuration;
 using InsuranceAgent.Extensions;
@@ -16,6 +17,7 @@ using InsuranceAgent.Mappings;
 using InsuranceAgent.Repositories;
 using InsuranceAgent.Services;
 using InsuranceAgent.Topics;
+using InsuranceAgent.Topics.MarketingTypeTopics;
 using InsuranceAgent.Tools;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.AI;
@@ -149,15 +151,37 @@ internal class Program {
                 "HandDownDemoTopic",
                 "RadioButtonDemoTopic",
                 "NewbieTopic",
-                "MarketingT1Topic",
                 "SemanticActivitiesDemoTopic",
                 "EventTriggerDemoTopic",
                 "ZapierIntegrationDemoTopic"
             })
+            .AddTopic<MarketingT1Topic>(
+                InsuranceTopicIds.MarketingT1,
+                options =>
+                {
+                    options.DisplayName = "Marketing path T1";
+                    options.AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        "insurance.lead.create",
+                        "insurance.profile.contact.save",
+                        "insurance.profile.life-goals.save",
+                        "insurance.profile.health.save",
+                        "insurance.profile.coverage.save",
+                        "insurance.profile.dependents.save",
+                        "insurance.profile.employment.save",
+                        "insurance.profile.beneficiaries.save"
+                    };
+                })
+            .AddTopic<MarketingT2Topic>(
+                InsuranceTopicIds.MarketingT2,
+                options => options.DisplayName = "Marketing path T2")
+            .AddTopic<MarketingT3Topic>(
+                InsuranceTopicIds.MarketingT3,
+                options => options.DisplayName = "Marketing path T3")
             .AddTopic<InsuranceConversationStartTopic>(
-                "insurance.conversation.start",
+                InsuranceTopicIds.ConversationStart,
                 options => options.DisplayName = "Insurance conversation start")
-            .AddConversationRuntime("insurance.conversation.start");
+            .AddConversationRuntime(InsuranceTopicIds.ConversationStart);
 
         builder.Services.Configure<OpenAIConfiguration>(
             configuration.GetSection(OpenAIConfiguration.SectionName));
@@ -216,6 +240,20 @@ internal class Program {
         // ------------------------------------------------------------
         Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🏗️ Building app...");
         var app = builder.Build();
+
+        using (var validationScope = app.Services.CreateScope())
+        {
+            var topicCatalog = validationScope.ServiceProvider.GetRequiredService<ITopicCatalog>();
+            var missingTopicIds = InsuranceTopicIds.RequiredRuntimeTopics
+                .Where(topicId => !topicCatalog.Contains(topicId))
+                .ToArray();
+
+            if (missingTopicIds.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Missing required InsuranceAgent topic registrations: {string.Join(", ", missingTopicIds)}");
+            }
+        }
 
         if (!app.Environment.IsDevelopment()) {
             app.UseExceptionHandler("/Error");

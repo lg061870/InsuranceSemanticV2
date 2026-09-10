@@ -56,10 +56,6 @@ public class EmploymentTopic : TopicFlow
         var isDevelopment =
             Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
 
-        var triggerActivity = new TriggerTopicActivity(
-            ActivityId_Trigger,
-            "NextTopicName" // Will be set in context or default to next logical topic
-        );
 
         // === Event hooks for AdaptiveCard lifecycle ===
         showCardActivity.CardJsonEmitted += (s, e) =>
@@ -106,16 +102,8 @@ public class EmploymentTopic : TopicFlow
         showCardActivity.ValidationFailed += (s, e) =>
             _logger.LogWarning("[{Topic}] Validation failed: {Message}", Name, e.Exception.Message);
 
-        // === Trigger hook ===
-        triggerActivity.TopicTriggered += (sender, e) =>
-        {
-            _logger.LogInformation("[{Topic}] Triggering next topic: {Next}", Name, e.TopicName);
-            _conversationContext.AddTopicToChain(e.TopicName);
-        };
-
         // === Enqueue activities ===
         Add(showCardActivity);
-        Add(triggerActivity);
     }
 
     /// <summary>

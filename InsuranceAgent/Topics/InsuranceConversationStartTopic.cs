@@ -21,7 +21,7 @@ public sealed class InsuranceConversationStartTopic : TopicFlow
         TopicWorkflowContext context,
         ILogger<InsuranceConversationStartTopic> logger,
         IConversationContext conversationContext)
-        : base(context, logger, "InsuranceConversationStart")
+        : base(context, logger, InsuranceTopicIds.ConversationStart)
     {
         _logger = logger;
         _conversationContext = conversationContext;
@@ -60,17 +60,17 @@ public sealed class InsuranceConversationStartTopic : TopicFlow
                         ConditionalActivity<TopicFlowActivity>.If(
                             "insurance.ccpa-acknowledged",
                             context => CoreContextExtensions.IsYes(context, "ccpa_acknowledgment"),
-                            (_, _) => Marketing("MarketingT1Topic", "insurance.after-ccpa-yes"),
-                            (_, _) => Marketing("MarketingT2Topic", "insurance.after-ccpa-no"))
+                            (_, _) => Marketing(InsuranceTopicIds.MarketingT1, "insurance.after-ccpa-yes"),
+                            (_, _) => Marketing(InsuranceTopicIds.MarketingT2, "insurance.after-ccpa-no"))
                     ]),
-                (_, _) => Marketing("MarketingT1Topic", "insurance.non-ca-tcpa-yes"))
+                (_, _) => Marketing(InsuranceTopicIds.MarketingT1, "insurance.non-ca-tcpa-yes"))
             ));
         Add(FlowConditionHelpers.IfCase(
             "insurance.tcpa-no",
             context => CoreContextExtensions.IsNo(context, "tcpa_consent"),
             new TriggerTopicActivity(
                 "insurance.tcpa-no",
-                "MarketingT3Topic",
+                InsuranceTopicIds.MarketingT3,
                 _logger,
                 waitForCompletion: false,
                 conversationContext: _conversationContext)));

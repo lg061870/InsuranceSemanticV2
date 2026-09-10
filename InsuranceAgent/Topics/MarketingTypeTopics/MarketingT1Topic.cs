@@ -48,7 +48,7 @@ public class MarketingT1Topic : TopicFlow {
         IServiceProvider serviceProvider,
         IConversationOutputDispatcher outputDispatcher,
         IConversationSession conversationSession)
-        : base(context, logger, name: "MarketingT1Topic") {
+        : base(context, logger, name: InsuranceTopicIds.MarketingT1) {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
         _insuranceRuleRepository = insuranceRuleRepository ?? throw new ArgumentNullException(nameof(insuranceRuleRepository));

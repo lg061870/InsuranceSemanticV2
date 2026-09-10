@@ -90,7 +90,7 @@ public class InsuranceAgentServiceV2 : DomainAgentService  {
 
         return new TriggerTopicActivity(
             id,
-            "MarketingT1Topic",
+            InsuranceTopicIds.MarketingT1,
             _logger,
             waitForCompletion: false,
             conversationContext: _context
@@ -102,7 +102,7 @@ public class InsuranceAgentServiceV2 : DomainAgentService  {
 
         return new TriggerTopicActivity(
             id,
-            "MarketingT2Topic",
+            InsuranceTopicIds.MarketingT2,
             _logger,
             waitForCompletion: false,
             conversationContext: _context
@@ -178,7 +178,7 @@ public class InsuranceAgentServiceV2 : DomainAgentService  {
             CoreContextExtensions.IsNo(ctx, "tcpa_consent"),
             new TriggerTopicActivity(
                 "TO_MARKETING_T3_AFTER_TCPA_NO",
-                "MarketingT3Topic",
+                InsuranceTopicIds.MarketingT3,
                 _logger,
                 waitForCompletion: false,
                 conversationContext: _context
