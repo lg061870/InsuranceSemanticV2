@@ -24,7 +24,7 @@ namespace InsuranceAgent.Topics;
 /// It collects lead details, life goals, and other profile data through adaptive cards.
 /// Between cards, it emits *semantic* custom events that the UI can listen to (e.g. CustomerConsole).
 /// </summary>
-public class MarketingT1Topic : TopicFlow {
+public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
     private readonly ILogger<MarketingT1Topic> _logger;
     private readonly Kernel _kernel;
     private readonly InsuranceRuleRepository _insuranceRuleRepository;
@@ -61,28 +61,21 @@ public class MarketingT1Topic : TopicFlow {
         Context.SetValue("marketing_path_type", "T1");
         Context.SetValue("MarketingT1Topic_create", DateTime.UtcNow.ToString("o"));
 
-        _ = Task.Run(async () =>
-        {
-            try {
-                await InitializeActivitiesAsync();
-                _logger.LogInformation("[MarketingT1Topic] ✅ Async initialization completed successfully.");
-            } catch (Exception ex) {
-                _logger.LogError(ex, "[MarketingT1Topic] ❌ Failed during async initialization.");
-            }
-        });
     }
 
-    public override async void Reset() {
-        _logger.LogInformation("[MarketingT1Topic] Resetting topic and reinitializing activities");
-        base.Reset();
-        await InitializeActivitiesAsync();
+    /// <inheritdoc />
+    public async Task InitializeAsync(CancellationToken cancellationToken = default) {
+        cancellationToken.ThrowIfCancellationRequested();
+        await InitializeActivitiesAsync(cancellationToken).ConfigureAwait(false);
+        _logger.LogInformation("Marketing topic {TopicId} initialization completed", Name);
     }
 
-    private async Task InitializeActivitiesAsync() {
+    private async Task InitializeActivitiesAsync(CancellationToken cancellationToken) {
         ClearActivities();
 
         // --- Resolve active rule set based on life goals ---
         var activeRuleSets = await RuleSelector.SelectRulesAsync(Context, _insuranceRuleRepository);
+        cancellationToken.ThrowIfCancellationRequested();
 
         // === INITIALIZATION ===
         Add(Notify(
@@ -220,20 +213,15 @@ public class MarketingT1Topic : TopicFlow {
             ruleSet: activeRuleSets,
             inputFactory: () => LeadSummaryBuilder.FromContext(Context),
             outputGuidelinesPrompt: "Include rationale for matchScore and underwriting classification.",
-            runInBackground: true
-        );
-
-        // health_info_submitted
-        healthQuery.OnAsyncCompleted(
-            AttachQueryPayloadAsync(
-                eventName: "health_info_submitted",
-                progress: 55,
-                message: "Health information collected",
-                queryOutputKey: "output_query_healthinfoquery"
-            )
+            runInBackground: false
         );
 
         Add(healthQuery);
+        AttachQueryPayload(
+            eventName: "health_info_submitted",
+            progress: 55,
+            message: "Health information collected",
+            queryOutputKey: "output_query_healthinfoquery");
 
         // === ASSETS & LIABILITIES ===
         Add(new AdaptiveCardActivity<AssetsLiabilitiesCard, AssetsLiabilitiesModel>(
@@ -285,21 +273,15 @@ public class MarketingT1Topic : TopicFlow {
                 ruleSet: activeRuleSets,
                 inputFactory: () => LeadSummaryBuilder.FromContext(Context),
                 outputGuidelinesPrompt: "Evaluate product fit and show ranked coverage options.",
-                runInBackground: true
+                runInBackground: false
             );
 
-        // coverage_intent_submitted
-        coverageQuery.OnAsyncCompleted(
-            AttachQueryPayloadAsync(
-                eventName: "coverage_intent_submitted",
-                progress: 65,
-                message: "Coverage intent captured",
-                queryOutputKey: "output_query_coverageintentquery"
-            )
-        );
-
-        // Finally, add it to the workflow
         Add(coverageQuery);
+        AttachQueryPayload(
+            eventName: "coverage_intent_submitted",
+            progress: 65,
+            message: "Coverage intent captured",
+            queryOutputKey: "output_query_coverageintentquery");
 
         // === DEPENDENTS ===
         Add(new AdaptiveCardActivity<DependentsCard, DependentsModel>(
@@ -355,20 +337,15 @@ public class MarketingT1Topic : TopicFlow {
                 ruleSet: activeRuleSets,
                 inputFactory: () => LeadSummaryBuilder.FromContext(Context),
                 outputGuidelinesPrompt: "Assess family needs and dependent coverage gaps.",
-                runInBackground: true
+                runInBackground: false
             );
 
-        // dependents_submitted
-        dependentsQuery.OnAsyncCompleted(
-            AttachQueryPayloadAsync(
-                eventName: "dependents_submitted",
-                progress: 75,
-                message: "Dependents data saved",
-                queryOutputKey: "output_query_dependentsquery"
-            )
-        );
-
         Add(dependentsQuery);
+        AttachQueryPayload(
+            eventName: "dependents_submitted",
+            progress: 75,
+            message: "Dependents data saved",
+            queryOutputKey: "output_query_dependentsquery");
 
         // === EMPLOYMENT ===
         Add(new AdaptiveCardActivity<EmploymentCard, EmploymentModel>(
@@ -424,17 +401,7 @@ public class MarketingT1Topic : TopicFlow {
                 ruleSet: activeRuleSets,
                 inputFactory: () => LeadSummaryBuilder.FromContext(Context),
                 outputGuidelinesPrompt: "Produce final ranked list of qualifying products with estimated premiums.",
-                runInBackground: true
-            );
-
-        // beneficiaries_submitted
-        finalQuery.OnAsyncCompleted(
-            AttachQueryPayloadAsync(
-                eventName: "qualification_complete",
-                progress: 90,
-                message: "Final qualification completed",
-                queryOutputKey: "output_query_finalqualificationquery"
-            )
+                runInBackground: false
         );
 
         Add(finalQuery);
@@ -516,37 +483,6 @@ public class MarketingT1Topic : TopicFlow {
                     Payload: context.GetValue<QualifiedCarriers>(queryOutputKey)));
         Add(activity);
     }
-
-    private Func<TopicWorkflowContext, Task<TopicFlowActivity?>> AttachQueryPayloadAsync(
-        string eventName,
-        int progress,
-        string message,
-        string queryOutputKey) {
-        return ctx =>
-        {
-            try {
-                var payload = ctx.GetValue<QualifiedCarriers>(queryOutputKey);
-                var stage = eventName.Replace("_submitted", string.Empty).Replace('_', '-');
-                TopicFlowActivity notification = eventName == "qualification_complete"
-                    ? Notify($"{eventName}_notification", eventName, _ =>
-                        new InsuranceQualificationNotification(stage, progress, message, payload))
-                    : Notify($"{eventName}_notification", eventName, _ =>
-                        new InsuranceProgressNotification(stage, progress, message, Payload: payload));
-                ctx.SetValue($"{eventName}_progress", progress);
-                ctx.SetValue($"{eventName}_message", message);
-                ctx.SetValue($"{eventName}_timestamp", DateTime.UtcNow.ToString("o"));
-                return Task.FromResult<TopicFlowActivity?>(notification);
-            } catch (Exception ex) {
-                _logger.LogError(
-                    ex,
-                    "Failed to build typed host notification for {EventName}",
-                    eventName
-                );
-                return Task.FromResult<TopicFlowActivity?>(null);
-            }
-        };
-    }
-
 
     public override Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default) {
         if (string.IsNullOrWhiteSpace(message)) return Task.FromResult(0f);

@@ -14,23 +14,10 @@ namespace ConversaCore.Runtime;
 /// CC-203's job (per the work breakdown) is to "resolve a fresh mutable topic execution
 /// from the current conversation scope and await initialization before exposing it." But
 /// today, <c>ITopic</c>/<c>ConversaCore.TopicFlow.TopicFlow</c> construction is an
-/// ordinary, synchronous .NET constructor — there is no existing method or convention on
-/// the current type hierarchy an activator could await. Worse, at least one real topic,
-/// <c>InsuranceAgent.Topics.MarketingTypeTopics.MarketingT1Topic</c>, does start
-/// asynchronous work from its constructor today, but as an untracked, fire-and-forget
-/// <c>_ = Task.Run(async () =&gt; { await InitializeActivitiesAsync(); ... })</c> — exactly
-/// the anti-pattern target architecture section 7.3 and CC-209 ("Eliminate constructor
-/// background initialization. Introduce an awaited topic build/activation phase and
-/// prohibit untracked initialization tasks.") exist to remove. A caller that constructs
-/// that topic today and immediately starts routing input to it can race that background
-/// task; nothing makes the topic wait for its own initialization to finish.
-/// </para>
-/// <para>
-/// CC-209 — a separate, later ticket — owns migrating that real constructor logic onto
-/// whatever seam is defined here. CC-203 (this ticket) only needs to define the seam and
-/// prove <c>ITopicActivator</c> uses it correctly; it must not modify
-/// <c>MarketingT1Topic</c> or any other real topic. See <c>TopicActivator</c> remarks for
-/// how activation checks for and awaits this interface.
+/// ordinary, synchronous .NET constructor — there is no member on the base topic contract
+/// an activator can await. The seam replaces constructor-launched work; InsuranceAgent's
+/// marketing T1 topic now implements it so activation cannot race its rule selection and
+/// workflow construction.
 /// </para>
 /// <para><b>Why a new interface, not an addition to <see cref="ConversaCore.Topics.ITopic"/>.</b></para>
 /// <para>
@@ -42,7 +29,7 @@ namespace ConversaCore.Runtime;
 /// codebase (see above). An optional, separately-implementable interface lets an
 /// activator ask "does this specific instance need to be awaited before use?" via a
 /// simple type check (<c>topic is IAsyncInitializable initializable</c>), and lets every
-/// topic that has no asynchronous initialization need — which is every topic today —
+/// topic that has no asynchronous initialization need — which is most topics —
 /// remain completely unaware this interface exists. This mirrors a common .NET pattern
 /// (for example, <c>IAsyncDisposable</c> alongside <c>IDisposable</c>): an optional
 /// capability interface a type implements only when it actually needs the capability,

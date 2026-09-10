@@ -42,7 +42,6 @@ public class InsuranceAgentService {
     public event EventHandler<ConversationResetEventArgs>? ConversationReset;
     public event EventHandler<PromptInputStateChangedEventArgs>? PromptInputStateChanged;
     public event EventHandler<CustomEventTriggeredEventArgs>? CustomEventTriggered;
-    public event EventHandler<AsyncQueryCompletedEventArgs>? AsyncActivityCompleted;
     public event EventHandler<CardStateChangedEventArgs>? CardStateChanged;
 
     public InsuranceAgentService(
@@ -644,154 +643,6 @@ public class InsuranceAgentService {
             LogError("EVT_FB_0004", ex);
         }
     }
-    // ============================================================
-    // FIX: Background Semantic Activity Flow Continuation
-    // ============================================================
-    // PROBLEM:
-    // When a SemanticQueryActivity runs with RunInBackground=true, it completes asynchronously
-    // and triggers this handler with a follow-up activity (e.g., EventTriggerActivity to fire
-    // a custom event like "health_info_submitted"). The follow-up activity is inserted into the
-    // flow queue via flow.InsertNext(followup), but the flow remains stuck in WaitingForInput
-    // state and NEVER executes the inserted activity.
-    //
-    // ROOT CAUSE:
-    // InsertNext() only adds the activity to the queue - it does NOT advance the flow execution.
-    // The flow waits indefinitely for user input (or StepAsync to be called), so the inserted
-    // follow-up activity sits in the queue but never runs.
-    //
-    // SOLUTION:
-    // After InsertNext(), we manually execute ONLY the inserted follow-up activity by calling
-    // its RunAsync() method directly. This avoids triggering StepAsync which would cause the
-    // flow to cascade through all subsequent activities without waiting for user input at cards.
-    //
-    // CRITICAL: We do NOT call flow.StepAsync() because:
-    // 1. It would pass null as input to subsequent card activities
-    // 2. It would cause the flow to advance through multiple activities at once
-    // 3. Cards would appear one after another without waiting for user interaction
-    //
-    // Instead, we:
-    // 1. Execute only the inserted follow-up activity (typically EventTriggerActivity)
-    // 2. Let the activity complete and fire its events
-    // 3. The flow remains in WaitingForInput state for the next card activity
-    //
-    // WHEN THIS HAPPENS:
-    // - SemanticQueryActivity with RunInBackground=true completes
-    // - OnAsyncCompletedCallback creates a follow-up activity (e.g., EventTriggerActivity)
-    // - AsyncCompleted event is raised → HandleAsyncActivityCompleted is called
-    // - Follow-up activity is inserted but flow doesn't advance → USER SEES FLOW STALL
-    //
-    // IMPACT IF REMOVED:
-    // Background semantic queries will complete, but their follow-up activities (like firing
-    // custom events for UI updates or data persistence) will never execute, breaking the
-    // conversation flow and leaving the chat stuck waiting for input.
-    // ============================================================
-    private async void HandleAsyncActivityCompleted(object? sender, AsyncQueryCompletedEventArgs e) {
-
-        LogInfo("EVT_AS_0001");
-
-        if (e.Activity == null) {
-            LogInfo("EVT_AS_0002");
-            AsyncActivityCompleted?.Invoke(this, e);
-            return;
-        }
-
-        var followup = e.Activity;
-
-        if (_activeTopic is not TopicFlow flow) {
-            LogWarn("EVT_AS_0003");
-            AsyncActivityCompleted?.Invoke(this, e);
-            return;
-        }
-
-        // 🔍 DEBUG: Log current flow state before insertion
-        _logger.LogWarning(
-            "[DEBUG-ASYNC] 🎯 HandleAsyncActivityCompleted START:\n" +
-            "  Follow-up Activity: {ActivityId} ({ActivityType})\n" +
-            "  Flow State: {FlowState}\n" +
-            "  Current Activity: {CurrentActivity}",
-            followup.Id,
-            followup.GetType().Name,
-            flow.State,
-            flow.GetCurrentActivity()?.Id ?? "<none>"
-        );
-
-        LogInfo("EVT_AS_0004");
-
-        HookActivityEvents(followup);
-        flow.InsertNext(followup);
-
-        // 🔍 DEBUG: Log after insertion
-        _logger.LogWarning(
-            "[DEBUG-ASYNC] 📋 After InsertNext - follow-up activity '{ActivityId}' should be next in queue",
-            followup.Id
-        );
-
-        AsyncActivityCompleted?.Invoke(this, e);
-
-        // ✅ FIX: Execute ONLY the inserted follow-up activity without advancing the entire flow
-        // Do NOT call flow.StepAsync() as it would cascade through all activities
-        if (flow.State == TopicFlow.FlowState.WaitingForInput) {
-            LogInfo("EVT_AS_0005", "Flow is waiting for input - executing inserted follow-up activity directly");
-            
-            _logger.LogWarning(
-                "[DEBUG-ASYNC] 🚀 Starting follow-up activity execution in background task"
-            );
-            
-            try {
-                // Execute only the inserted activity without triggering full flow advancement
-                _ = Task.Run(async () => {
-                    try {
-                        _logger.LogWarning(
-                            "[DEBUG-ASYNC] ⏳ Waiting 100ms before execution..."
-                        );
-                        
-                        await Task.Delay(100); // Small delay to ensure InsertNext completes
-                        
-                        _logger.LogWarning(
-                            "[DEBUG-ASYNC] ▶️ Calling followup.RunAsync() for activity '{ActivityId}' ({ActivityType})",
-                            followup.Id,
-                            followup.GetType().Name
-                        );
-                        
-                        // Execute the follow-up activity directly without calling StepAsync
-                        var result = await followup.RunAsync(flow.Context, null, CancellationToken.None);
-                        
-                        _logger.LogWarning(
-                            "[DEBUG-ASYNC] ✅ Follow-up activity '{ActivityId}' executed successfully\n" +
-                            "  Is Waiting: {IsWaiting}\n" +
-                            "  Is End: {IsEnd}\n" +
-                            "  Result Message: {ResultMessage}\n" +
-                            "  Flow State After: {FlowState}\n" +
-                            "  Current Activity After: {CurrentActivity}",
-                            followup.Id,
-                            result.IsWaiting,
-                            result.IsEnd,
-                            result.Message ?? "<none>",
-                            flow.State,
-                            flow.GetCurrentActivity()?.Id ?? "<none>"
-                        );
-                        
-                        LogInfo("EVT_AS_0007", $"Follow-up activity '{followup.Id}' executed successfully");
-                        
-                    } catch (Exception ex) {
-                        _logger.LogError(ex,
-                            "[DEBUG-ASYNC] ❌ Failed to execute follow-up activity '{ActivityId}'",
-                            followup.Id
-                        );
-                        LogError("EVT_AS_0006", ex, "Failed to execute follow-up activity after async completion");
-                    }
-                });
-            } catch (Exception ex) {
-                _logger.LogError(ex, "[DEBUG-ASYNC] ❌ Failed to trigger follow-up activity execution");
-                LogError("EVT_AS_0006", ex, "Failed to trigger follow-up activity execution");
-            }
-        } else {
-            _logger.LogWarning(
-                "[DEBUG-ASYNC] ⚠️ Flow state is NOT WaitingForInput (State={FlowState}), skipping follow-up execution",
-                flow.State
-            );
-        }
-    }
     private async void HandleTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) {
 
         LogInfo("EVT_TH_0001");
@@ -978,9 +829,6 @@ public class InsuranceAgentService {
         flow.ActivityCompleted += HandleActivityCompleted;
         flow.TopicInserted += HandleTopicInserted;
 
-        // 🔥 IMPORTANT: async-completion (correct place)
-        flow.AsyncActivityCompleted += HandleAsyncActivityCompleted;
-
         // ===== TOPIC-LEVEL TRIGGERS =====
         if (flow is ITopicTriggeredActivity topicTrigger) {
             Console.WriteLine($"[InsuranceAgentService.HookTopicEvents] Subscribing to TopicTriggered for topic '{flow.Name}'");
@@ -1014,9 +862,6 @@ public class InsuranceAgentService {
         flow.ActivityCreated -= OnActivityCreated;
         flow.ActivityCompleted -= HandleActivityCompleted;
         flow.TopicInserted -= HandleTopicInserted;
-
-        // 🔥 IMPORTANT: async-completion (must match Hook)
-        flow.AsyncActivityCompleted -= HandleAsyncActivityCompleted;
 
         // ===== TOPIC-LEVEL TRIGGERS =====
         if (flow is ITopicTriggeredActivity topicTrigger)
@@ -1232,13 +1077,6 @@ public class InsuranceAgentService {
     // ============================================================
     // ASYNC ACTIVITY COMPLETED
     // ============================================================
-    { "EVT_AS_0001", "[InsuranceAgentService] AsyncActivityCompleted received" },
-    { "EVT_AS_0002", "[InsuranceAgentService] AsyncActivityCompleted: No follow-up activity returned" },
-    { "EVT_AS_0003", "[InsuranceAgentService] Cannot InsertNext for async follow-up — no active TopicFlow." },
-    { "EVT_AS_0004", "[InsuranceAgentService] Inserting async follow-up activity into topic" },
-    { "EVT_AS_0005", "[InsuranceAgentService] {0}" },
-    { "EVT_AS_0006", "[InsuranceAgentService] {0}" },
-    { "EVT_AS_0007", "[InsuranceAgentService] {0}" },
 
     // ============================================================
     // TOPIC LIFECYCLE (LOCAL HANDLER VARIATION)

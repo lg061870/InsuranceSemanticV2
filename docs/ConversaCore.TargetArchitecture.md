@@ -438,7 +438,7 @@ The current `InsuranceAgent/Pages/Home.razor` custom-event switch demonstrates v
 | Trigger Zapier and consume a result | Domain tool over integration transport | External operation returns data to the workflow |
 | Notify a live-agent system after qualification | Tool for queue/persistence; optional host notification for UI | Business side effect and visual reaction are separate |
 
-The insurance start/compliance sequence currently inserted by `InsuranceAgentServiceV2` should become an ordinary registered topic or composition of topics. No start-flow mutation belongs in a domain agent subclass.
+The insurance start/compliance sequence is an ordinary registered topic composition. Its T1 semantic checkpoints and typed notifications are ordered workflow activities, so the framework runner awaits them as one execution path; no domain-agent async-completion repair participates. T1's rule selection and workflow construction use `IAsyncInitializable`, which `ITopicActivator` awaits before routing.
 
 ## 13. Dependency injection and lifetimes
 

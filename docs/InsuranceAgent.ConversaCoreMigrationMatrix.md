@@ -10,7 +10,7 @@ planning artifact only; it does not change InsuranceAgent behavior.
 |---|---|---|
 | Topic registration | `InsuranceAgent/AddInsuranceTopics.cs:22-174` registers scoped topics through manual factories; startup still populates the legacy registry. | ConversaCore topic descriptors, catalog, and scoped activation. |
 | Start/compliance composition | `InsuranceAgent/Services/InsuranceAgentServiceV2.cs:37-49` builds a greeting, inserts `ComplianceTopic`, processes compliance, then appends conditional activities. `:51-70` mutates that flow during start. | Registered `ConversationStartTopic` plus explicit typed subtopic composition; runtime owns activation and reset. |
-| Legacy orchestration | `InsuranceAgent/Services/InsuranceAgentService.cs` and `InsuranceAgentServiceV2.cs` own routing, event bubbling, pause/resume, and async follow-up insertion. | `IConversationRuntime`, `ITopicRouter`, `IWorkflowRunner`, and compatibility adapters only during migration. |
+| Legacy orchestration | Retained compatibility source still contains the former routing/event model, but its async semantic follow-up repairs are removed and application code uses `IConversationRuntime`. | `IConversationRuntime`, `ITopicRouter`, `IWorkflowRunner`, and compatibility adapters only during migration. |
 | UI subscription | `InsuranceAgent/Pages/Home.razor:148-170` subscribes to `CustomEventTriggered` and uses `async void`. | `IConversationRuntime.Subscribe()` and one typed `OnHostOutput` boundary. |
 | Lead identity | `Home.razor:400-432` creates a lead and stores the returned ID in page field `currentLeadId`. | Lead-creation tool returns a typed lead ID into conversation state. |
 | Profile persistence | `Home.razor:448-547` persists life goals, coverage, health, dependents, employment, and beneficiaries from event callbacks using `currentLeadId`. | Typed mutating tools with validated identity, confirmation/idempotency policy where applicable, and typed results. |
@@ -26,7 +26,7 @@ planning artifact only; it does not change InsuranceAgent behavior.
 | `ComplianceTopic` | Keep as a registered topic; compose it from the start topic with typed state. |
 | `BeneficiaryInfoDemoTopic`, `BeneficiaryRepeatDemoTopic`, `BeneficiaryUserDrivenTopic` | Retain as samples or migrate only if still used by a supported route. |
 | `CaliforniaResidentTopic`, `ContactHealthTopic`, `ContactInfoTopic`, `CoverageIntentTopic`, `EmploymentTopic`, `DependentsTopic`, `HealthInfoTopic`, `InsuranceContextTopic`, `LeadDetailsTopic`, `LifeGoalsTopic` | Keep as domain topics; replace page-triggered persistence with tools and explicit typed state. |
-| `MarketingT1Topic` | Supported and explicitly registered as `insurance.marketing.t1`; remove remaining constructor/background orchestration under CC-510. |
+| `MarketingT1Topic` | Supported and explicitly registered as `insurance.marketing.t1`; activation awaits `IAsyncInitializable`, and semantic notifications are ordinary ordered activities executed through the framework runner. |
 | `MarketingT2Topic` | Supported and explicitly registered as `insurance.marketing.t2`; its downstream topic targets are startup-validated. |
 | `EventTriggerDemoTopic`, `SemanticActivitiesDemoTopic`, `HandDownDemoTopic`, `RadioButtonDemoTopic`, `NewbieTopic`, `ZapierIntegrationDemoTopic` | Audit as samples; migrate useful examples to the SDK/sample surface and mark incomplete experiments for later cleanup. |
 | T3 path | Explicit no-consent path registered as `insurance.marketing.t3`; it completes without creating a lead or profile data. |
@@ -55,6 +55,10 @@ planning artifact only; it does not change InsuranceAgent behavior.
 3. Move one lead/persistence path and prove the lead exists without `Home.razor` callbacks. Implemented through deterministic tool activities; E2E proof is tracked by CC-512.
 4. Bind `Home.razor` to `IConversationRuntime`, then migrate remaining reactions and persistence. Completed for the active T1 page path.
 5. Remove `InsuranceAgentServiceV2` only after end-to-end and two-circuit tests pass.
+
+The reference path no longer subscribes to semantic-completion events or launches delayed
+follow-up tasks. Semantic checkpoints and their typed notifications are sequential activities
+under the runtime's cancellation and failure boundary.
 
 The matrix is intentionally conservative: legacy services remain until their replacement
 behavior is covered, and no reference implementation source is changed by CC-500.

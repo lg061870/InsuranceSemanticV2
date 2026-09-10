@@ -36,15 +36,11 @@ namespace ConversaCore.Runtime;
 /// After the factory produces an instance, this activator performs a single type check —
 /// <c>topic is IAsyncInitializable initializable</c> — and awaits
 /// <see cref="IAsyncInitializable.InitializeAsync"/> only when that check succeeds. A
-/// topic that does not implement <see cref="IAsyncInitializable"/> (which is every real
-/// topic in this codebase today — see <see cref="IAsyncInitializable"/> remarks) activates
-/// immediately once the factory returns, with no additional await, no reflection, and no
-/// special-casing. This is deliberately the entire integration surface: CC-203 does not
-/// migrate <c>MarketingT1Topic</c> or any other real topic onto this seam (that is
-/// CC-209's job), so today this activator's initialization-await path only executes for
-/// test probes built specifically to exercise it (see
-/// <c>ConversaCore.Tests.Runtime.TopicActivatorTests</c>) — proving the seam is wired
-/// correctly and ready for CC-209 to use, without CC-203 overstepping into CC-209's scope.
+/// topic that does not implement <see cref="IAsyncInitializable"/> activates immediately
+/// once the factory returns, with no additional await, reflection, or special-casing.
+/// InsuranceAgent's marketing T1 topic is the first production consumer of this seam;
+/// activator tests cover successful, failed, and canceled initialization independently of
+/// that reference application.
 /// </para>
 /// <para><b>Cancellation.</b></para>
 /// <para>
