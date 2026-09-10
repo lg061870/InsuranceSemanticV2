@@ -7,6 +7,8 @@
 @using ConversaCore.Interfaces
 @using ConversaCore.Services
 @using ConversaCore.Runtime
+@using ConversaCore.UI.Models
+@using InsuranceAgent.Contracts
 @using ConversaCore.TopicFlow
 @using ConversaCore.TopicFlow.Extensions
 @using ConversaCore.UI.Components
@@ -99,7 +101,7 @@
         <div class="flex-1 mx-4 my-2">
             <CustomChatWindowV3 Runtime="@ConversationRuntime"
                               Style="@ConversaCore.UI.Models.ChatStyle.SidebarChat"
-                              />
+                              OnHostOutput="HandleHostOutputAsync" />
         </div>
     </div>
 </div>
@@ -163,6 +165,51 @@
     private Task OnNavigateRequested(string url) {
         Logger.LogInformation("[Home] Navigate requested → {Url}", url);
         return InvokeAsync(() => Nav.NavigateTo(url));
+    }
+
+    private async Task HandleHostOutputAsync(ConversationHostOutputContext hostOutput) {
+        if (hostOutput.Output is not HostNotification<LegacyEventTriggerPayload> notification)
+            return;
+
+        var eventName = notification.EventName.Trim().ToLowerInvariant();
+        var payload = notification.Payload;
+
+        try {
+            switch (eventName) {
+                case "customer_console_show":
+                    showCustomerConsole = true;
+                    break;
+
+                case "qualification_complete":
+                    HandleProgressComplete(payload.Data);
+                    break;
+
+                default:
+                    var progress = JsonSerializer.Deserialize<InsuranceProgressNotification>(payload.Data);
+                    if (progress is not null && progress.Progress > 0)
+                        UpdateProgressFromDictionary(new Dictionary<string, object> {
+                            ["stage"] = progress.Stage,
+                            ["progress"] = progress.Progress,
+                            ["message"] = progress.Message,
+                            ["nextStep"] = progress.NextStep ?? string.Empty,
+                            ["payload"] = progress.Payload ?? string.Empty
+                        });
+                    break;
+            }
+
+            object? customerPayload = null;
+            if (payload.Data.ValueKind == JsonValueKind.Object &&
+                payload.Data.TryGetProperty("payload", out var rawPayload))
+                customerPayload = JsonSerializer.Deserialize<QualifiedCarriers>(rawPayload.GetRawText());
+
+            if (showCustomerConsole && customerConsoleRef is not null)
+                await customerConsoleRef.UpdateFromChatEvent(eventName, customerPayload);
+        }
+        catch (Exception ex) {
+            Logger.LogError(ex, "[Home] Failed to handle host notification {EventName}", eventName);
+        }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private async void OnCustomEventReceived(object? sender, CustomEventTriggeredEventArgs e) {
