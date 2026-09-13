@@ -54,7 +54,7 @@ planning artifact only; it does not change InsuranceAgent behavior.
 2. Add typed insurance contracts and tools without removing the compatibility path. Completed for the active T1 path; legacy demo topics remain isolated.
 3. Move one lead/persistence path and prove the lead exists without `Home.razor` callbacks. Implemented through deterministic tool activities; E2E proof is tracked by CC-512.
 4. Bind `Home.razor` to `IConversationRuntime`, then migrate remaining reactions and persistence. Completed for the active T1 page path.
-5. Remove `InsuranceAgentServiceV2` only after end-to-end and two-circuit tests pass.
+5. Remove `InsuranceAgentServiceV2` only after end-to-end and two-circuit tests pass. Both gates are now implemented under CC-512/CC-513; service deletion remains the explicit WP7 cleanup task.
 
 The reference path no longer subscribes to semantic-completion events or launches delayed
 follow-up tasks. Semantic checkpoints and their typed notifications are sequential activities

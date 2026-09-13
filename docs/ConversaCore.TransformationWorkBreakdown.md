@@ -213,7 +213,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 - [x] **CC-510 — Remove agent-owned async follow-up repairs.** T1 semantic checkpoints and typed notifications are ordinary ordered activities awaited by the framework runner; constructor initialization uses `IAsyncInitializable`, and both InsuranceAgent repair handlers have been removed.
 - [x] **CC-511 — Verify the live-agent boundary.** InsuranceAgent crosses the boundary through the typed, idempotent `insurance.lead.handoff` tool/API contract; the separate live-agent applications remain API/SignalR consumers with no ConversaCore dependency.
 - [x] **CC-512 — Add end-to-end tests.** Scoped-runtime tests now cover all TCPA/California consent branches, full and lower-score qualification, every persistence step, persistence-failure containment, reset/restart, fallback interruption/resumption, typed customer-console and completion notifications, and both sides of the live-agent handoff threshold. Framework regressions also cover nested-card identity and card-to-card continuation.
-- [ ] **CC-513 — Run two-circuit reference validation.** Execute independent insurance conversations simultaneously with different lead data and assert isolation.
+- [x] **CC-513 — Run two-circuit reference validation.** One root provider now runs two real T1 qualification conversations concurrently in separate scopes and proves isolation of conversation IDs, submitted models, generated lead IDs, tool/handoff requests, and output streams; a concurrent reset/completion case proves one circuit cannot cancel or mutate the other.
 
 ### Acceptance criteria
 

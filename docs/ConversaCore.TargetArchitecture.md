@@ -444,6 +444,8 @@ The qualified-lead handoff is the sole ConversaCore-facing boundary to human-age
 
 The reference path is verified through the scoped public runtime rather than by invoking topic internals. End-to-end coverage submits the real compliance and qualification cards, proves all TCPA/California routing branches, records every profile tool invocation, checks typed customer-console and completion notifications, exercises both sides of the live-agent threshold, contains persistence failures before later writes or handoff, resets a waiting conversation, and verifies fallback interruption/resumption. Nested card wrappers expose their active emitted card identity so `SubmitCardAsync` retains strict stale-card correlation, and card continuation resumes the next activity without manufacturing direct text input.
 
+Two-circuit validation builds one root service provider and runs two qualification paths concurrently in separate scopes. The conversations retain distinct IDs, topic/card state, submitted customer and beneficiary data, generated lead IDs, persistence/handoff requests, and output streams. Resetting one scope while the other completes does not cancel or mutate the second conversation, providing executable evidence for the scoped lifetime boundary below.
+
 ## 13. Dependency injection and lifetimes
 
 | Service | Recommended lifetime | Rationale |

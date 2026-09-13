@@ -153,6 +153,59 @@ public sealed class InsuranceConversationEndToEndTests
             "Interrupted topic completed");
     }
 
+    [Fact]
+    public async Task TwoConcurrentCircuits_IsolateIdentityInputToolsAndOutputs()
+    {
+        await using var provider = CreateTwoCircuitProvider();
+        await using var first = new InsuranceRuntimeFixture(provider, ownsProvider: false);
+        await using var second = new InsuranceRuntimeFixture(provider, ownsProvider: false);
+        var firstData = CardData("Ada Circuit", "ada.circuit@example.com", "Grace Circuit");
+        var secondData = CardData("Linus Circuit", "linus.circuit@example.com", "Tove Circuit");
+
+        await Task.WhenAll(
+            first.RunFullQualificationAsync(firstData),
+            second.RunFullQualificationAsync(secondData));
+
+        first.Runtime.ConversationId.Should().NotBe(second.Runtime.ConversationId);
+        first.Tools.LeadId.Should().NotBe(second.Tools.LeadId);
+        first.Tools.Requests.OfType<CreateLeadRequest>().Should().ContainSingle()
+            .Which.ContactInfo!.FullName.Should().Be("Ada Circuit");
+        second.Tools.Requests.OfType<CreateLeadRequest>().Should().ContainSingle()
+            .Which.ContactInfo!.FullName.Should().Be("Linus Circuit");
+        first.Tools.Requests.OfType<SaveBeneficiariesRequest>().Should().ContainSingle()
+            .Which.Model.BeneficiaryName.Should().Be("Grace Circuit");
+        second.Tools.Requests.OfType<SaveBeneficiariesRequest>().Should().ContainSingle()
+            .Which.Model.BeneficiaryName.Should().Be("Tove Circuit");
+        first.Tools.Requests.OfType<QualifiedLeadHandoffRequest>().Should().ContainSingle()
+            .Which.LeadId.Should().Be(first.Tools.LeadId);
+        second.Tools.Requests.OfType<QualifiedLeadHandoffRequest>().Should().ContainSingle()
+            .Which.LeadId.Should().Be(second.Tools.LeadId);
+        first.Outputs.Should().OnlyContain(output => output.ConversationId == first.Runtime.ConversationId);
+        second.Outputs.Should().OnlyContain(output => output.ConversationId == second.Runtime.ConversationId);
+    }
+
+    [Fact]
+    public async Task ResettingOneCircuit_DoesNotCancelOrMutateConcurrentCircuit()
+    {
+        await using var provider = CreateTwoCircuitProvider();
+        await using var resetting = new InsuranceRuntimeFixture(provider, ownsProvider: false);
+        await using var completing = new InsuranceRuntimeFixture(provider, ownsProvider: false);
+
+        await resetting.Runtime.StartAsync();
+        await resetting.ReadNextCardAsync();
+        await Task.WhenAll(
+            resetting.Runtime.ResetAsync(),
+            completing.RunFullQualificationAsync(
+                CardData("Independent Circuit", "independent@example.com", "Separate Beneficiary")));
+
+        resetting.Tools.ToolIds.Should().BeEmpty();
+        completing.Tools.ToolIds.Should().ContainInOrder(ExpectedPersistenceTools);
+        completing.Outputs.OfType<HostNotification<InsuranceQualificationNotification>>()
+            .Should().ContainSingle(output => output.EventName == "qualification_complete");
+        completing.Tools.Requests.OfType<CreateLeadRequest>().Should().ContainSingle()
+            .Which.ContactInfo!.FullName.Should().Be("Independent Circuit");
+    }
+
     private static InsuranceRuntimeFixture CreateFixture(int qualificationScore, string? failedToolId = null)
     {
         var services = new ServiceCollection();
@@ -165,11 +218,10 @@ public sealed class InsuranceConversationEndToEndTests
             provider.GetRequiredService<ILogger<ConversationContext>>()));
 
         var vectorDatabase = new EmptyVectorDatabaseService();
-        var tools = new RecordingToolExecutor(failedToolId);
         services.AddSingleton<IVectorDatabaseService>(vectorDatabase);
         services.AddSingleton<InsuranceRuleRepository>();
         services.AddSingleton(CreateKernel(qualificationScore));
-        services.AddSingleton(tools);
+        services.AddScoped(_ => new RecordingToolExecutor(failedToolId));
         services.AddScoped<IToolExecutor>(provider => provider.GetRequiredService<RecordingToolExecutor>());
 
         new ConversaCoreBuilder(services)
@@ -180,7 +232,49 @@ public sealed class InsuranceConversationEndToEndTests
                     .ToHashSet(StringComparer.OrdinalIgnoreCase))
             .AddConversationRuntime(InsuranceTopicIds.MarketingT1);
 
-        return new InsuranceRuntimeFixture(services.BuildServiceProvider(validateScopes: true), tools);
+        return new InsuranceRuntimeFixture(services.BuildServiceProvider(validateScopes: true));
+    }
+
+    private static ServiceProvider CreateTwoCircuitProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Warning));
+        services.AddOptions();
+        services.AddScoped<TopicWorkflowContext>();
+        services.AddScoped<IConversationContext>(provider => new ConversationContext(
+            Guid.NewGuid().ToString("N"),
+            "insurance-two-circuit-e2e",
+            provider.GetRequiredService<ILogger<ConversationContext>>()));
+        services.AddSingleton<IVectorDatabaseService>(new EmptyVectorDatabaseService());
+        services.AddSingleton<InsuranceRuleRepository>();
+        services.AddSingleton(CreateKernel(88));
+        services.AddSingleton<CircuitLeadIdSource>();
+        services.AddScoped(provider => new RecordingToolExecutor(
+            leadId: provider.GetRequiredService<CircuitLeadIdSource>().Next()));
+        services.AddScoped<IToolExecutor>(provider => provider.GetRequiredService<RecordingToolExecutor>());
+
+        new ConversaCoreBuilder(services)
+            .AddTopic<MarketingT1Topic>(
+                InsuranceTopicIds.MarketingT1,
+                options => options.AllowedToolIds = ExpectedPersistenceTools
+                    .Append("insurance.lead.handoff")
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase))
+            .AddConversationRuntime(InsuranceTopicIds.MarketingT1);
+        return services.BuildServiceProvider(validateScopes: true);
+    }
+
+    private static IReadOnlyDictionary<string, object> CardData(
+        string fullName,
+        string email,
+        string beneficiaryName)
+    {
+        var data = new Dictionary<string, object>(ValidCardData, StringComparer.OrdinalIgnoreCase)
+        {
+            ["full_name"] = fullName,
+            ["email_address"] = email,
+            ["beneficiary_name"] = beneficiaryName
+        };
+        return data;
     }
 
     private static ConsentRuntimeFixture CreateConsentFixture()
@@ -339,18 +433,20 @@ public sealed class InsuranceConversationEndToEndTests
     private sealed class InsuranceRuntimeFixture : IAsyncDisposable
     {
         private readonly ServiceProvider _provider;
+        private readonly bool _ownsProvider;
         private readonly AsyncServiceScope _scope;
         private readonly IConversationOutputSubscription _subscription;
         private readonly CancellationTokenSource _readCancellation = new(TimeSpan.FromSeconds(30));
         private readonly Channel<AdaptiveCardOutput> _cards = Channel.CreateUnbounded<AdaptiveCardOutput>();
         private readonly Task _reader;
 
-        public InsuranceRuntimeFixture(ServiceProvider provider, RecordingToolExecutor tools)
+        public InsuranceRuntimeFixture(ServiceProvider provider, bool ownsProvider = true)
         {
             _provider = provider;
+            _ownsProvider = ownsProvider;
             _scope = provider.CreateAsyncScope();
             Runtime = _scope.ServiceProvider.GetRequiredService<IConversationRuntime>();
-            Tools = tools;
+            Tools = _scope.ServiceProvider.GetRequiredService<RecordingToolExecutor>();
             _subscription = Runtime.Subscribe();
             _reader = ReadOutputsAsync();
         }
@@ -359,15 +455,19 @@ public sealed class InsuranceConversationEndToEndTests
         public RecordingToolExecutor Tools { get; }
         public ConcurrentQueue<ConversationOutput> Outputs { get; } = new();
 
-        public async Task RunFullQualificationAsync()
+        public async Task RunFullQualificationAsync(
+            IReadOnlyDictionary<string, object>? cardData = null)
         {
-            await DriveQualificationCardsAsync();
+            await DriveQualificationCardsAsync(cardData: cardData);
             await WaitForOutputAsync("qualification_complete");
         }
 
-        public async Task DriveQualificationCardsAsync(int cardCount = 9)
+        public async Task DriveQualificationCardsAsync(
+            int cardCount = 9,
+            IReadOnlyDictionary<string, object>? cardData = null)
         {
             await Runtime.StartAsync();
+            cardData ??= ValidCardData;
             var submittedCards = new HashSet<string>(StringComparer.Ordinal);
             for (var index = 0; index < cardCount; index++)
             {
@@ -393,7 +493,7 @@ public sealed class InsuranceConversationEndToEndTests
                         $"Recent outputs: {recentOutputs}",
                         exception);
                 }
-                await Runtime.SubmitCardAsync(new CardSubmission(card.CardId, ValidCardData));
+                await Runtime.SubmitCardAsync(new CardSubmission(card.CardId, cardData));
             }
         }
 
@@ -445,9 +545,16 @@ public sealed class InsuranceConversationEndToEndTests
             await _subscription.DisposeAsync();
             try { await _reader; } catch (OperationCanceledException) { }
             await _scope.DisposeAsync();
-            await _provider.DisposeAsync();
+            if (_ownsProvider)
+                await _provider.DisposeAsync();
             _readCancellation.Dispose();
         }
+    }
+
+    private sealed class CircuitLeadIdSource
+    {
+        private int _next = 100;
+        public int Next() => Interlocked.Increment(ref _next);
     }
 
     private sealed class ConsentRuntimeFixture : IAsyncDisposable
@@ -583,8 +690,9 @@ public sealed class InsuranceConversationEndToEndTests
         }
     }
 
-    private sealed class RecordingToolExecutor(string? failedToolId = null) : IToolExecutor
+    private sealed class RecordingToolExecutor(string? failedToolId = null, int leadId = 42) : IToolExecutor
     {
+        public int LeadId { get; } = leadId;
         public ConcurrentQueue<string> ToolIds { get; } = new();
         public ConcurrentQueue<object?> Requests { get; } = new();
 
@@ -604,11 +712,11 @@ public sealed class InsuranceConversationEndToEndTests
                     "Injected persistence failure."));
 
             object result = typeof(TResult) == typeof(CreateLeadResult)
-                ? new CreateLeadResult(42)
+                ? new CreateLeadResult(LeadId)
                 : typeof(TResult) == typeof(ProfileWriteResult)
-                    ? new ProfileWriteResult(42, toolId)
+                    ? new ProfileWriteResult(LeadId, toolId)
                     : typeof(TResult) == typeof(QualifiedLeadHandoffResponse)
-                        ? new QualifiedLeadHandoffResponse(42, "Qualified", DateTimeOffset.UtcNow, false)
+                        ? new QualifiedLeadHandoffResponse(LeadId, "Qualified", DateTimeOffset.UtcNow, false)
                         : throw new InvalidOperationException($"Unexpected tool result type {typeof(TResult).Name}.");
 
             return ValueTask.FromResult(ToolResult<TResult>.Success((TResult)result));
