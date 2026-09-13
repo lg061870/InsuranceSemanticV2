@@ -42,6 +42,68 @@ public static class LeadsEndpoints {
             return Results.Ok();
         });
 
+        group.MapPost("/{leadId:int}/handoff", async (
+            int leadId,
+            QualifiedLeadHandoffRequest request,
+            AppDbContext db,
+            IHubContext<LeadsHub> hubContext,
+            CancellationToken cancellationToken) => {
+            if (request.LeadId != leadId)
+                return Results.BadRequest("Route and request lead identifiers must match.");
+            if (request.QualificationScore is < 0 or > 100)
+                return Results.BadRequest("Qualification score must be between 0 and 100.");
+
+            var lead = await db.Leads.FindAsync([leadId], cancellationToken);
+            if (lead is null)
+                return Results.NotFound();
+
+            var alreadyAccepted = string.Equals(
+                lead.Status,
+                "Qualified",
+                StringComparison.OrdinalIgnoreCase);
+            var acceptedAt = alreadyAccepted
+                ? await db.LeadStatusHistories
+                    .Where(history => history.LeadId == leadId && history.NewStatus == "Qualified")
+                    .OrderBy(history => history.ChangedAt)
+                    .Select(history => history.ChangedAt)
+                    .FirstOrDefaultAsync(cancellationToken)
+                : DateTime.UtcNow;
+            if (acceptedAt == default)
+                acceptedAt = lead.UpdatedAt;
+
+            if (!alreadyAccepted) {
+                db.LeadStatusHistories.Add(new LeadStatusHistory {
+                    LeadId = leadId,
+                    OldStatus = lead.Status,
+                    NewStatus = "Qualified",
+                    ChangedAt = acceptedAt
+                });
+                lead.Status = "Qualified";
+                lead.UpdatedAt = acceptedAt;
+                if (request.QualificationScore.HasValue)
+                    lead.QualificationScore = request.QualificationScore;
+                lead.FollowUpRequired = true;
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+
+            if (!alreadyAccepted) {
+                await hubContext.Clients.All.SendAsync(
+                    "LeadUpdated",
+                    leadId,
+                    cancellationToken);
+                await hubContext.Clients.All.SendAsync(
+                    "KpisChanged",
+                    cancellationToken);
+            }
+
+            return Results.Ok(new QualifiedLeadHandoffResponse(
+                leadId,
+                lead.Status,
+                new DateTimeOffset(DateTime.SpecifyKind(acceptedAt, DateTimeKind.Utc)),
+                alreadyAccepted));
+        });
+
 
         // NEW: List all leads for LiveAgentConsole with on-demand lifecycle updates
         group.MapGet("/", async (AppDbContext db, IMapper mapper, InsuranceSemanticV2.Api.Services.LeadLifecycleService lifecycleService) => {

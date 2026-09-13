@@ -58,6 +58,35 @@ public class LeadsService {
         }
     }
 
+    /// <summary>Marks a persisted qualified lead as available to human-agent consumers.</summary>
+    public async Task<QualifiedLeadHandoffResponse?> HandoffQualifiedLeadAsync(
+        QualifiedLeadHandoffRequest request,
+        CancellationToken cancellationToken = default) {
+        try {
+            var response = await _http.PostAsJsonAsync(
+                $"/api/leads/{request.LeadId}/handoff",
+                request,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode) {
+                _logger.LogWarning(
+                    "Qualified lead handoff failed for lead {LeadId} with status {StatusCode}",
+                    request.LeadId,
+                    response.StatusCode);
+                return null;
+            }
+
+            return await response.Content
+                .ReadFromJsonAsync<QualifiedLeadHandoffResponse>(cancellationToken)
+                .ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            _logger.LogError(ex, "Qualified lead handoff failed for lead {LeadId}", request.LeadId);
+            return null;
+        }
+    }
+
     public async Task<LeadResponse?> GetLeadByIdAsync(int leadId) {
         try {
             _logger.LogInformation("[LeadsService] Getting lead: LeadId={LeadId}", leadId);

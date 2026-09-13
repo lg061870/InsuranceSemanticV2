@@ -211,7 +211,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 - [ ] **CC-508 — Migrate Zapier usage.** `ZapierIntegrationDemoTopic` now invokes the registered `zapier.webhook` tool and derives confirmation from its typed result; configured-endpoint E2E evidence remains before closure.
 - [x] **CC-509 — Repair topic identity and registration.** The start and T1/T2/T3 paths use stable `insurance.*` IDs, T2 and an explicit no-consent T3 are registered, required trigger targets are startup-validated, and placeholder/nonexistent topic targets have been removed.
 - [x] **CC-510 — Remove agent-owned async follow-up repairs.** T1 semantic checkpoints and typed notifications are ordinary ordered activities awaited by the framework runner; constructor initialization uses `IAsyncInitializable`, and both InsuranceAgent repair handlers have been removed.
-- [ ] **CC-511 — Verify the live-agent boundary.** Keep human-agent operation separate; define only the qualified-lead handoff contract needed by InsuranceAgent.
+- [x] **CC-511 — Verify the live-agent boundary.** InsuranceAgent crosses the boundary through the typed, idempotent `insurance.lead.handoff` tool/API contract; the separate live-agent applications remain API/SignalR consumers with no ConversaCore dependency.
 - [ ] **CC-512 — Add end-to-end tests.** Cover consent branches, full and partial qualification, all persistence steps, fallback interruption, customer-console updates, completion, and live-agent handoff.
 - [ ] **CC-513 — Run two-circuit reference validation.** Execute independent insurance conversations simultaneously with different lead data and assert isolation.
 

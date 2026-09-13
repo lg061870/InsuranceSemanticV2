@@ -25,8 +25,9 @@ public class LeadLifecycleService
     /// </summary>
     public bool UpdateLeadStatus(Lead lead)
     {
-        // Critical: Never update abandoned leads
-        if (lead.Status?.Equals("Abandoned", StringComparison.OrdinalIgnoreCase) == true)
+        // Terminal/handoff states are controlled by explicit human-agent operations.
+        if (lead.Status?.Equals("Abandoned", StringComparison.OrdinalIgnoreCase) == true ||
+            lead.Status?.Equals("Qualified", StringComparison.OrdinalIgnoreCase) == true)
         {
             return false;
         }
@@ -66,6 +67,7 @@ public class LeadLifecycleService
         if (string.IsNullOrWhiteSpace(status)) return false;
 
         return status.Equals("To-Rescue", StringComparison.OrdinalIgnoreCase) ||
+               status.Equals("Qualified", StringComparison.OrdinalIgnoreCase) ||
                status.Equals("Abandoned", StringComparison.OrdinalIgnoreCase);
     }
 

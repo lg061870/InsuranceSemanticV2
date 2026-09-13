@@ -19,6 +19,7 @@ using InsuranceAgent.Services;
 using InsuranceAgent.Topics;
 using InsuranceAgent.Topics.MarketingTypeTopics;
 using InsuranceAgent.Tools;
+using InsuranceSemanticV2.Core.DTO;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.AI;
 using System.Diagnostics;
@@ -131,6 +132,11 @@ internal class Program {
                 "zapier.webhook", "1", "Zapier webhook",
                 "Triggers a configured Zapier webhook.",
                 typeof(ZapierWebhookRequest), typeof(ZapierWebhookResponse), sideEffect: ToolSideEffect.Mutating))
+            .AddTool<QualifiedLeadHandoffTool>(new ToolDescriptor(
+                "insurance.lead.handoff", "1", "Hand off qualified lead",
+                "Marks a persisted qualified lead as available to the separate human-agent system.",
+                typeof(QualifiedLeadHandoffRequest), typeof(QualifiedLeadHandoffResponse),
+                sideEffect: ToolSideEffect.Mutating))
             .AddTopicsFromLegacyRegistrations(new[]
             {
                 "ConversationStart",
@@ -169,7 +175,8 @@ internal class Program {
                         "insurance.profile.coverage.save",
                         "insurance.profile.dependents.save",
                         "insurance.profile.employment.save",
-                        "insurance.profile.beneficiaries.save"
+                        "insurance.profile.beneficiaries.save",
+                        "insurance.lead.handoff"
                     };
                 })
             .AddTopic<MarketingT2Topic>(

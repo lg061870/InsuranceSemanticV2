@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace InsuranceSemanticV2.IntegrationTests;
 
@@ -23,12 +24,20 @@ public class IntegrationTestBase : IDisposable
         Factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
+                builder.UseSetting("Jwt:SecretKey", "integration-tests-only-secret-key-32");
+                builder.UseSetting("Jwt:Issuer", "InsuranceSemanticV2.IntegrationTests");
+                builder.UseSetting("Jwt:Audience", "InsuranceSemanticV2.IntegrationTests");
+                builder.UseSetting("UseInMemoryDatabase", "true");
+                builder.ConfigureLogging(logging => logging.ClearProviders());
                 builder.ConfigureAppConfiguration((context, config) =>
                 {
                     // Tell the API to use InMemory database for testing
                     config.AddInMemoryCollection(new Dictionary<string, string?>
                     {
-                        ["UseInMemoryDatabase"] = "true"
+                        ["UseInMemoryDatabase"] = "true",
+                        ["Jwt:SecretKey"] = "integration-tests-only-secret-key-32",
+                        ["Jwt:Issuer"] = "InsuranceSemanticV2.IntegrationTests",
+                        ["Jwt:Audience"] = "InsuranceSemanticV2.IntegrationTests"
                     });
                 });
             });

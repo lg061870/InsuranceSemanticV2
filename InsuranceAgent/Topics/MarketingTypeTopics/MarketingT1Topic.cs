@@ -16,6 +16,7 @@ using ConversaCore.Runtime;
 using InsuranceAgent.Tools;
 using InsuranceAgent.Activities;
 using InsuranceAgent.Contracts;
+using InsuranceSemanticV2.Core.DTO;
 
 namespace InsuranceAgent.Topics;
 
@@ -406,6 +407,15 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
 
         Add(finalQuery);
 
+        Add(ConditionalActivity<TopicFlowActivity>.If(
+            "QualifiedLeadHandoffDecision",
+            context => GetQualificationScore(context) is >= 70,
+            (_, _) => QualifiedLeadHandoff(),
+            (_, _) => new SimpleActivity(
+                "SkipQualifiedLeadHandoff",
+                "Qualification did not meet the human-agent handoff threshold."),
+            _logger));
+
 
 
         // === SUMMARY ===
@@ -460,6 +470,32 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
     private static int GetLeadId(TopicWorkflowContext context) =>
         context.GetValue<ToolResult<CreateLeadResult>>("insurance.lead.create.result")?.Value?.LeadId
         ?? throw new InvalidOperationException("A created lead is required before profile persistence.");
+
+    private TopicFlowActivity QualifiedLeadHandoff() =>
+        new InvokeToolActivity<QualifiedLeadHandoffTool, QualifiedLeadHandoffRequest, QualifiedLeadHandoffResponse>(
+            "HandoffQualifiedLead",
+            "insurance.lead.handoff",
+            _toolExecutor,
+            context => new QualifiedLeadHandoffRequest(GetLeadId(context), GetQualificationScore(context)),
+            context => new ToolExecutionContext {
+                ConversationId = context.GetValue<string>("ConversationId") ?? "insurance",
+                Subject = "insurance-host",
+                CorrelationId = Guid.NewGuid().ToString("N"),
+                Services = _serviceProvider,
+                TrustedIdentityValidated = true,
+                AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "insurance.lead.handoff" }
+            },
+            "insurance.lead.handoff.result");
+
+    private static int? GetQualificationScore(TopicWorkflowContext context) {
+        var scores = context
+            .GetValue<QualifiedCarriers>("output_query_finalqualificationquery")?
+            .Carriers
+            .Where(carrier => carrier.MatchScore.HasValue)
+            .Select(carrier => carrier.MatchScore!.Value)
+            .ToArray();
+        return scores is { Length: > 0 } ? scores.Max() : null;
+    }
 
 
 

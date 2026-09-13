@@ -440,6 +440,8 @@ The current `InsuranceAgent/Pages/Home.razor` custom-event switch demonstrates v
 
 The insurance start/compliance sequence is an ordinary registered topic composition. Its T1 semantic checkpoints and typed notifications are ordered workflow activities, so the framework runner awaits them as one execution path; no domain-agent async-completion repair participates. T1's rule selection and workflow construction use `IAsyncInitializable`, which `ITopicActivator` awaits before routing.
 
+The qualified-lead handoff is the sole ConversaCore-facing boundary to human-agent operation. InsuranceAgent invokes the bounded `insurance.lead.handoff` tool with only the persisted lead ID and optional qualification score. The API accepts that transition idempotently, records one status-history entry, and publishes its existing `LeadUpdated` and `KpisChanged` SignalR notifications. `LiveAgentConsole` and `LiveAgentConsoleV2` remain independent API/SignalR consumers and do not reference ConversaCore assemblies or participate in conversation execution.
+
 ## 13. Dependency injection and lifetimes
 
 | Service | Recommended lifetime | Rationale |
