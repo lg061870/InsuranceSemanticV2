@@ -161,6 +161,10 @@ public class IntegrationService : IIntegrationService
                 };
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             stopwatch.Stop();

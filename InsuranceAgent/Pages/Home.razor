@@ -188,6 +188,10 @@
                     ApplyProgress(progress.Payload);
                     customerPayload = progress.Payload.Payload;
                     break;
+                case HostNotification<InsuranceNavigationNotification> navigation:
+                    Logger.LogInformation("[Home] Typed conversation navigation requested");
+                    await InvokeAsync(() => Nav.NavigateTo(navigation.Payload.Url));
+                    return;
                 case HostNotification<LegacyEventTriggerPayload> legacy:
                     eventName = legacy.EventName;
                     var migrated = JsonSerializer.Deserialize<InsuranceProgressNotification>(legacy.Payload.Data);
