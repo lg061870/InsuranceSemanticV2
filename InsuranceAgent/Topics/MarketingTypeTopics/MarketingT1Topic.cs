@@ -107,7 +107,7 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
                 consentContact: Context.GetValue<bool>("consent_contact")
             )
 
-        ));
+        ) { IsRequired = true });
 
         Add(new AdaptiveCardActivity<LeadDetailsCard, LeadDetailsModel>(
             "LeadDetails", Context,
@@ -117,7 +117,7 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
                 interestLevel: Context.GetValue<string>("interest_level"),
                 leadIntent: Context.GetValue<string>("lead_intent")
             )
-        ));
+        ) { IsRequired = true });
 
         Add(new InvokeToolActivity<CreateLeadTool, CreateLeadRequest, CreateLeadResult>(
             "CreateLead",
@@ -163,7 +163,7 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
                 coverExpenses: Context.GetValue<bool?>("intent_cover_expenses"),
                 unsure: Context.GetValue<bool?>("intent_unsure")
             )
-        ));
+        ) { IsRequired = true });
 
         Add(new InvokeToolActivity<SaveLifeGoalsTool, SaveLifeGoalsRequest, ProfileWriteResult>(
             "SaveLifeGoals",
@@ -183,6 +183,9 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
                 AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "insurance.profile.life-goals.save" }
             },
             "insurance.profile.life-goals.save.result"));
+        Add(RequireToolSuccess<ProfileWriteResult>(
+            "RequireLifeGoalsPersistence",
+            "insurance.profile.life-goals.save.result"));
 
         // life_goals_submitted
         Add(Notify("LifeGoalsSubmitted", "life_goals_submitted",
@@ -198,7 +201,7 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
                 height: Context.GetValue<string>("height"),
                 weight: Context.GetValue<string>("weight")
             )
-        ));
+        ) { IsRequired = true });
 
         Add(ProfileTool<SaveHealthInfoTool, SaveHealthInfoRequest>(
             "SaveHealthInfo", "insurance.profile.health.save",
@@ -237,7 +240,7 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
                 investmentsAmount: Context.GetValue<string>("investments_amount"),
                 retirementAmount: Context.GetValue<string>("retirement_amount")
             )
-        ));
+        ) { IsRequired = true });
 
         // assets_liabilities_submitted
         Add(Notify("AssetsLiabilitiesSubmitted", "assets_liabilities_submitted",
@@ -255,7 +258,7 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
                 desiredCoverageAmount: Context.GetValue<string>("coverage_amount"),
                 monthlyBudget: Context.GetValue<string>("monthly_budget")
             )
-        ));
+        ) { IsRequired = true });
 
         Add(ProfileTool<SaveCoverageIntentTool, SaveCoverageIntentRequest>(
             "SaveCoverageIntent", "insurance.profile.coverage.save",
@@ -319,7 +322,7 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
                     selectedAgeRanges: ranges
                 );
             }
-        ));
+        ) { IsRequired = true });
 
         Add(ProfileTool<SaveDependentsTool, SaveDependentsRequest>(
             "SaveDependents", "insurance.profile.dependents.save",
@@ -357,7 +360,7 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
                 occupation: Context.GetValue<string>("occupation"),
                 yearsEmployed: Context.GetValue<string>("years_employed")
             )
-        ));
+        ) { IsRequired = true });
 
         Add(ProfileTool<SaveEmploymentTool, SaveEmploymentRequest>(
             "SaveEmployment", "insurance.profile.employment.save",
@@ -379,7 +382,7 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
                 dob: Context.GetValue<string>("beneficiary_dob"),
                 percentage: Context.GetValue<int>("beneficiary_percentage")
             )
-        ));
+        ) { IsRequired = true });
 
         Add(ProfileTool<SaveBeneficiariesTool, SaveBeneficiariesRequest>(
             "SaveBeneficiaries", "insurance.profile.beneficiaries.save",
@@ -438,27 +441,43 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
         _logger.LogInformation("[MarketingT1Topic] ✅ Initialized full flow with semantic reasoning checkpoints.");
     }
 
-    private InvokeToolActivity<TTool, TRequest, ProfileWriteResult> ProfileTool<TTool, TRequest>(
+    private TopicFlowActivity ProfileTool<TTool, TRequest>(
         string activityId,
         string toolId,
         Func<TopicWorkflowContext, TRequest> requestFactory)
         where TTool : class, IConversaTool<TRequest, ProfileWriteResult>
     {
-        return new InvokeToolActivity<TTool, TRequest, ProfileWriteResult>(
-            activityId,
-            toolId,
-            _toolExecutor,
-            requestFactory,
-            _ => new ToolExecutionContext {
-                ConversationId = "insurance",
-                Subject = "insurance-host",
-                CorrelationId = Guid.NewGuid().ToString("N"),
-                Services = _serviceProvider,
-                TrustedIdentityValidated = true,
-                AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { toolId }
-            },
-            $"{toolId}.result");
+        var resultKey = $"{toolId}.result";
+        return new CompositeActivity($"{activityId}Persistence",
+        [
+            new InvokeToolActivity<TTool, TRequest, ProfileWriteResult>(
+                activityId,
+                toolId,
+                _toolExecutor,
+                requestFactory,
+                _ => new ToolExecutionContext {
+                    ConversationId = "insurance",
+                    Subject = "insurance-host",
+                    CorrelationId = Guid.NewGuid().ToString("N"),
+                    Services = _serviceProvider,
+                    TrustedIdentityValidated = true,
+                    AllowedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { toolId }
+                },
+                resultKey),
+            RequireToolSuccess<ProfileWriteResult>($"Require{activityId}", resultKey)
+        ]);
     }
+
+    private static TopicFlowActivity RequireToolSuccess<TResult>(string activityId, string resultKey) =>
+        new SimpleActivity(activityId, (context, _) =>
+        {
+            var result = context.GetValue<ToolResult<TResult>>(resultKey)
+                ?? throw new InvalidOperationException($"Tool result '{resultKey}' was not recorded.");
+            if (!result.Succeeded)
+                throw new InvalidOperationException(
+                    $"Tool execution failed ({result.ErrorCode ?? "unknown"}): {result.ErrorMessage ?? "No details."}");
+            return Task.FromResult<object?>(result.Value);
+        });
 
     private InsuranceHostNotificationActivity<TPayload> Notify<TPayload>(
         string activityId,

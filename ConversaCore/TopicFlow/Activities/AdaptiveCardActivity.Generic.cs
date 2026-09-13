@@ -14,6 +14,9 @@ namespace ConversaCore.TopicFlow;
 /// Consumers (like InsuranceAgentService) can subscribe without knowing the generic type.
 /// </summary>
 public interface IAdaptiveCardActivity {
+    /// <summary>Gets the ID of the card currently accepting input, including through wrapper activities.</summary>
+    string? ActiveCardId => null;
+
     // === Card JSON lifecycle ===
     event EventHandler<CardJsonEventArgs> CardJsonEmitted;
     event EventHandler<CardJsonEventArgs> CardJsonSending;
@@ -41,6 +44,9 @@ public abstract class AdaptiveCardActivity<TModel> : TopicFlowActivity, IAdaptiv
 
     // 🆕 NEW: marks whether this card is mandatory before user can continue
     public bool IsRequired { get; init; } = false;
+
+    /// <inheritdoc />
+    public string? ActiveCardId => Id;
 
     // === Semantic Events ===
     public event EventHandler<CardJsonEventArgs>? CardJsonEmitted;

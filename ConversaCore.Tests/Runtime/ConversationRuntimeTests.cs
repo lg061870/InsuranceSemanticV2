@@ -113,6 +113,35 @@ public sealed class ConversationRuntimeTests
     }
 
     [Fact]
+    public async Task CardSubmission_UsesNestedCardIdentity_AndDoesNotPassContinuationToNextCard()
+    {
+        var services = Services();
+        new ConversaCoreBuilder(services)
+            .AddTopic<NestedCardFlow>("start", sp => new NestedCardFlow(
+                sp.GetRequiredService<ILogger<NestedCardFlow>>()))
+            .AddConversationRuntime("start");
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var runtime = scope.ServiceProvider.GetRequiredService<IConversationRuntime>();
+        await using var outputs = runtime.Subscribe().ReadAllAsync().GetAsyncEnumerator();
+
+        await runtime.StartAsync();
+        var nested = await ReadUntilAsync<AdaptiveCardOutput>(outputs);
+        Assert.Equal("nested-card", nested.CardId);
+        await runtime.SubmitCardAsync(new CardSubmission(
+            nested.CardId, new Dictionary<string, object> { ["Name"] = "Ada" }));
+
+        var next = await ReadUntilAsync<AdaptiveCardOutput>(outputs,
+            output => output.CardId == "next-card");
+        await runtime.SubmitCardAsync(new CardSubmission(
+            next.CardId, new Dictionary<string, object> { ["Name"] = "Grace" }));
+        var completed = await ReadUntilAsync<TopicLifecycleOutput>(outputs,
+            output => output.State == ConversationTopicState.Completed);
+
+        Assert.Equal("start", completed.TopicId);
+    }
+
+    [Fact]
     public async Task ResetDisposesOldActivationAndRestartsWithFreshState()
     {
         var activations = new List<ScriptedTopic>();
@@ -320,6 +349,24 @@ public sealed class ConversationRuntimeTests
             Task.FromResult(1f);
     }
 
+    private sealed class NestedCardFlow : ConversaCore.TopicFlow.TopicFlow
+    {
+        public NestedCardFlow(ILogger<NestedCardFlow> logger)
+            : base(new TopicWorkflowContext(), logger, "nested-card-flow")
+        {
+            Add(ConditionalActivity<TopicFlowActivity>.If(
+                "card-wrapper",
+                _ => true,
+                (_, context) => new NamedAppointmentCardActivity("nested-card", context),
+                (_, _) => new SimpleActivity("unused", "unused")));
+            Add(new NamedAppointmentCardActivity("next-card", Context));
+        }
+
+        public override Task<float> CanHandleAsync(
+            string message,
+            CancellationToken cancellationToken = default) => Task.FromResult(1f);
+    }
+
     /// <summary>
     /// Framework-owned replacement for the historical EventTriggerDemoTopic sample.
     /// It deliberately exercises both host-output paths without depending on a domain app.
@@ -353,6 +400,16 @@ public sealed class ConversationRuntimeTests
     private sealed class AppointmentCardActivity(TopicWorkflowContext context)
         : AdaptiveCardActivity<AppointmentInput>(
             "appointment-card",
+            context,
+            NullLogger<AdaptiveCardActivity<AppointmentInput>>.Instance)
+    {
+        protected override string GetCardJson(TopicWorkflowContext context) =>
+            "{\"type\":\"AdaptiveCard\",\"version\":\"1.5\",\"body\":[]}";
+    }
+
+    private sealed class NamedAppointmentCardActivity(string id, TopicWorkflowContext context)
+        : AdaptiveCardActivity<AppointmentInput>(
+            id,
             context,
             NullLogger<AdaptiveCardActivity<AppointmentInput>>.Instance)
     {

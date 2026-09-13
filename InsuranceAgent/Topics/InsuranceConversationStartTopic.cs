@@ -48,23 +48,22 @@ public sealed class InsuranceConversationStartTopic : TopicFlow
             Task.FromResult<object?>(null)));
 
         Add(FlowConditionHelpers.IfCase(
+            "insurance.collect-ccpa-if-required",
+            context => CoreContextExtensions.IsYes(context, "tcpa_consent") &&
+                       CoreContextExtensions.IsYes(context, "is_california_resident"),
+            CreateCaliforniaResidencyCard(Context)));
+        Add(FlowConditionHelpers.IfCase(
             "insurance.tcpa-yes",
             context => CoreContextExtensions.IsYes(context, "tcpa_consent"),
             ConditionalActivity<TopicFlowActivity>.If(
-                "insurance.ca-check",
+                "insurance.ca-route",
                 context => CoreContextExtensions.IsYes(context, "is_california_resident"),
-                (_, workflowContext) => new CompositeActivity(
-                    "insurance.ccpa-check",
-                    [
-                        CreateCaliforniaResidencyCard(workflowContext),
-                        ConditionalActivity<TopicFlowActivity>.If(
-                            "insurance.ccpa-acknowledged",
-                            context => CoreContextExtensions.IsYes(context, "ccpa_acknowledgment"),
-                            (_, _) => Marketing(InsuranceTopicIds.MarketingT1, "insurance.after-ccpa-yes"),
-                            (_, _) => Marketing(InsuranceTopicIds.MarketingT2, "insurance.after-ccpa-no"))
-                    ]),
-                (_, _) => Marketing(InsuranceTopicIds.MarketingT1, "insurance.non-ca-tcpa-yes"))
-            ));
+                (_, _) => ConditionalActivity<TopicFlowActivity>.If(
+                    "insurance.ccpa-acknowledged",
+                    context => CoreContextExtensions.IsYes(context, "ccpa_acknowledgment"),
+                    (_, _) => Marketing(InsuranceTopicIds.MarketingT1, "insurance.after-ccpa-yes"),
+                    (_, _) => Marketing(InsuranceTopicIds.MarketingT2, "insurance.after-ccpa-no")),
+                (_, _) => Marketing(InsuranceTopicIds.MarketingT1, "insurance.non-ca-tcpa-yes"))));
         Add(FlowConditionHelpers.IfCase(
             "insurance.tcpa-no",
             context => CoreContextExtensions.IsNo(context, "tcpa_consent"),
@@ -72,7 +71,7 @@ public sealed class InsuranceConversationStartTopic : TopicFlow
                 "insurance.tcpa-no",
                 InsuranceTopicIds.MarketingT3,
                 _logger,
-                waitForCompletion: false,
+                waitForCompletion: true,
                 conversationContext: _conversationContext)));
     }
 
@@ -81,7 +80,7 @@ public sealed class InsuranceConversationStartTopic : TopicFlow
             activityId,
             topicId,
             _logger,
-            waitForCompletion: false,
+            waitForCompletion: true,
             conversationContext: _conversationContext);
 
     private TopicFlowActivity CreateCaliforniaResidencyCard(TopicWorkflowContext context) =>

@@ -134,9 +134,10 @@ public sealed class WorkflowRunner : IWorkflowRunner, IDisposable, IAsyncDisposa
             var activity = flow.GetCurrentActivity();
             if (activity is not IAdaptiveCardActivity cardActivity)
                 throw new InvalidOperationException("The active workflow activity does not accept adaptive-card input.");
-            if (!string.Equals(activity.Id, submission.CardId, StringComparison.Ordinal))
+            var activeCardId = cardActivity.ActiveCardId ?? activity.Id;
+            if (!string.Equals(activeCardId, submission.CardId, StringComparison.Ordinal))
                 throw new InvalidOperationException(
-                    $"Card '{submission.CardId}' is not the active card '{activity.Id}'.");
+                    $"Card '{submission.CardId}' is not the active card '{activeCardId}'.");
 
             operation.Token.ThrowIfCancellationRequested();
             cardActivity.OnInputCollected(new AdaptiveCardInputCollectedEventArgs(

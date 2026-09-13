@@ -39,6 +39,9 @@ private bool _shouldEnhanceNextCard = false; // Flag to control when to enhance 
     public event EventHandler<ModelBoundEventArgs>? ModelBound;
     public event EventHandler<ValidationFailedEventArgs>? ValidationFailed;
 
+    /// <inheritdoc />
+    public string? ActiveCardId => (_currentActivity as IAdaptiveCardActivity)?.ActiveCardId;
+
     // === IAdaptiveCardActivity interface method ===
     public void OnInputCollected(AdaptiveCardInputCollectedEventArgs e)
     {

@@ -430,7 +430,10 @@ public abstract class TopicFlow : ITopic, ITerminable {
         await _fsm.TryTransitionAsync(FlowState.Running, "Resuming after input");
         OnTopicLifecycleChanged(TopicLifecycleState.Resuming);
 
-        return await StepAsync(message, cancellationToken);
+        // Card submission resumes a waiting topic with an empty-string sentinel.
+        // Do not pass that sentinel to the next activity as direct input; adaptive
+        // card activities accept their input through OnInputCollected instead.
+        return await StepAsync(string.IsNullOrEmpty(message) ? null : message, cancellationToken);
     }
 
     public virtual async Task<TopicResult> StepAsync(object? input, CancellationToken ct) {

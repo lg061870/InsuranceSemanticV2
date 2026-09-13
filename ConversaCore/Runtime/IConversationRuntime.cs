@@ -18,8 +18,8 @@ namespace ConversaCore.Runtime;
 /// coordinator; it does not create topic instances until <see cref="StartAsync"/> or
 /// <see cref="ResetAsync"/> is invoked. The typed
 /// <see cref="ConversationOutput"/> hierarchy is now defined by CC-300; detailed host-event
-/// contracts and tool contracts are now available through the completed WP3/WP4 framework
-/// surfaces; reference-application migration remains intentionally deferred.
+/// contracts and tool contracts are available through the completed WP3/WP4 framework
+/// surfaces, and InsuranceAgent exercises this facade as the reference application.
 /// </para>
 /// <para><b>Scoping decision: minimal placeholders, not a reduced interface.</b></para>
 /// <para>

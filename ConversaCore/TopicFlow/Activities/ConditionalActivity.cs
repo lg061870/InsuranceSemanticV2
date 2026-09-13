@@ -153,6 +153,9 @@ public class ConditionalActivity<TActivity> : TopicFlowActivity, IAdaptiveCardAc
     public event EventHandler<CardDataReceivedEventArgs>? CardDataReceived;
     public event EventHandler<ModelBoundEventArgs>? ModelBound;
     public event EventHandler<ValidationFailedEventArgs>? ValidationFailed;
+
+    /// <inheritdoc />
+    public string? ActiveCardId => (_currentActivity as IAdaptiveCardActivity)?.ActiveCardId;
     
     /// <summary>
     /// Event fired when child TriggerTopicActivity triggers a topic

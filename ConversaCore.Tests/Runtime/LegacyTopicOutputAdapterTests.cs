@@ -272,6 +272,7 @@ public sealed class LegacyTopicOutputAdapterTests
 
     private sealed class EmittingCardActivity(string id) : TopicFlowActivity(id), IAdaptiveCardActivity
     {
+        public string? ActiveCardId => "card-2";
         public event EventHandler<CardJsonEventArgs>? CardJsonEmitted { add { } remove { } }
         public event EventHandler<CardJsonEventArgs>? CardJsonSending { add { } remove { } }
         public event EventHandler<CardJsonEventArgs>? CardJsonSent;

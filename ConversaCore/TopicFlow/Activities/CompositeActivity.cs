@@ -43,6 +43,9 @@ public class CompositeActivity :
     public event EventHandler<ModelBoundEventArgs>? ModelBound;
     public event EventHandler<ValidationFailedEventArgs>? ValidationFailed;
 
+    /// <inheritdoc />
+    public string? ActiveCardId => (_waitingChild as IAdaptiveCardActivity)?.ActiveCardId;
+
     public bool WaitForCompletion =>
         _waitingChild is ITopicTriggeredActivity t ? t.WaitForCompletion : false;
 

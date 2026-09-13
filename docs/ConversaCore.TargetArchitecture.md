@@ -442,6 +442,8 @@ The insurance start/compliance sequence is an ordinary registered topic composit
 
 The qualified-lead handoff is the sole ConversaCore-facing boundary to human-agent operation. InsuranceAgent invokes the bounded `insurance.lead.handoff` tool with only the persisted lead ID and optional qualification score. The API accepts that transition idempotently, records one status-history entry, and publishes its existing `LeadUpdated` and `KpisChanged` SignalR notifications. `LiveAgentConsole` and `LiveAgentConsoleV2` remain independent API/SignalR consumers and do not reference ConversaCore assemblies or participate in conversation execution.
 
+The reference path is verified through the scoped public runtime rather than by invoking topic internals. End-to-end coverage submits the real compliance and qualification cards, proves all TCPA/California routing branches, records every profile tool invocation, checks typed customer-console and completion notifications, exercises both sides of the live-agent threshold, contains persistence failures before later writes or handoff, resets a waiting conversation, and verifies fallback interruption/resumption. Nested card wrappers expose their active emitted card identity so `SubmitCardAsync` retains strict stale-card correlation, and card continuation resumes the next activity without manufacturing direct text input.
+
 ## 13. Dependency injection and lifetimes
 
 | Service | Recommended lifetime | Rationale |
