@@ -58,6 +58,16 @@ generated-C# authoring target, revalidate InsuranceAgent, and then re-baseline W
 Completed WP0-WP5 issues remain historical delivery evidence; downstream scope is updated only
 after the amended framework has been implemented and verified.
 
+Amendment delivery status:
+
+- [x] **CC-900 — Record the generated-C# authoring ADR and compatibility matrix.** See [#116](https://github.com/lg061870/InsuranceSemanticV2/issues/116).
+- [x] **CC-901 — Add an activation-safe composed topic lifecycle.** `ComposedTopicFlow` uses the existing post-construction initialization seam without changing legacy `TopicFlow`; see [#117](https://github.com/lg061870/InsuranceSemanticV2/issues/117).
+- [ ] **CC-902 — Add an explicit generator-facing activity factory.** See [#118](https://github.com/lg061870/InsuranceSemanticV2/issues/118).
+- [ ] **CC-903 — Add validated generated adaptive-card definitions.** See [#119](https://github.com/lg061870/InsuranceSemanticV2/issues/119).
+- [ ] **CC-904 — Verify the generated-authoring framework/UI contract.** See [#120](https://github.com/lg061870/InsuranceSemanticV2/issues/120).
+- [ ] **CC-905 — Revalidate and adapt InsuranceAgent.** See [#121](https://github.com/lg061870/InsuranceSemanticV2/issues/121).
+- [ ] **CC-906 — Re-baseline WP0-WP8 against the implemented amendment.** See [#122](https://github.com/lg061870/InsuranceSemanticV2/issues/122).
+
 ## 5. WP0 — Baseline, decisions, and safety net
 
 Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCore.WP0CurrentStateInventory.md). It establishes the initial evidence for CC-000, CC-001, CC-002, and CC-005; those items remain open until their findings and the CC-003/CC-004 characterization results are approved.

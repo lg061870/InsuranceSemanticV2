@@ -1,7 +1,7 @@
 # ConversaCore generated-C# authoring architecture
 
-**Status:** Accepted design for implementation<br>
-**Tracking:** [Architecture amendment #115](https://github.com/lg061870/InsuranceSemanticV2/issues/115), [CC-900 #116](https://github.com/lg061870/InsuranceSemanticV2/issues/116)<br>
+**Status:** Accepted design; composed-topic lifecycle implemented<br>
+**Tracking:** [Architecture amendment #115](https://github.com/lg061870/InsuranceSemanticV2/issues/115), [CC-900 #116](https://github.com/lg061870/InsuranceSemanticV2/issues/116), [CC-901 #117](https://github.com/lg061870/InsuranceSemanticV2/issues/117)<br>
 **Cross-repository consumer:** [ScriptEditor#46](https://github.com/lg061870/ScriptEditor/issues/46)
 
 ## 1. Product boundary
@@ -76,6 +76,12 @@ background work from a constructor.
 The opt-in base is a compatibility step, not authorization for two permanent orchestration
 runtimes. WP7 decides when migrated consumers permit the composed lifecycle to become the
 single documented path and legacy constructor-managed composition to retire.
+
+CC-901 delivered this contract in `ComposedTopicFlow`. Focused tests prove activation occurs
+after derived construction, repeated and concurrent initialization composes once, failed
+composition clears the partial graph and can be retried, pre-cancellation does no work,
+direct execution initializes safely, reset rebuilds once, and terminated topics reject
+composition.
 
 ### 2.2 Explicit activity authoring factory
 
