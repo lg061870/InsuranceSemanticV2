@@ -560,3 +560,13 @@ The target architecture is achieved when all of the following are true:
 | Literal asynchronous .NET event chains as the primary transport | Rejected; use awaitable output dispatch/subscriptions |
 
 Implementation sequencing, work packages, estimates, gates, and deliverables are defined in the companion [work breakdown plan](./ConversaCore.TransformationWorkBreakdown.md).
+
+## 19. Generated-C# authoring amendment
+
+Generated workflow source is now an explicit framework authoring target. The amendment keeps
+ordinary scoped topic activation and typed runtime behavior: composition occurs after complete
+construction, generated code receives explicit dependencies, and generated adaptive cards use
+validated immutable definitions with concrete submission models. It does not add ambient service
+resolution or a runtime JSON interpreter. See
+[Generated-C# Authoring Architecture](ConversaCore.GeneratedAuthoringArchitecture.md) and
+[ADR-007](ConversaCore.ArchitectureDecisions.md#adr-007--generated-c-is-an-explicit-authoring-target).

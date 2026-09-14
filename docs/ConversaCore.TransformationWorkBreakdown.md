@@ -52,6 +52,12 @@ flowchart LR
 
 The critical path is WP0 → WP1 → WP2 → WP3/WP4 → WP5 → WP6/WP7 → WP8. WP3 and WP4 can proceed in parallel once the session, context, and output contracts from WP2 are stable.
 
+Architecture amendment [#115](https://github.com/lg061870/InsuranceSemanticV2/issues/115)
+is now a gate between WP5 and downstream productization. CC-900 through CC-906 add a safe
+generated-C# authoring target, revalidate InsuranceAgent, and then re-baseline WP0-WP8.
+Completed WP0-WP5 issues remain historical delivery evidence; downstream scope is updated only
+after the amended framework has been implemented and verified.
+
 ## 5. WP0 — Baseline, decisions, and safety net
 
 Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCore.WP0CurrentStateInventory.md). It establishes the initial evidence for CC-000, CC-001, CC-002, and CC-005; those items remain open until their findings and the CC-003/CC-004 characterization results are approved.

@@ -52,9 +52,37 @@ Reason: ConversaCore guides business conversations through authored topics. An a
 
 Consequence: ranking strategy and measured top-K/performance budgets are implementation details under CC-407/CC-804. No global discovery loop is introduced. Tasks: CC-405 through CC-409, CC-411, CC-412, CC-804.
 
+## ADR-007 — Generated C# is an explicit authoring target
+
+Decision: ConversaCore supports generated C# topics as ordinary compiled domain topics. A
+generated topic composes its workflow after complete DI construction through an opt-in,
+activation-aware `ComposedTopicFlow`; it receives a narrow scoped activity-authoring factory
+through constructor injection; and generated adaptive cards retain a concrete typed model
+while using immutable, validated card definitions instead of requiring a hand-written card
+class and factory lambda. The detailed contract and constructor matrix are recorded in
+[Generated-C# Authoring Architecture](ConversaCore.GeneratedAuthoringArchitecture.md).
+
+Reason: visual authoring exposed real boilerplate and constructor coupling in the current
+public surface. Fixing those at the framework boundary gives human and generated authors one
+safe lifecycle and a stable compilation target. Calling an override from a base constructor
+would expose partially initialized derived state; ambient service resolution would weaken the
+scoped isolation proved by WP2; and unbounded dynamic card data would bypass the typed
+validation and host-output semantics already implemented.
+
+Consequence: ScriptEditor owns JSON interpretation and Roslyn emission; ConversaCore owns the
+public contracts that emitted code targets. This decision does not create a runtime JSON
+interpreter, arbitrary reflection catalog, global activity discovery path, or service locator.
+The generic hand-authored adaptive-card API remains supported. Tasks: CC-900 through CC-906
+under architecture amendment [#115](https://github.com/lg061870/InsuranceSemanticV2/issues/115),
+followed by a WP0-WP8 re-baseline.
+
 ## Decisions still owned by implementation tasks
 
-Buffer capacities and disconnect replay (CC-301/309), exact public record shapes and naming (WP1), provider/package remediation (CC-708/800), and numerical performance budgets (CC-804) remain to be specified with evidence. None changes the six architecture boundaries above. Any proposal that does change a boundary must update this decision record and its issue before implementation.
+Buffer capacities and disconnect replay (CC-301/309), provider/package remediation
+(CC-708/800), generated-card performance budgets (CC-804), and any future runtime-interpreted
+definition transport remain to be specified with evidence. None changes the seven architecture
+boundaries above. Any proposal that does change a boundary must update this decision record and
+its issue before implementation.
 
 ## Verification boundary
 
