@@ -1,7 +1,7 @@
 # ConversaCore generated-C# authoring architecture
 
 **Status:** Accepted design; framework/UI authoring contract implemented and verified<br>
-**Tracking:** [Architecture amendment #115](https://github.com/lg061870/InsuranceSemanticV2/issues/115), [CC-900 #116](https://github.com/lg061870/InsuranceSemanticV2/issues/116), [CC-901 #117](https://github.com/lg061870/InsuranceSemanticV2/issues/117), [CC-902 #118](https://github.com/lg061870/InsuranceSemanticV2/issues/118), [CC-903 #119](https://github.com/lg061870/InsuranceSemanticV2/issues/119), [CC-904 #120](https://github.com/lg061870/InsuranceSemanticV2/issues/120)<br>
+**Tracking:** [Architecture amendment #115](https://github.com/lg061870/InsuranceSemanticV2/issues/115), [CC-900 #116](https://github.com/lg061870/InsuranceSemanticV2/issues/116), [CC-901 #117](https://github.com/lg061870/InsuranceSemanticV2/issues/117), [CC-902 #118](https://github.com/lg061870/InsuranceSemanticV2/issues/118), [CC-903 #119](https://github.com/lg061870/InsuranceSemanticV2/issues/119), [CC-904 #120](https://github.com/lg061870/InsuranceSemanticV2/issues/120), [CC-905 #121](https://github.com/lg061870/InsuranceSemanticV2/issues/121), [CC-906 #122](https://github.com/lg061870/InsuranceSemanticV2/issues/122)<br>
 **Cross-repository consumer:** [ScriptEditor#46](https://github.com/lg061870/ScriptEditor/issues/46)
 
 ## 1. Product boundary
@@ -232,3 +232,22 @@ WP0-WP5 remain closed historical delivery records. Any changed acceptance requir
 tracked as an amendment follow-up rather than retroactively claiming the earlier work did not
 ship. WP6-WP8 are re-baselined after InsuranceAgent verification so their template, cleanup,
 compatibility, security, package, and release gates describe the implemented authoring model.
+
+CC-905 applied the lifecycle selectively. `InsuranceConversationStartTopic`, `ComplianceTopic`,
+`MarketingT2Topic`, and `MarketingT3Topic` now derive from `ComposedTopicFlow`; their constructors
+only capture injected collaborators, and activation composes their activity graphs. Compliance
+reset no longer reaches into `TopicFlow` through reflection. `MarketingT2Topic` now emits the same
+typed insurance host-notification contracts as the primary T1 path instead of anonymous legacy
+UI event payloads.
+
+`MarketingT1Topic` deliberately retains its direct `TopicFlow` plus `IAsyncInitializable`
+implementation. Its rule repository must be queried asynchronously before the graph can be
+assembled, which is outside the synchronous in-memory contract of `ComposedTopicFlow`. Rich
+insurance adaptive-card classes also remain domain-owned where they express controls and behavior
+beyond the bounded generated-card palette. These are supported reference patterns, not unfinished
+generator-framework work.
+
+The amended InsuranceAgent gate passes 13 of 13 end-to-end tests. It covers every consent route,
+post-activation composition, compliance reset/recomposition, T1 and T2 typed notifications,
+persistence failure, fallback interruption, qualified and below-threshold handoff behavior, and
+two concurrent circuits including reset isolation.

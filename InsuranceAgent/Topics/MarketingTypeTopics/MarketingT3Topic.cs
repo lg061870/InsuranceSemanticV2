@@ -4,12 +4,16 @@ using ConversaCore.TopicFlow.Activities;
 namespace InsuranceAgent.Topics.MarketingTypeTopics;
 
 /// <summary>Handles the no-marketing-consent path without collecting or persisting lead data.</summary>
-public sealed class MarketingT3Topic : TopicFlow
+public sealed class MarketingT3Topic : ComposedTopicFlow
 {
     public MarketingT3Topic(
         TopicWorkflowContext context,
         ILogger<MarketingT3Topic> logger)
         : base(context, logger, InsuranceTopicIds.MarketingT3)
+    {
+    }
+
+    protected override void ComposeWorkflow()
     {
         Context.SetValue("marketing_path_type", "T3");
         Add(new SimpleActivity(

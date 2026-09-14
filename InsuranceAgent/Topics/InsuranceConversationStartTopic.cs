@@ -12,7 +12,7 @@ namespace InsuranceAgent.Topics;
 /// InsuranceAgent's explicit start composition. The framework activates this topic as a
 /// normal scoped topic; it does not require a domain agent to mutate a system topic.
 /// </summary>
-public sealed class InsuranceConversationStartTopic : TopicFlow
+public sealed class InsuranceConversationStartTopic : ComposedTopicFlow
 {
     private readonly ILogger<InsuranceConversationStartTopic> _logger;
     private readonly IConversationContext _conversationContext;
@@ -25,7 +25,6 @@ public sealed class InsuranceConversationStartTopic : TopicFlow
     {
         _logger = logger;
         _conversationContext = conversationContext;
-        BuildWorkflow();
     }
 
     public override int Priority => int.MaxValue;
@@ -35,7 +34,7 @@ public sealed class InsuranceConversationStartTopic : TopicFlow
         CancellationToken cancellationToken = default) =>
         Task.FromResult(string.IsNullOrEmpty(message) ? 1f : 0f);
 
-    private void BuildWorkflow()
+    protected override void ComposeWorkflow()
     {
         Add(new GreetingActivity("insurance.greet"));
         Add(new TriggerTopicActivity(

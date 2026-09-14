@@ -9,7 +9,7 @@ planning artifact only; it does not change InsuranceAgent behavior.
 | Area | Current evidence | Target owner |
 |---|---|---|
 | Topic registration | `InsuranceAgent/AddInsuranceTopics.cs:22-174` registers scoped topics through manual factories; startup still populates the legacy registry. | ConversaCore topic descriptors, catalog, and scoped activation. |
-| Start/compliance composition | `InsuranceAgent/Services/InsuranceAgentServiceV2.cs:37-49` builds a greeting, inserts `ComplianceTopic`, processes compliance, then appends conditional activities. `:51-70` mutates that flow during start. | Registered `ConversationStartTopic` plus explicit typed subtopic composition; runtime owns activation and reset. |
+| Start/compliance composition | `InsuranceConversationStartTopic` and `ComplianceTopic` now use activation-safe `ComposedTopicFlow`; Compliance reset clears domain state and delegates lifecycle reset to the framework without reflection. | Registered start/compliance topics plus explicit typed subtopic composition; runtime owns activation and reset. |
 | Legacy orchestration | Retained compatibility source still contains the former routing/event model, but its async semantic follow-up repairs are removed and application code uses `IConversationRuntime`. | `IConversationRuntime`, `ITopicRouter`, `IWorkflowRunner`, and compatibility adapters only during migration. |
 | UI subscription | `InsuranceAgent/Pages/Home.razor:148-170` subscribes to `CustomEventTriggered` and uses `async void`. | `IConversationRuntime.Subscribe()` and one typed `OnHostOutput` boundary. |
 | Lead identity | `Home.razor:400-432` creates a lead and stores the returned ID in page field `currentLeadId`. | Lead-creation tool returns a typed lead ID into conversation state. |
@@ -23,13 +23,13 @@ planning artifact only; it does not change InsuranceAgent behavior.
 | Current topic | Migration action |
 |---|---|
 | `ConversationStartTopic` | Make the registered start descriptor; remove service-owned flow insertion. |
-| `ComplianceTopic` | Keep as a registered topic; compose it from the start topic with typed state. |
+| `ComplianceTopic` | Registered composed topic; typed state is cleared before framework-owned reset/recomposition. |
 | `BeneficiaryInfoDemoTopic`, `BeneficiaryRepeatDemoTopic`, `BeneficiaryUserDrivenTopic` | Retain as samples or migrate only if still used by a supported route. |
 | `CaliforniaResidentTopic`, `ContactHealthTopic`, `ContactInfoTopic`, `CoverageIntentTopic`, `EmploymentTopic`, `DependentsTopic`, `HealthInfoTopic`, `InsuranceContextTopic`, `LeadDetailsTopic`, `LifeGoalsTopic` | Keep as domain topics; replace page-triggered persistence with tools and explicit typed state. |
 | `MarketingT1Topic` | Supported and explicitly registered as `insurance.marketing.t1`; activation awaits `IAsyncInitializable`, and semantic notifications are ordinary ordered activities executed through the framework runner. |
-| `MarketingT2Topic` | Supported and explicitly registered as `insurance.marketing.t2`; its downstream topic targets are startup-validated. |
+| `MarketingT2Topic` | Registered composed topic at `insurance.marketing.t2`; emits typed customer-console, progress, and completion notifications. |
 | `EventTriggerDemoTopic`, `SemanticActivitiesDemoTopic`, `HandDownDemoTopic`, `RadioButtonDemoTopic`, `NewbieTopic`, `ZapierIntegrationDemoTopic` | Audit as samples; migrate useful examples to the SDK/sample surface and mark incomplete experiments for later cleanup. |
-| T3 path | Explicit no-consent path registered as `insurance.marketing.t3`; it completes without creating a lead or profile data. |
+| T3 path | Composed no-consent topic registered as `insurance.marketing.t3`; it completes without creating a lead or profile data. |
 
 ## Host-event and persistence mapping
 
@@ -59,6 +59,16 @@ planning artifact only; it does not change InsuranceAgent behavior.
 The reference path no longer subscribes to semantic-completion events or launches delayed
 follow-up tasks. Semantic checkpoints and their typed notifications are sequential activities
 under the runtime's cancellation and failure boundary.
+
+The generated-authoring amendment audit keeps two intentional domain patterns. `MarketingT1Topic`
+uses `IAsyncInitializable` directly because repository-backed rule loading is asynchronous, while
+`ComposedTopicFlow` is intentionally limited to synchronous in-memory graph construction. Existing
+insurance card classes remain where they provide richer domain UI than the bounded generated-card
+definition supports; they continue through the same typed submission and runtime-output pipeline.
+
+CC-905 verification runs 13 InsuranceAgent end-to-end tests covering every consent branch, reset,
+typed T1/T2 notifications, persistence failure, fallback, live-agent handoff thresholds, and two
+concurrent circuits. No ScriptEditor source is part of this repository amendment.
 
 The matrix is intentionally conservative: legacy services remain until their replacement
 behavior is covered, and no reference implementation source is changed by CC-500.

@@ -9,7 +9,7 @@ namespace InsuranceAgent.Topics;
 /// Updated ComplianceTopic — collects TCPA consent and ZIP code,
 /// determines California residency, and optionally triggers CaliforniaResidentTopic.
 /// </summary>
-public class ComplianceTopic : TopicFlow, ITopicTriggeredActivity {
+public class ComplianceTopic : ComposedTopicFlow, ITopicTriggeredActivity {
     public const string ActivityId_ShowCard = "ShowComplianceCard";
 
     public event EventHandler<TopicTriggeredEventArgs>? TopicTriggered;
@@ -32,37 +32,25 @@ public class ComplianceTopic : TopicFlow, ITopicTriggeredActivity {
         : base(context, logger, name: "ComplianceTopic") {
         _logger = logger;
         _conversationContext = conversationContext;
-
-        Context.SetValue("ComplianceTopic_create", DateTime.UtcNow.ToString("o"));
-        Context.SetValue("TopicName", "TCPA & ZIP Compliance");
-
-        InitializeActivities();
     }
 
     public override void Reset() {
-        Context.SetValue("ComplianceTopic_create", DateTime.UtcNow.ToString("o"));
+        if (IsTerminated) {
+            base.Reset();
+            return;
+        }
+
         Context.SetValue("ComplianceTopic_completed", null);
         Context.SetValue("ComplianceTopic_state", null);
         Context.SetValue("ShowComplianceCard_sent", null);
         Context.SetValue("ShowComplianceCard_rendered", null);
-
         base.Reset();
-
-        // Force FSM idle for safety
-        var stateMachine = GetType().BaseType?.GetField("_fsm",
-            System.Reflection.BindingFlags.NonPublic |
-            System.Reflection.BindingFlags.Instance)?.GetValue(this);
-
-        if (stateMachine is ConversaCore.StateMachine.ITopicStateMachine<TopicFlow.FlowState> fsm) {
-            fsm.ForceState(TopicFlow.FlowState.Idle, "Forced reset to Idle in ComplianceTopic.Reset");
-            fsm.ClearTransitionHistory();
-            _logger.LogInformation("[ComplianceTopic] FSM reset to Idle.");
-        }
-
-        InitializeActivities();
     }
 
-    private void InitializeActivities() {
+    protected override void ComposeWorkflow() {
+        Context.SetValue("ComplianceTopic_create", DateTime.UtcNow.ToString("o"));
+        Context.SetValue("TopicName", "TCPA & ZIP Compliance");
+
         // Pre-fill any known ZIP from context
         var zipCode = Context.GetValue<string>("zip_code") ?? "";
 

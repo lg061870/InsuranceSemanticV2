@@ -14,6 +14,7 @@ using InsuranceAgent.DomainTypes;
 using InsuranceAgent.Repositories;
 using InsuranceAgent.Tools;
 using InsuranceAgent.Topics;
+using InsuranceAgent.Topics.MarketingTypeTopics;
 using InsuranceSemanticV2.Core.DTO;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -106,6 +107,48 @@ public sealed class InsuranceConversationEndToEndTests
 
         await run.WaitAsync(TimeSpan.FromSeconds(5));
         fixture.Branches.ActivatedTopicIds.Should().ContainSingle().Which.Should().Be(expectedTopicId);
+    }
+
+    [Fact]
+    public async Task ConsentReset_RecomposesStartAndCompliance_AtTheFirstCard()
+    {
+        await using var fixture = CreateConsentFixture();
+
+        await fixture.Runtime.StartAsync();
+        var first = await fixture.ReadCardAsync();
+        fixture.ResetObservedCards();
+        await fixture.Runtime.ResetAsync();
+        var restarted = await fixture.ReadCardAsync();
+
+        first.CardId.Should().Be(ComplianceTopic.ActivityId_ShowCard);
+        restarted.CardId.Should().Be(first.CardId);
+        fixture.Branches.ActivatedTopicIds.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PartialConsentTopic_ComposesAfterActivation_AndEmitsTypedHostNotifications()
+    {
+        await using var fixture = CreateMarketingT2Fixture();
+
+        await fixture.Runtime.StartAsync();
+        var card = await fixture.ReadCardAsync();
+        await fixture.Runtime.SubmitCardAsync(new CardSubmission(card.CardId,
+            new Dictionary<string, object>
+            {
+                ["language"] = "English",
+                ["lead_source"] = "Website",
+                ["interest_level"] = "Medium",
+                ["lead_intent"] = "Compare"
+            }));
+        await fixture.WaitForOutputAsync("qualification_complete");
+
+        card.CardId.Should().Be(MarketingT2Topic.ActivityId_LeadDetails);
+        fixture.Outputs.OfType<HostNotification<InsuranceCustomerConsoleNotification>>()
+            .Should().ContainSingle(output => output.EventName == "customer_console_show");
+        fixture.Outputs.OfType<HostNotification<InsuranceProgressNotification>>()
+            .Should().ContainSingle(output => output.EventName == "lead_details_submitted");
+        fixture.Outputs.OfType<HostNotification<InsuranceQualificationNotification>>()
+            .Should().ContainSingle(output => output.EventName == "qualification_complete");
     }
 
     [Fact]
@@ -314,6 +357,23 @@ public sealed class InsuranceConversationEndToEndTests
             .AddConversationRuntime(InsuranceTopicIds.ConversationStart);
 
         return new ConsentRuntimeFixture(services.BuildServiceProvider(validateScopes: true), branches);
+    }
+
+    private static MarketingT2RuntimeFixture CreateMarketingT2Fixture()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Warning));
+        services.AddOptions();
+        services.AddScoped<IConversationContext>(provider => new ConversationContext(
+            Guid.NewGuid().ToString("N"),
+            "insurance-t2-authoring-e2e",
+            provider.GetRequiredService<ILogger<ConversationContext>>()));
+
+        new ConversaCoreBuilder(services)
+            .AddTopic<MarketingT2Topic>(InsuranceTopicIds.MarketingT2)
+            .AddConversationRuntime(InsuranceTopicIds.MarketingT2);
+
+        return new MarketingT2RuntimeFixture(services.BuildServiceProvider(validateScopes: true));
     }
 
     private static FallbackRuntimeFixture CreateFallbackFixture()
@@ -564,7 +624,7 @@ public sealed class InsuranceConversationEndToEndTests
         private readonly IConversationOutputSubscription _subscription;
         private readonly CancellationTokenSource _cancellation = new(TimeSpan.FromSeconds(15));
         private readonly Channel<AdaptiveCardOutput> _cards = Channel.CreateUnbounded<AdaptiveCardOutput>();
-        private readonly HashSet<string> _observedCardIds = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, byte> _observedCardIds = new(StringComparer.Ordinal);
         private readonly Task _reader;
 
         public ConsentRuntimeFixture(ServiceProvider provider, BranchRecorder branches)
@@ -583,13 +643,79 @@ public sealed class InsuranceConversationEndToEndTests
         public async Task<AdaptiveCardOutput> ReadCardAsync() =>
             await _cards.Reader.ReadAsync(_cancellation.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
 
+        public void ResetObservedCards() => _observedCardIds.Clear();
+
         private async Task ReadOutputsAsync()
         {
             try
             {
                 await foreach (var output in _subscription.ReadAllAsync(_cancellation.Token))
-                    if (output is AdaptiveCardOutput card && _observedCardIds.Add(card.CardId))
+                    if (output is AdaptiveCardOutput card && _observedCardIds.TryAdd(card.CardId, 0))
                         await _cards.Writer.WriteAsync(card, _cancellation.Token);
+            }
+            catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
+            {
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            _cancellation.Cancel();
+            await _subscription.DisposeAsync();
+            try { await _reader; } catch (OperationCanceledException) { }
+            await _scope.DisposeAsync();
+            await _provider.DisposeAsync();
+            _cancellation.Dispose();
+        }
+    }
+
+    private sealed class MarketingT2RuntimeFixture : IAsyncDisposable
+    {
+        private readonly ServiceProvider _provider;
+        private readonly AsyncServiceScope _scope;
+        private readonly IConversationOutputSubscription _subscription;
+        private readonly CancellationTokenSource _cancellation = new(TimeSpan.FromSeconds(15));
+        private readonly Channel<AdaptiveCardOutput> _cards = Channel.CreateUnbounded<AdaptiveCardOutput>();
+        private readonly Task _reader;
+
+        public MarketingT2RuntimeFixture(ServiceProvider provider)
+        {
+            _provider = provider;
+            _scope = provider.CreateAsyncScope();
+            Runtime = _scope.ServiceProvider.GetRequiredService<IConversationRuntime>();
+            _subscription = Runtime.Subscribe();
+            _reader = ReadOutputsAsync();
+        }
+
+        public IConversationRuntime Runtime { get; }
+        public ConcurrentQueue<ConversationOutput> Outputs { get; } = new();
+
+        public async Task<AdaptiveCardOutput> ReadCardAsync() =>
+            await _cards.Reader.ReadAsync(_cancellation.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        public async Task WaitForOutputAsync(string eventName)
+        {
+            var timeout = DateTime.UtcNow.AddSeconds(5);
+            while (DateTime.UtcNow < timeout)
+            {
+                if (Outputs.OfType<HostNotificationOutput>().Any(output => output.EventName == eventName))
+                    return;
+                await Task.Delay(10);
+            }
+
+            throw new TimeoutException($"Host notification '{eventName}' was not emitted.");
+        }
+
+        private async Task ReadOutputsAsync()
+        {
+            try
+            {
+                await foreach (var output in _subscription.ReadAllAsync(_cancellation.Token))
+                {
+                    Outputs.Enqueue(output);
+                    if (output is AdaptiveCardOutput card)
+                        await _cards.Writer.WriteAsync(card, _cancellation.Token);
+                }
             }
             catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
             {

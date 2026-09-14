@@ -1,13 +1,16 @@
 using ConversaCore.Context;
 using ConversaCore.Models;
+using ConversaCore.Runtime;
 using ConversaCore.TopicFlow;
 using ConversaCore.TopicFlow.Activities;
+using InsuranceAgent.Activities;
+using InsuranceAgent.Contracts;
 
 namespace InsuranceAgent.Topics.MarketingTypeTopics {
     /// <summary>
     /// Handles the partial marketing path (T2) with limited lead qualification flow (TCPA only).
     /// </summary>
-    public class MarketingT2Topic : TopicFlow {
+    public class MarketingT2Topic : ComposedTopicFlow {
         public const string ActivityId_LeadDetails = "ShowLeadDetailsCard";
         public const string ActivityId_DumpCtx = "DumpCTX";
         public const string ActivityId_Summary = "ShowSummary";
@@ -23,25 +26,27 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics {
 
         private readonly IConversationContext _conversationContext;
         private readonly ILogger<MarketingT2Topic> _logger;
+        private readonly IConversationOutputDispatcher _outputDispatcher;
+        private readonly IConversationSession _conversationSession;
 
         public MarketingT2Topic(
             TopicWorkflowContext context,
             ILogger<MarketingT2Topic> logger,
-            IConversationContext conversationContext)
+            IConversationContext conversationContext,
+            IConversationOutputDispatcher outputDispatcher,
+            IConversationSession conversationSession)
             : base(context, logger, name: InsuranceTopicIds.MarketingT2) {
 
             _logger = logger;
             _conversationContext = conversationContext;
+            _outputDispatcher = outputDispatcher;
+            _conversationSession = conversationSession;
+        }
 
+        protected override void ComposeWorkflow() {
             Context.SetValue("MarketingT2Topic_create", DateTime.UtcNow.ToString("o"));
             Context.SetValue("TopicName", "Marketing Path Type 2");
             Context.SetValue("marketing_path_type", "T2");
-
-            InitializeActivities();
-        }
-
-        private void InitializeActivities() {
-            ClearActivities();
 
             // === 1. Lead Details Collection ===
             var leadDetailsActivity = new AdaptiveCardActivity<LeadDetailsCard, LeadDetailsModel>(
@@ -59,24 +64,11 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics {
             );
 
             // === 2. Customer Console (realtime dashboard) ===
-            var showCustomerConsole = new EventTriggerActivity(
-                id: ActivityId_ShowCustomerConsole,
-                eventName: "ui.dashboard.show",
-                eventData: new {
-                    dashboardType = "customer-console",
-                    userPath = "marketing-t2",
-                    progressStage = "qualification-started",
-                    timestamp = DateTime.UtcNow,
-                    context = new {
-                        domain = "insurance",
-                        flowType = "lead-qualification",
-                        consentLevel = "partial" // TCPA only
-                    }
-                },
-                waitForResponse: false,
-                logger: _logger,
-                conversationContext: _conversationContext
-            );
+            var showCustomerConsole = Notify(
+                ActivityId_ShowCustomerConsole,
+                "customer_console_show",
+                _ => new InsuranceCustomerConsoleNotification(
+                    "Displaying customer console for the partial-consent qualification path"));
 
             // === 3. Summary ===
             var summaryActivity = new SimpleActivity(ActivityId_Summary, (ctx, input) => {
@@ -143,35 +135,17 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics {
             };
 
             // === 5. Progress Events (simplified flow) ===
-            var progressAfterLead = new EventTriggerActivity(
-                id: "ProgressAfterLeadDetails",
-                eventName: "ui.progress.update",
-                eventData: new {
-                    stage = "lead-details-completed",
-                    progress = 50,
-                    message = "Lead information collected (T2 path)",
-                    nextStep = "summary",
-                    timestamp = DateTime.UtcNow
-                },
-                waitForResponse: false,
-                logger: _logger,
-                conversationContext: _conversationContext
-            );
+            var progressAfterLead = Notify(
+                "ProgressAfterLeadDetails",
+                "lead_details_submitted",
+                _ => new InsuranceProgressNotification(
+                    "lead-details", 50, "Lead information collected (T2 path)", "summary"));
 
-            var qualificationComplete = new EventTriggerActivity(
-                id: "QualificationComplete",
-                eventName: "ui.progress.complete",
-                eventData: new {
-                    stage = "qualification-finished",
-                    progress = 100,
-                    message = "T2 qualification completed",
-                    nextStep = "next-topic",
-                    timestamp = DateTime.UtcNow
-                },
-                waitForResponse: false,
-                logger: _logger,
-                conversationContext: _conversationContext
-            );
+            var qualificationComplete = Notify(
+                "QualificationComplete",
+                "qualification_complete",
+                _ => new InsuranceQualificationNotification(
+                    "qualification-finished", 100, "T2 qualification completed"));
 
             // === Enqueue All Activities ===
             Add(leadDetailsActivity);
@@ -201,6 +175,13 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics {
             //    }
             //};
         }
+
+        private InsuranceHostNotificationActivity<TPayload> Notify<TPayload>(
+            string activityId,
+            string eventName,
+            Func<TopicWorkflowContext, TPayload> payloadFactory)
+            where TPayload : notnull =>
+            new(activityId, eventName, payloadFactory, _outputDispatcher, _conversationSession);
 
         public override Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default) {
             if (string.IsNullOrWhiteSpace(message)) return Task.FromResult(0f);
