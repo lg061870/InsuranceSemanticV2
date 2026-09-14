@@ -62,7 +62,7 @@ Amendment delivery status:
 
 - [x] **CC-900 — Record the generated-C# authoring ADR and compatibility matrix.** See [#116](https://github.com/lg061870/InsuranceSemanticV2/issues/116).
 - [x] **CC-901 — Add an activation-safe composed topic lifecycle.** `ComposedTopicFlow` uses the existing post-construction initialization seam without changing legacy `TopicFlow`; see [#117](https://github.com/lg061870/InsuranceSemanticV2/issues/117).
-- [ ] **CC-902 — Add an explicit generator-facing activity factory.** See [#118](https://github.com/lg061870/InsuranceSemanticV2/issues/118).
+- [x] **CC-902 — Add an explicit generator-facing activity factory.** Scoped `IWorkflowActivityFactory` and bounded immutable definitions now cover Prompt and QuickAnswer without ambient resolution; see [#118](https://github.com/lg061870/InsuranceSemanticV2/issues/118).
 - [ ] **CC-903 — Add validated generated adaptive-card definitions.** See [#119](https://github.com/lg061870/InsuranceSemanticV2/issues/119).
 - [ ] **CC-904 — Verify the generated-authoring framework/UI contract.** See [#120](https://github.com/lg061870/InsuranceSemanticV2/issues/120).
 - [ ] **CC-905 — Revalidate and adapt InsuranceAgent.** See [#121](https://github.com/lg061870/InsuranceSemanticV2/issues/121).

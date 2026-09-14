@@ -1,7 +1,7 @@
 # ConversaCore generated-C# authoring architecture
 
-**Status:** Accepted design; composed-topic lifecycle implemented<br>
-**Tracking:** [Architecture amendment #115](https://github.com/lg061870/InsuranceSemanticV2/issues/115), [CC-900 #116](https://github.com/lg061870/InsuranceSemanticV2/issues/116), [CC-901 #117](https://github.com/lg061870/InsuranceSemanticV2/issues/117)<br>
+**Status:** Accepted design; composed-topic lifecycle and initial activity factory implemented<br>
+**Tracking:** [Architecture amendment #115](https://github.com/lg061870/InsuranceSemanticV2/issues/115), [CC-900 #116](https://github.com/lg061870/InsuranceSemanticV2/issues/116), [CC-901 #117](https://github.com/lg061870/InsuranceSemanticV2/issues/117), [CC-902 #118](https://github.com/lg061870/InsuranceSemanticV2/issues/118)<br>
 **Cross-repository consumer:** [ScriptEditor#46](https://github.com/lg061870/ScriptEditor/issues/46)
 
 ## 1. Product boundary
@@ -113,6 +113,13 @@ Rejected alternatives:
 - static mutable ambient services;
 - reflection-based arbitrary constructor invocation;
 - asking a model to select an unrestricted activity type.
+
+CC-902 delivered the initial `IWorkflowActivityFactory` surface and immutable
+`PromptActivityDefinition`/`QuickAnswerActivityDefinition` contracts. The factory is registered
+once as scoped by the runtime foundation, receives its kernel, workflow context, and logger
+factory explicitly, and creates a fresh mutable activity on every call. Definition construction
+performs all authoring-time bounds checks; activity execution remains the existing cancellation
+boundary, so composition performs no hidden asynchronous or background work.
 
 ### 2.3 Generated adaptive cards retain typed models
 
