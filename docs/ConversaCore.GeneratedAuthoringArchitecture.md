@@ -251,3 +251,11 @@ The amended InsuranceAgent gate passes 13 of 13 end-to-end tests. It covers ever
 post-activation composition, compliance reset/recomposition, T1 and T2 typed notifications,
 persistence failure, fallback interruption, qualified and below-threshold handoff behavior, and
 two concurrent circuits including reset isolation.
+
+CC-906 re-baselines downstream delivery without reopening WP0-WP5. WP6 must productize the
+implemented generated-C# target in the SDK template and validate a fresh package consumer. WP7
+must remove or isolate legacy authoring patterns and copied binaries after those package gates
+pass. WP8 must release-test composition failure/retry, definition bounds and redaction,
+concurrent reset/recomposition, public generator-target compatibility, and a generated-style
+package consumer. ScriptEditor#46 supplies separate cross-repository compile evidence; it does
+not transfer JSON interpretation or syntax-generation implementation into ConversaCore.

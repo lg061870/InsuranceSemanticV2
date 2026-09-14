@@ -1,7 +1,7 @@
 # ConversaCore Target Architecture
 
-**Status:** Proposed target architecture  
-**Date:** 2026-09-06  
+**Status:** Implemented core architecture; SDK, cleanup, and release hardening remain
+**Date:** 2026-09-14
 **Scope:** `ConversaCore`, `ConversaCore.UI`, `ConversaCore.SDK`, and migration of `InsuranceAgent`  
 **Companion plan:** [ConversaCore Transformation Work Breakdown](./ConversaCore.TransformationWorkBreakdown.md)
 
@@ -19,6 +19,7 @@ The target architecture makes the following decisions:
 6. Tools become a second, non-UI extension point through which a conversation reads or changes domain data and receives a typed result.
 7. Tools are not topics. Tool implementations are reusable operations; framework-owned activities invoke them from topics.
 8. Semantic tool selection is permitted only within a topic-defined allowlist and only at an explicit selection point.
+9. Generated C# is a first-class authoring target: it composes after DI construction, receives explicit scoped dependencies, and uses bounded typed definitions where constructor coupling is unsuitable.
 
 The intended domain-developer experience is:
 
@@ -66,6 +67,7 @@ Those diagrams should be regenerated as target-state diagrams after the public c
 - Make external operations typed, observable, testable, and policy-controlled.
 - Preserve optional use of AI for routing, extraction, decisions, and response composition.
 - Make the SDK template demonstrate the recommended architecture without V2/V3 alternatives.
+- Provide a stable generated-C# target without introducing ambient dependency resolution or a runtime JSON interpreter.
 
 ### 3.2 Non-goals
 
@@ -214,6 +216,8 @@ Topic eligibility checks must be side-effect free and fast. Registration validat
 
 - Construction performs no background work.
 - Any asynchronous build or initialization is awaited before a topic becomes routable.
+- New and generated topics whose graphs are assembled synchronously derive from `ComposedTopicFlow`; `TopicActivator` invokes its idempotent composition hook only after the derived constructor completes.
+- A topic that genuinely needs asynchronous repository or network data to assemble its graph implements the awaited initialization seam directly rather than blocking the composed hook.
 - Pause, resume, child completion, fallback interruption, and reset are operations of the workflow runner.
 - The runner owns the topic call stack; topics do not coordinate it through mutually subscribed events.
 - State transitions are public framework operations. Reset never uses reflection.
@@ -456,6 +460,7 @@ Two-circuit validation builds one root service provider and runs two qualificati
 | `IConversationRuntime` | Scoped | One Blazor circuit or conversation |
 | Conversation session/context | Scoped | Mutable per-conversation state |
 | Workflow runner/router | Scoped | Uses the active session |
+| `IWorkflowActivityFactory` | Scoped | Creates fresh activities with explicit collaborators from the current conversation scope |
 | Topic instances | Transient activation within the conversation scope | Mutable execution cannot be shared |
 | Tool executor | Scoped | Uses session identity, authorization, and scoped domain services |
 | Tool implementation | Scoped or transient | Determined by dependencies; resolved per invocation |
@@ -484,6 +489,8 @@ Startup may validate and compile descriptors. It must not create a temporary sco
 - Tool arguments are typed and validated.
 - Mutations requiring confirmation cannot execute before a recorded confirmation boundary.
 - Host payloads contain the minimum required data and never expose mutable context.
+- Generated card definitions are immutable, size-bounded, and restricted to framework-allowlisted element and action shapes; submissions bind to concrete validated models.
+- No ambient `IServiceProvider`, `AsyncLocal` service locator, arbitrary reflected activity construction, or runtime execution of untrusted workflow JSON is part of the authoring contract.
 
 ### 14.3 Observability
 
@@ -544,6 +551,7 @@ The target architecture is achieved when all of the following are true:
 - Semantic tool selection sees only the active topic's allowlist and is not invoked on ordinary messages unless the topic requests it.
 - Insurance lead persistence no longer depends on `Home.razor` being subscribed.
 - The SDK template and authoring guide demonstrate exactly one recommended architecture.
+- A generated-style topic compiles against public package contracts, composes only after DI construction, resets deterministically, and preserves typed card validation and two-scope isolation.
 
 ## 18. Decision summary
 
@@ -570,3 +578,23 @@ validated immutable definitions with concrete submission models. It does not add
 resolution or a runtime JSON interpreter. See
 [Generated-C# Authoring Architecture](ConversaCore.GeneratedAuthoringArchitecture.md) and
 [ADR-007](ConversaCore.ArchitectureDecisions.md#adr-007--generated-c-is-an-explicit-authoring-target).
+
+The implemented framework surface consists of:
+
+- `ComposedTopicFlow` for activation-safe synchronous graph construction and centralized reset/recomposition;
+- scoped `IWorkflowActivityFactory` methods backed by immutable Prompt, QuickAnswer, and generated-card definitions;
+- `DefinitionAdaptiveCardActivity<TModel>` with framework-owned rendering, bounded inputs, typed binding, validation correlation, cancellation, and redacted diagnostics;
+- the existing `IConversationRuntime` and ConversaCore.UI output/submission pipeline, not a parallel generated runtime.
+
+InsuranceAgent confirms the compatibility boundary. Its synchronous start, compliance, T2, and
+T3 topics use the composed lifecycle; T1 retains direct awaited initialization because it loads
+rules asynchronously; richer domain cards remain valid typed activities. Thirteen reference
+end-to-end tests cover all consent paths, reset/recomposition, typed notifications, failures,
+handoff, and two-circuit isolation.
+
+WP0-WP5 remain closed historical delivery records. WP6 now owns the template and documented
+generator target, WP7 owns retirement of legacy/unsafe authoring consumers and copied binaries,
+and WP8 owns generated-authoring security, compatibility, performance, package, and cross-repository
+compile evidence. ScriptEditor#46 continues to own JSON interpretation and C# syntax emission; this
+repository neither modifies ScriptEditor nor treats its implementation as a ConversaCore release
+artifact.

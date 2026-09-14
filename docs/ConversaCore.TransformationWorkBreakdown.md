@@ -1,7 +1,7 @@
 # ConversaCore Transformation Work Breakdown
 
-**Status:** Proposed delivery plan  
-**Date:** 2026-09-06  
+**Status:** Active delivery plan; re-baselined by architecture amendment #115
+**Date:** 2026-09-14
 **Architecture baseline:** [ConversaCore Target Architecture](./ConversaCore.TargetArchitecture.md)
 
 **Execution tracker:** [GitHub master issue #12](https://github.com/lg061870/InsuranceSemanticV2/issues/12). Each WP is a phase parent and every CC task has its own sub-issue. Record changes, reasons, verification evidence, and remaining work on the task issue. Close only after its full scope and definition of done are satisfied and delivered in GitHub.
@@ -66,7 +66,21 @@ Amendment delivery status:
 - [x] **CC-903 — Add validated generated adaptive-card definitions.** Immutable bounded definitions now render allowlisted Adaptive Card 1.3 inputs through a typed `DefinitionAdaptiveCardActivity<TModel>` with redacted binding diagnostics; see [#119](https://github.com/lg061870/InsuranceSemanticV2/issues/119).
 - [x] **CC-904 — Verify the generated-authoring framework/UI contract.** A generated-style compile fixture and integrated runtime-to-UI tests cover activation, Prompt/QuickAnswer/generated cards, typed submission, reset, disposal, and concurrent scopes; the focused gate is 49/49 and the explicit full baseline is 442 passed, 9 known failures, 1 skipped. See [#120](https://github.com/lg061870/InsuranceSemanticV2/issues/120).
 - [x] **CC-905 — Revalidate and adapt InsuranceAgent.** Four synchronous active topics now use the activation-safe composed lifecycle, Compliance reset no longer uses reflection, T2 emits typed host notifications, and 13 InsuranceAgent end-to-end/two-circuit tests pass. T1 retains its explicit asynchronous initializer because rule-backed composition is genuinely asynchronous. See [#121](https://github.com/lg061870/InsuranceSemanticV2/issues/121).
-- [ ] **CC-906 — Re-baseline WP0-WP8 against the implemented amendment.** See [#122](https://github.com/lg061870/InsuranceSemanticV2/issues/122).
+- [x] **CC-906 — Re-baseline WP0-WP8 against the implemented amendment.** Completed phases remain historical records; WP6-WP8 and their gates now target the implemented generated-C# authoring model and preserve the ScriptEditor boundary. See [#122](https://github.com/lg061870/InsuranceSemanticV2/issues/122).
+
+### Amendment audit by work package
+
+| Work package | Audit result |
+|---|---|
+| WP0 | Remains closed. Its inventories and original ADRs are historical evidence; ADR-007 and CC-900 record the new authoring decision without rewriting that baseline. |
+| WP1 | Remains closed. Generated topics use the same immutable descriptors, registration, startup validation, and scoped activation contracts. |
+| WP2 | Remains closed. CC-901/CC-902 extend its existing awaited activation seam with post-construction composition and a scoped factory; no ambient resolver or second runtime was added. |
+| WP3 | Remains closed. CC-903/CC-904 prove generated cards and generated-style topics retain the existing typed output, correlation, UI, reset, disposal, and two-scope behavior. |
+| WP4 | Remains closed. Generated source targets the same typed tools, topic allowlists, and policy enforcement; no dynamic tool lookup was introduced. CC-402's stale checkbox is corrected below to match its closed issue. |
+| WP5 | Remains closed. CC-905 selectively migrated synchronous active topics, retained T1's required async initializer and rich domain cards, and reran the reference gates. |
+| WP6 | Reframed around `ComposedTopicFlow`, `IWorkflowActivityFactory`, bounded typed generated cards, explicit constructor injection, and package-based generated-consumer validation. |
+| WP7 | Extended to retire constructor-managed authoring in supported consumers, anonymous host events, unsafe reset patterns, and copied SDK binaries after package validation. |
+| WP8 | Extended with generated-definition security, composition failure/concurrency, authoring performance, public API, cross-repository compile-evidence, and package gates. |
 
 ## 5. WP0 — Baseline, decisions, and safety net
 
@@ -187,7 +201,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 
 - [x] **CC-400 — Define tool contracts.** Added the immutable typed contracts in `ConversaCore.Tools`: `IConversaTool<TRequest,TResult>`, `ToolDescriptor`, `ToolExecutionContext`, and `ToolResult<TResult>`. Policy/side-effect metadata and execution enforcement remain CC-401 through CC-403.
 - [x] **CC-401 — Define side-effect and policy metadata.** `ToolDescriptor` now carries immutable read/mutate, authorization, confirmation, timeout/retry/idempotency, sensitivity, and audit metadata with validation; enforcement remains CC-403.
-- [ ] **CC-402 — Implement `IToolCatalog`.** Partial progress: singleton immutable descriptor lookup and explicit `AddTool` registration are implemented without tool activation. Assembly scanning and schema compilation remain before completion.
+- [x] **CC-402 — Implement `IToolCatalog`.** Singleton immutable descriptor lookup, explicit and assembly-scanned registration, schema metadata, and catalog tests are delivered; see closed issue [#58](https://github.com/lg061870/InsuranceSemanticV2/issues/58).
 - [x] **CC-403 — Implement `IToolExecutor`.** Added scoped per-invocation resolution, DataAnnotations validation, authorization/confirmation/idempotency enforcement, timeout/cancellation handling, safe error classification, and structured redacted logging.
 - [x] **CC-404 — Implement deterministic `InvokeToolActivity`.** Added the generic activity that maps workflow state to a typed request, invokes exactly one declared tool through `IToolExecutor`, and stores the typed `ToolResult` without exposing catalog or executor internals.
 - [x] **CC-405 — Add topic tool allowlists.** `ToolExecutionContext` carries the framework-supplied topic allowlist and `ToolExecutor` rejects undeclared IDs before resolution or execution.
@@ -242,51 +256,54 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 
 ## 11. WP6 — SDK template and authoring experience
 
-**Outcome:** A developer starting from ConversaCoreSDK sees one small, correct implementation model.  
-**Estimate:** 5–8 days  
-**Dependencies:** WP5 proves the public API
+**Outcome:** A developer or code generator starting from ConversaCoreSDK sees one small, safe generated-C# implementation model.
+**Estimate:** 6–10 days
+**Dependencies:** WP5 and architecture amendment #115 prove the public API
 
 ### Tasks
 
-- [ ] **CC-600 — Replace template startup code.** Show `AddConversaCore`, topic registration/scanning, optional tool registration, and no domain agent subclass.
-- [ ] **CC-601 — Add a minimal bounded topic.** Demonstrate prompts, typed state, completion, and fallback behavior.
+- [ ] **CC-600 — Replace template startup code.** Show builder-based topic/tool registration, `AddConversationRuntime`, scoped UI consumption, and no domain agent, manual registry, or service locator.
+- [ ] **CC-601 — Add a minimal bounded generated-style topic.** Demonstrate `ComposedTopicFlow`, explicit constructor injection, `IWorkflowActivityFactory`, immutable Prompt/QuickAnswer definitions, typed state, completion, and fallback behavior.
 - [ ] **CC-602 — Add a tool sample.** Demonstrate one read-only tool and one confirmed mutating tool without exposing a global catalog.
-- [ ] **CC-603 — Add host-event samples.** Demonstrate one notification and one correlated interaction while favoring standard UI output for generic chat behavior.
-- [ ] **CC-604 — Update the topic authoring guide.** Document descriptors, initialization, state, subtopics, tools, host events, cancellation, and prohibited patterns.
-- [ ] **CC-605 — Update Topic Tool/RAG guidance.** Ensure generated topics use only the new public contracts and never generate agent subclasses or manual event plumbing.
-- [ ] **CC-606 — Add template validation tests.** Instantiate a fresh generated project, restore, build, launch, and run its primary conversation flow.
-- [ ] **CC-607 — Validate package consumption.** Test against packaged ConversaCore and ConversaCore.UI artifacts rather than copied stale DLLs.
+- [ ] **CC-603 — Add typed host-output samples.** Demonstrate one notification and one correlated interaction while using standard UI output for generic chat behavior; do not generate anonymous `EventTriggerActivity` payloads.
+- [ ] **CC-604 — Update the topic authoring guide.** Document descriptors, composed lifecycle, the explicit async-initialization exception, state, subtopics, generated versus rich domain cards, tools, host outputs, cancellation/reset, and prohibited patterns.
+- [ ] **CC-605 — Publish the generator integration contract.** Document JSON → generated C# → Roslyn → scoped activation, the constructor capability matrix, explicit DI emission, bounded definitions, and the ScriptEditor#46 ownership boundary; generated topics must never use agent subclasses, ambient resolution, runtime JSON interpretation, or manual event plumbing.
+- [ ] **CC-606 — Add template and generated-consumer validation tests.** Instantiate a fresh project, restore, build, launch, execute/reset its primary generated-style flow, and prove two scopes do not share authored definitions or mutable activity/card state.
+- [ ] **CC-607 — Validate package consumption and compiler compatibility.** Test generated-style source against packed ConversaCore and ConversaCore.UI artifacts, record ScriptEditor#46 compile evidence when available, and remove reliance on repository-copied DLLs.
 
 ### Acceptance criteria
 
 - A fresh SDK project compiles and runs after adding only configuration and domain code.
 - The template contains no V2/V3 alternatives or manual topic-registry configuration.
-- The sample clearly distinguishes topic, activity, tool, and host event.
+- The sample clearly distinguishes topic, activity, generated definition, tool, standard output, and domain host output.
+- Generated topics compose after DI construction, use explicit scoped dependencies, retain typed card models, and reset without rebuilding from constructors.
 - Generated projects consume current packages and do not require copied framework binaries.
+- ScriptEditor remains responsible for JSON/schema interpretation and C# emission; ConversaCore exposes and validates only the target contracts.
 
 ## 12. WP7 — Compatibility retirement and repository cleanup
 
-**Outcome:** Only one runtime and authoring path remains; experimental leftovers are removed safely.  
-**Estimate:** 4–7 days  
-**Dependencies:** WP5 migration and WP6 template validation
+**Outcome:** One runtime and one documented new/generated authoring path remain; compatibility and experimental leftovers are isolated or removed safely.
+**Estimate:** 5–9 days
+**Dependencies:** WP5/amendment migration and WP6 template/package validation
 
 ### Tasks
 
-- [ ] **CC-700 — Mark legacy APIs obsolete.** Add actionable migration messages for `DomainAgentService`, `ConfigureTopics`, legacy custom events, and provider-specific workflow activities.
+- [ ] **CC-700 — Mark legacy APIs obsolete.** Add actionable migration messages for `DomainAgentService`, `ConfigureTopics`, legacy custom events, provider-specific workflow activities, and constructor-managed composition patterns superseded by `ComposedTopicFlow` where an API-level marker is practical.
 - [ ] **CC-701 — Remove unused agent implementations.** Delete `InsuranceAgentService` and `InsuranceAgentServiceV2` only after reference migration and test gates pass.
 - [ ] **CC-702 — Retire duplicate routing/runtime paths.** Remove obsolete `TopicRegistry`/`TopicManager` behavior once compatibility adapters have no consumers.
-- [ ] **CC-703 — Remove unsafe lifecycle patterns.** Eliminate reflection reset, constructor `Task.Run`, untracked fire-and-forget work, and remaining avoidable `async void` handlers.
+- [ ] **CC-703 — Remove unsafe lifecycle and authoring patterns.** Eliminate reflection reset, virtual constructor composition, constructor `Task.Run`, untracked fire-and-forget work, remaining avoidable `async void` handlers, and production/sample constructor-built graphs that should use `ComposedTopicFlow`.
 - [ ] **CC-704 — Consolidate DI registration.** Remove duplicate semantic, embedding, integration, and topic setup where the framework now owns registration.
-- [ ] **CC-705 — Resolve demo and topic leftovers.** Retain useful samples under clear names; archive or remove incomplete V2/V3 experiments recorded by WP0.
+- [ ] **CC-705 — Resolve demo and topic leftovers.** Retain useful samples under clear names, migrate retained authoring examples to the amended contracts, preserve justified rich domain cards, and archive or remove incomplete V2/V3 experiments recorded by WP0.
 - [ ] **CC-706 — Supersede obsolete documentation.** Mark `V3_EVENT_DRIVEN_REFACTORING_GUIDE.md` as historical or remove it after preserving any still-valid migration information.
-- [ ] **CC-707 — Regenerate architecture artifacts.** Use Archify to produce target product, runtime sequence, host-interaction, and tool-invocation diagrams from implemented code.
-- [ ] **CC-708 — Run dependency and dead-code review.** Remove unused package/project references only when builds and tests prove they are unnecessary.
+- [ ] **CC-707 — Regenerate architecture artifacts.** Use Archify to produce target product, generated-C# authoring/activation, runtime sequence, host-interaction, and tool-invocation diagrams from implemented code.
+- [ ] **CC-708 — Run dependency, copied-binary, and dead-code review.** Remove unused package/project references and repository-copied SDK DLLs only when package/template tests prove they are unnecessary.
 
 ### Acceptance criteria
 
-- Searches find no production consumer of obsolete agent subclasses or manual startup topic configuration.
+- Searches find no production consumer of obsolete agent subclasses, manual startup topic configuration, ambient service location, reflection reset, or unsafe constructor composition.
 - Exactly one routing authority and one workflow orchestration path remain.
-- No stale SDK binaries mask package/build problems.
+- New/generated documentation and samples use `ComposedTopicFlow`; a direct `IAsyncInitializable` implementation is retained only for documented genuinely asynchronous composition.
+- No stale SDK binaries mask package/build problems, and rich domain cards are not misclassified as generated-definition debt.
 - All removals are committed separately or otherwise easy to review and recover.
 - Documentation and diagrams describe the implemented architecture, not an aspiration.
 
@@ -298,14 +315,14 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 
 ### Tasks
 
-- [ ] **CC-800 — Run the complete unit and integration suite.** Include clean restore/build/test from a fresh checkout or CI worker.
-- [ ] **CC-801 — Run concurrency and soak tests.** Exercise multiple Blazor circuits, nested topics, host waits, tool calls, reset, disconnect, and reconnect over time.
-- [ ] **CC-802 — Run failure injection.** Test model failures, invalid structured output, tool timeout, integration outage, host timeout, subscriber exception, cancellation, and duplicate response.
-- [ ] **CC-803 — Run security review.** Verify tool authorization, allowlists, confirmation gates, trusted identity binding, payload validation, sensitive-data redaction, and absence of unrestricted service discovery.
-- [ ] **CC-804 — Establish performance budgets.** Measure startup validation, message routing, output dispatch, tool selection, and semantic calls; ensure tool metadata is cached and global scans are absent from the hot path.
-- [ ] **CC-805 — Review public API compatibility.** Confirm obsolete windows, package versioning, XML documentation, nullable annotations, and extension-method ergonomics.
-- [ ] **CC-806 — Produce migration and release notes.** Include old-to-new API mapping, examples, breaking changes, and known limitations.
-- [ ] **CC-807 — Package and smoke-test release candidates.** Validate ConversaCore, ConversaCore.UI, and SDK template packages together.
+- [ ] **CC-800 — Run the complete unit and integration suite.** Include clean restore/build/test from a fresh checkout or CI worker and the generated-authoring compile/runtime/UI and InsuranceAgent amendment gates; resolve or explicitly disposition every baseline failure.
+- [ ] **CC-801 — Run concurrency and soak tests.** Exercise multiple Blazor circuits, composed and asynchronously initialized topics, nested topics, generated cards, host waits, tool calls, reset/recomposition, disconnect, and reconnect over time.
+- [ ] **CC-802 — Run failure injection.** Test composition failure/retry, invalid generated definitions/submissions, model and structured-output failures, tool timeout, integration outage, host timeout, subscriber exception, cancellation, and duplicate response.
+- [ ] **CC-803 — Run security review.** Verify generated-definition limits and allowlists, typed binding, sensitive-data redaction, tool authorization/confirmation/trusted identity, minimal host payloads, and absence of ambient or unrestricted service discovery and runtime JSON execution.
+- [ ] **CC-804 — Establish performance budgets.** Measure startup validation, first composition and reset/recomposition, generated-card rendering/binding, message routing, output dispatch, tool selection, and semantic calls; ensure metadata is cached and global scans are absent from hot paths.
+- [ ] **CC-805 — Review public API and generator-target compatibility.** Confirm `ComposedTopicFlow`, authoring factory/definitions, nullable annotations, XML documentation, extension ergonomics, obsolete windows, binary/package versioning, and compile compatibility for generated-style consumers.
+- [ ] **CC-806 — Produce migration and release notes.** Include old-to-new API mapping, constructor composition → `ComposedTopicFlow`, hand-authored versus generated cards, explicit async initialization, ScriptEditor boundary, examples, breaking changes, and known limitations.
+- [ ] **CC-807 — Package and smoke-test release candidates.** Validate ConversaCore, ConversaCore.UI, and SDK template packages together by compiling and executing a generated-style consumer with no repository-relative DLL copy.
 - [ ] **CC-808 — Obtain release sign-off.** Record results for every quality gate and any explicitly accepted residual risk.
 
 ### Acceptance criteria
@@ -314,6 +331,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 - No P0/P1 correctness, isolation, authorization, or data-loss defect remains open.
 - Package consumers build without repository-relative DLL copies.
 - The migration guide is sufficient to convert a small existing domain app.
+- Generated-style consumer source compiles against the release packages, and cross-repository ScriptEditor compatibility evidence is linked without making ScriptEditor implementation part of this repository.
 
 ## 14. Test matrix
 
@@ -328,8 +346,9 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 | Host events | Notification, request/response correlation, validation, timeout, cancellation, late/duplicate response |
 | Tools | Binding, validation, authorization, confirmation, allowlist, idempotency, retry, timeout, typed result, redaction |
 | Semantic selection | Explicit activation only, topic-local candidates, top-K prefilter, invalid selection, fallback |
+| Generated authoring | Post-construction composition, idempotence, failure/retry, reset/recomposition, explicit scoped dependencies, immutable definition bounds, typed card binding, redacted diagnostics, two scopes |
 | Insurance | Consent branches, lead qualification, persistence, progress, customer console, fallback, handoff |
-| SDK | Generate, restore, build, launch, execute sample, consume packaged binaries |
+| SDK | Generate, restore, build, launch, execute/reset generated-style sample, two scopes, consume packaged binaries, compiler-target compatibility |
 
 ## 15. Quality gates
 
@@ -340,8 +359,8 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 | G2 — Host boundary | Standard output, notification, interaction, timeout, and disposal tests pass | Insurance page migration |
 | G3 — Tools | Read/write policy, allowlist, idempotency, and failure tests pass | Persistence migration |
 | G4 — Insurance parity | Primary insurance flows pass without a domain agent subclass or UI persistence | Legacy removal |
-| G5 — SDK | Fresh generated project builds and executes using packages | Release candidate |
-| G6 — Release | Full suite, security review, soak test, docs, and package smoke tests pass | Production release |
+| G5 — SDK | Fresh generated-style project builds, executes, resets, and isolates two scopes using packages; no copied DLL is required | Release candidate |
+| G6 — Release | Full suite, generated-authoring security/compatibility review, soak test, docs, package smoke tests, and linked ScriptEditor compile evidence pass | Production release |
 
 ## 16. Risk register
 
@@ -357,6 +376,9 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 | Compatibility layer becomes permanent | Two runtimes and continued confusion | Isolated namespace, removal milestone, consumer search gate |
 | Insurance migration moves too much at once | Difficult regression diagnosis | Vertical slices: start flow, one notification, one tool, then remaining flows |
 | Stale copied DLLs hide source/package mismatch | False build confidence | SDK package-consumption test and stale-binary removal gate |
+| Generator emits against volatile constructors or hidden services | Source compiles locally but breaks across framework releases or scopes | Public factory/definition surface, explicit DI, compile-contract tests, and API compatibility review |
+| Declarative card input bypasses UI or data protections | Injection, oversized payloads, or sensitive logging | Allowlisted bounded definitions, concrete typed models, validation/correlation tests, and redaction review |
+| Framework and ScriptEditor schemas drift independently | Generated projects stop compiling | Versioned documented boundary plus release-time cross-repository compile evidence; implementation remains in ScriptEditor#46 |
 
 ## 17. Recommended implementation slices
 
