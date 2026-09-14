@@ -1,7 +1,7 @@
 # ConversaCore generated-C# authoring architecture
 
-**Status:** Accepted design; framework authoring contracts implemented<br>
-**Tracking:** [Architecture amendment #115](https://github.com/lg061870/InsuranceSemanticV2/issues/115), [CC-900 #116](https://github.com/lg061870/InsuranceSemanticV2/issues/116), [CC-901 #117](https://github.com/lg061870/InsuranceSemanticV2/issues/117), [CC-902 #118](https://github.com/lg061870/InsuranceSemanticV2/issues/118), [CC-903 #119](https://github.com/lg061870/InsuranceSemanticV2/issues/119)<br>
+**Status:** Accepted design; framework/UI authoring contract implemented and verified<br>
+**Tracking:** [Architecture amendment #115](https://github.com/lg061870/InsuranceSemanticV2/issues/115), [CC-900 #116](https://github.com/lg061870/InsuranceSemanticV2/issues/116), [CC-901 #117](https://github.com/lg061870/InsuranceSemanticV2/issues/117), [CC-902 #118](https://github.com/lg061870/InsuranceSemanticV2/issues/118), [CC-903 #119](https://github.com/lg061870/InsuranceSemanticV2/issues/119), [CC-904 #120](https://github.com/lg061870/InsuranceSemanticV2/issues/120)<br>
 **Cross-repository consumer:** [ScriptEditor#46](https://github.com/lg061870/ScriptEditor/issues/46)
 
 ## 1. Product boundary
@@ -203,6 +203,22 @@ referencing ScriptEditor implementation. The contract must prove:
 ScriptEditor#46 should separately compile its emitted syntax against the resulting package.
 That cross-repository consumer test is evidence of compatibility, not permission for this
 repository to modify ScriptEditor.
+
+CC-904 added a compiler-owned generated-style fixture and integrated runtime/UI tests. The
+fixture is ordinary C# in the test project and therefore fails compilation whenever generated
+constructor shapes or public authoring contracts drift. Tests activate it from DI, execute
+Prompt and QuickAnswer definitions, project standard outputs through ConversaCore.UI, submit a
+typed generated card, reset with fresh composition and cleared workflow state, dispose cleanly,
+and run two concurrent scopes without sharing runtime IDs, topic/activity instances, typed
+models, output streams, or presentation state.
+
+The CC-904 full-suite baseline is explicit: 442 tests passed, 9 existing tests failed, and 1
+integration test was skipped. Six failures are the known SQLite/Semantic Kernel connector
+baseline (five `TypeLoadException` failures and one collection assertion); three are the known
+legacy event-trigger wait-state failures. The generated-authoring/runtime/UI focused gate passes
+49 of 49 tests. A full solution build succeeded with zero errors on the elevated rerun; the
+initial sandboxed build emitted 229 existing warnings before a WebAssembly file-access error,
+while the successful incremental rerun reported zero warnings.
 
 ## 5. InsuranceAgent and plan impact
 

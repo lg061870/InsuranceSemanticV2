@@ -1,4 +1,5 @@
 using ConversaCore.Registration;
+using ConversaCore.TopicFlow;
 
 namespace ConversaCore.Runtime;
 
@@ -13,6 +14,7 @@ public sealed class ConversationRuntime : IConversationRuntime, IAsyncDisposable
     private readonly IConversationMessageCoordinator _messages;
     private readonly IConversationOutputDispatcher _outputs;
     private readonly IHostInteractionCoordinator _hostInteractions;
+    private readonly TopicWorkflowContext _workflowContext;
     private readonly TopicDescriptor _startTopic;
     private Task? _startTask;
     private Task? _resetTask;
@@ -26,6 +28,7 @@ public sealed class ConversationRuntime : IConversationRuntime, IAsyncDisposable
         IConversationMessageCoordinator messages,
         IConversationOutputDispatcher outputs,
         IHostInteractionCoordinator hostInteractions,
+        TopicWorkflowContext workflowContext,
         ConversationRuntimeOptions options)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -34,6 +37,7 @@ public sealed class ConversationRuntime : IConversationRuntime, IAsyncDisposable
         _messages = messages ?? throw new ArgumentNullException(nameof(messages));
         _outputs = outputs ?? throw new ArgumentNullException(nameof(outputs));
         _hostInteractions = hostInteractions ?? throw new ArgumentNullException(nameof(hostInteractions));
+        _workflowContext = workflowContext ?? throw new ArgumentNullException(nameof(workflowContext));
         ArgumentNullException.ThrowIfNull(options);
 
         ConversationId = session.ConversationId;
@@ -111,7 +115,14 @@ public sealed class ConversationRuntime : IConversationRuntime, IAsyncDisposable
 
     private async Task ResetCoreAsync(CancellationToken cancellationToken)
     {
-        await _runner.ResetAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _runner.ResetAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _workflowContext.Clear();
+        }
         await _runner.StartAsync(_startTopic, cancellationToken).ConfigureAwait(false);
     }
 
@@ -161,6 +172,8 @@ public sealed class ConversationRuntime : IConversationRuntime, IAsyncDisposable
         {
             failure = failure is null ? exception : new AggregateException(failure, exception);
         }
+
+        _workflowContext.Clear();
 
         if (failure is not null) throw failure;
     }

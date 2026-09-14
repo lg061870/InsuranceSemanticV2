@@ -64,7 +64,7 @@ Amendment delivery status:
 - [x] **CC-901 — Add an activation-safe composed topic lifecycle.** `ComposedTopicFlow` uses the existing post-construction initialization seam without changing legacy `TopicFlow`; see [#117](https://github.com/lg061870/InsuranceSemanticV2/issues/117).
 - [x] **CC-902 — Add an explicit generator-facing activity factory.** Scoped `IWorkflowActivityFactory` and bounded immutable definitions now cover Prompt and QuickAnswer without ambient resolution; see [#118](https://github.com/lg061870/InsuranceSemanticV2/issues/118).
 - [x] **CC-903 — Add validated generated adaptive-card definitions.** Immutable bounded definitions now render allowlisted Adaptive Card 1.3 inputs through a typed `DefinitionAdaptiveCardActivity<TModel>` with redacted binding diagnostics; see [#119](https://github.com/lg061870/InsuranceSemanticV2/issues/119).
-- [ ] **CC-904 — Verify the generated-authoring framework/UI contract.** See [#120](https://github.com/lg061870/InsuranceSemanticV2/issues/120).
+- [x] **CC-904 — Verify the generated-authoring framework/UI contract.** A generated-style compile fixture and integrated runtime-to-UI tests cover activation, Prompt/QuickAnswer/generated cards, typed submission, reset, disposal, and concurrent scopes; the focused gate is 49/49 and the explicit full baseline is 442 passed, 9 known failures, 1 skipped. See [#120](https://github.com/lg061870/InsuranceSemanticV2/issues/120).
 - [ ] **CC-905 — Revalidate and adapt InsuranceAgent.** See [#121](https://github.com/lg061870/InsuranceSemanticV2/issues/121).
 - [ ] **CC-906 — Re-baseline WP0-WP8 against the implemented amendment.** See [#122](https://github.com/lg061870/InsuranceSemanticV2/issues/122).
 

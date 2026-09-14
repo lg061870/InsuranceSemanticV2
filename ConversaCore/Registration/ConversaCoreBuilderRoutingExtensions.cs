@@ -1,5 +1,6 @@
 using ConversaCore.Authoring;
 using ConversaCore.Runtime;
+using ConversaCore.TopicFlow;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -39,6 +40,7 @@ public static class ConversaCoreBuilderRoutingExtensions
         builder.Services.TryAddScoped<ITopicActivator, TopicActivator>();
         builder.Services.TryAddScoped<IWorkflowRunner, WorkflowRunner>();
         builder.Services.TryAddScoped<IConversationMessageCoordinator, ConversationMessageCoordinator>();
+        builder.Services.TryAddScoped<TopicWorkflowContext>();
         builder.Services.TryAddScoped<IWorkflowActivityFactory, WorkflowActivityFactory>();
         return builder;
     }
