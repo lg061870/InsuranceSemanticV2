@@ -11,4 +11,6 @@ public interface IWorkflowActivityFactory
 {
     PromptActivity CreatePrompt(PromptActivityDefinition definition);
     QuickAnswerActivity CreateQuickAnswer(QuickAnswerActivityDefinition definition);
+    DefinitionAdaptiveCardActivity<TModel> CreateAdaptiveCard<TModel>(GeneratedAdaptiveCardDefinition definition)
+        where TModel : class;
 }

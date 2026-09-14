@@ -1,7 +1,7 @@
 # ConversaCore generated-C# authoring architecture
 
-**Status:** Accepted design; composed-topic lifecycle and initial activity factory implemented<br>
-**Tracking:** [Architecture amendment #115](https://github.com/lg061870/InsuranceSemanticV2/issues/115), [CC-900 #116](https://github.com/lg061870/InsuranceSemanticV2/issues/116), [CC-901 #117](https://github.com/lg061870/InsuranceSemanticV2/issues/117), [CC-902 #118](https://github.com/lg061870/InsuranceSemanticV2/issues/118)<br>
+**Status:** Accepted design; framework authoring contracts implemented<br>
+**Tracking:** [Architecture amendment #115](https://github.com/lg061870/InsuranceSemanticV2/issues/115), [CC-900 #116](https://github.com/lg061870/InsuranceSemanticV2/issues/116), [CC-901 #117](https://github.com/lg061870/InsuranceSemanticV2/issues/117), [CC-902 #118](https://github.com/lg061870/InsuranceSemanticV2/issues/118), [CC-903 #119](https://github.com/lg061870/InsuranceSemanticV2/issues/119)<br>
 **Cross-repository consumer:** [ScriptEditor#46](https://github.com/lg061870/ScriptEditor/issues/46)
 
 ## 1. Product boundary
@@ -159,6 +159,15 @@ but not submitted values or prompt bodies.
 A future runtime-interpreted card registry would require a separate ADR covering trust,
 version distribution, persistence, authorization, and schema migration. It is not implied
 by this generated-source design.
+
+CC-903 delivered `GeneratedAdaptiveCardDefinition`, immutable field/choice definitions, the
+five-value `GeneratedAdaptiveCardInputKind` allowlist, and
+`DefinitionAdaptiveCardActivity<TModel>`. Rendering serializes framework-owned Adaptive Card
+1.3 shapes only. The activity uses the existing typed binding, DataAnnotations, event, output,
+and submission pipeline, but its diagnostics log only activity/model metadata and field counts,
+never submitted values. Generated cards check cancellation before rendering and reset to a
+runnable `Created` state. Validation-error correlation now compares field IDs without case
+sensitivity so CLR names and JSON-style names remain aligned.
 
 ## 3. Current activity construction matrix
 

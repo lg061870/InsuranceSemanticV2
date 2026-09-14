@@ -35,7 +35,7 @@ public static class AdaptiveCardValidationHelper {
             return originalCardJson;
 
         // Group errors - map property names to JSON property names for reliable matching
-        var errors = new Dictionary<string, List<string>>();
+        var errors = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         
         foreach (var result in results) {
             foreach (var memberName in result.MemberNames) {
@@ -61,14 +61,14 @@ public static class AdaptiveCardValidationHelper {
 
         // ✅ Convert errors to validationErrors object for JS renderer upfront
         // JS expects { fieldId: "error message" } format
-        var validationErrors = new Dictionary<string, string>();
+        var validationErrors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var kvp in errors) {
             // Take first error message for each field (or join multiple with "; ")
             validationErrors[kvp.Key] = string.Join("; ", kvp.Value);
         }
 
         // Track which error field IDs we actually matched to card elements
-        var matchedErrorIds = new HashSet<string>();
+        var matchedErrorIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var newBody = new List<object>();
 

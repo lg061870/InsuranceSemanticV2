@@ -52,4 +52,15 @@ internal sealed class WorkflowActivityFactory : IWorkflowActivityFactory
             _loggerFactory.CreateLogger<QuickAnswerActivity>(),
             definition.IsRequired);
     }
+
+    public DefinitionAdaptiveCardActivity<TModel> CreateAdaptiveCard<TModel>(
+        GeneratedAdaptiveCardDefinition definition)
+        where TModel : class
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return new DefinitionAdaptiveCardActivity<TModel>(
+            definition,
+            _context,
+            _loggerFactory.CreateLogger<AdaptiveCardActivity<TModel>>());
+    }
 }
