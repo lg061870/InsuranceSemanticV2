@@ -1,22 +1,30 @@
-using ConversaCore.TopicFlow.Core;
-using ConversaCore.Topics;
 using ConversaCore.BlazorTemplateHost.Topics.SampleTopic;
+using ConversaCore.Registration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ConversaCore.BlazorTemplateHost.Configuration
 {
     /// <summary>
-    /// Central place for registering domain-specific ConversaCore topics.
-    /// Program.cs should only need to call AddConversaCoreDomainTopics.
+    /// Registers domain topics through immutable ConversaCore descriptors.
     /// </summary>
     public static class ConversaCoreTopicRegistration
     {
-        public static void AddConversaCoreDomainTopics(this IServiceCollection services)
+        public const string SampleTopicId = "sample.start";
+
+        public static ConversaCoreBuilder AddConversaCoreDomainTopics(this ConversaCoreBuilder builder)
         {
             // <conversacore-domain-topics>
-            services.AddScoped<SampleTopic>();
-            services.AddScoped<ITopic>(sp => sp.GetRequiredService<SampleTopic>());
+            builder.AddTopic<SampleTopic>(SampleTopicId, options =>
+            {
+                options.DisplayName = "Sample conversation";
+                options.Description = "Default bounded conversation included with the template.";
+                options.TriggerPhrases = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "sample topic"
+                };
+            });
             // </conversacore-domain-topics>
+            return builder;
         }
 
         public static void AddConversaCoreDocumentIngestion(this IServiceCollection services)

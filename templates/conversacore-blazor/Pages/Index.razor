@@ -1,9 +1,9 @@
 ﻿@page "/"
 
-@using ConversaCore.BlazorTemplateHost.Services
+@using ConversaCore.Runtime
 @using ConversaCore.UI.Models
 
-@inject MyDomainAgentService AgentService
+@inject IConversationRuntime ConversationRuntime
 
 <PageTitle>ConversaCore Template</PageTitle>
 
@@ -21,7 +21,7 @@
             <ol>
                 <li>Run the app and use the chat in the right sidebar to start a conversation.</li>
                 <li>Add or replace topics in <code>Topics</code> and register them via <code>AddConversaCoreDomainTopics()</code>.</li>
-                <li>Customize the agent bridge in <code>Services/MyDomainAgentService.cs</code>.</li>
+                <li>Compose conversation behavior in registered topics; the scoped framework runtime owns execution.</li>
             </ol>
         </section>
 
@@ -36,8 +36,7 @@
 
     <aside class="cc-home-sidebar" aria-label="Chat">
         <CustomChatWindowV3
-            AgentService="AgentService"
-            Style="ChatStyle.SidebarChat"
-            SubscribeToEvents="@(w => AgentService.SubscribeToChatWindowEvents(w))" />
+            Runtime="ConversationRuntime"
+            Style="ChatStyle.SidebarChat" />
     </aside>
 </div>

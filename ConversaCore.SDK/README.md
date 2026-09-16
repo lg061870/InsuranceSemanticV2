@@ -9,10 +9,10 @@ A .NET project template for creating new ConversaCore Blazor Server applications
 
 **Features:**
 - Pre-configured Blazor Server with ConversaCore integration
-- All system topics registered (FallbackTopic, SignInTopic, ResetConversationTopic, etc.)
-- Sample topic with adaptive cards demonstrating the framework
-- Proper DI setup following ConversaCore patterns
-- Ready-to-use domain agent service
+- Descriptor-based sample-topic registration with a stable start ID
+- Scoped `IConversationRuntime` wired directly to ConversaCore.UI
+- Sample topic with an adaptive card demonstrating the framework
+- No domain-agent subclass, manual topic registry, or UI event bridge
 
 **Installation:**
 ```powershell
@@ -76,12 +76,10 @@ The Blazor template includes:
 ConversaCore.BlazorTemplateHost/
 ├── Configuration/
 │   └── ConversaCoreTopicRegistration.cs  # Central topic registration
-├── Services/
-│   └── MyDomainAgentService.cs           # Domain-specific agent
 ├── Topics/
 │   └── SampleTopic/                      # Sample topic with cards
 ├── Pages/
-│   └── Index.razor                       # Main page with chat UI
+│   └── Index.razor                       # Chat UI bound to IConversationRuntime
 ├── lib/
 │   ├── ConversaCore.dll                  # Framework DLLs
 │   └── ConversaCore.UI.dll
@@ -94,9 +92,9 @@ ConversaCore.BlazorTemplateHost/
 ## Dependencies
 
 The template project includes all required NuGet packages:
-- Microsoft.SemanticKernel.Connectors.* (1.66.0)
+- Microsoft.SemanticKernel.Connectors.* (1.71.0)
 - Microsoft.Data.Sqlite (9.0.10)
-- Microsoft.Extensions.AI (9.10.1)
+- Microsoft.Extensions.AI (10.2.0)
 - SQLitePCLRaw.bundle_e_sqlite3 (3.0.2)
 - UglyToad.PdfPig (1.7.0-custom-5)
 
@@ -119,8 +117,11 @@ The template automatically excludes:
 - Template tools and artifacts
 - Custom build configuration (`Directory.Build.props`)
 
-### Updating DLLs
-When you build the main ConversaCore project, it automatically copies the latest DLLs to `ConversaCore.BlazorTemplateHost/lib/` via a post-build target.
+### Framework references
+Repository builds use `ConversaCoreDev` project references so template source is always checked
+against the current framework. Generated projects continue to use the DLLs in `lib/` until the
+package-consumption work tracked by CC-607 replaces them. Building the main framework projects
+refreshes those source-template DLLs through their post-build targets.
 
 ## Troubleshooting
 

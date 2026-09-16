@@ -262,7 +262,7 @@ Current working inventory: [ConversaCore.WP0CurrentStateInventory.md](ConversaCo
 
 ### Tasks
 
-- [ ] **CC-600 — Replace template startup code.** Show builder-based topic/tool registration, `AddConversationRuntime`, scoped UI consumption, and no domain agent, manual registry, or service locator.
+- [x] **CC-600 — Replace template startup code.** The maintained and staged Blazor templates now use builder descriptors, one stable sample start ID, `AddConversationRuntime`, and direct scoped UI runtime binding, with no domain agent, manual registry, startup scope, or event bridge. Repository builds use the existing `ConversaCoreDev` source-reference path while generated projects retain DLL consumption until CC-607.
 - [ ] **CC-601 — Add a minimal bounded generated-style topic.** Demonstrate `ComposedTopicFlow`, explicit constructor injection, `IWorkflowActivityFactory`, immutable Prompt/QuickAnswer definitions, typed state, completion, and fallback behavior.
 - [ ] **CC-602 — Add a tool sample.** Demonstrate one read-only tool and one confirmed mutating tool without exposing a global catalog.
 - [ ] **CC-603 — Add typed host-output samples.** Demonstrate one notification and one correlated interaction while using standard UI output for generic chat behavior; do not generate anonymous `EventTriggerActivity` payloads.

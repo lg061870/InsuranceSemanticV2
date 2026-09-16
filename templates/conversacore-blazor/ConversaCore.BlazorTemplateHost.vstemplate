@@ -2,7 +2,7 @@
 <VSTemplate Version="3.0.0" Type="Project" xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
   <TemplateData>
     <Name>ConversaCore Blazor Server</Name>
-    <Description>Blazor Server starter project pre-wired with the ConversaCore SDK, a project-specific domain agent (named &quot;$safeprojectname$DomainAgentService&quot;), and a sample TopicFlow.</Description>
+    <Description>Blazor Server starter project using the scoped ConversaCore runtime, descriptor-registered topics, and ConversaCore.UI.</Description>
     <ProjectType>CSharp</ProjectType>
     <SortOrder>1000</SortOrder>
     <CreateNewFolder>true</CreateNewFolder>

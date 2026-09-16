@@ -33,8 +33,7 @@
         "**/*.vstemplate",
         "tools/**",
         "templates/**",
-        "artifacts/**",
-        "Services/$safeprojectname$DomainAgentService.cs"
+        "artifacts/**"
       ]
     }
   ]
