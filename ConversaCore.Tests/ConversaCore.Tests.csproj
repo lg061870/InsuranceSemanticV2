@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -48,6 +48,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ConversaCore\ConversaCore.csproj" />
     <ProjectReference Include="..\ConversaCore.UI\ConversaCore.UI.csproj" />
+    <ProjectReference Include="..\ConversaCore.SDK\ConversaCore.BlazorTemplateHost\ConversaCore.BlazorTemplateHost.csproj" />
   </ItemGroup>
 
 </Project>

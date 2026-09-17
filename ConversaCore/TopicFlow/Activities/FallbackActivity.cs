@@ -24,6 +24,7 @@ public class FallbackActivity : TopicFlowActivity {
         // Mark in context that fallback was triggered
         context.SetValue("FallbackTriggered", true);
 
+        OnMessageEmitted(_message);
         TransitionTo(ActivityState.Completed, _message);
 
         // End the workflow with the fallback message
