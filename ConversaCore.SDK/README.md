@@ -11,19 +11,12 @@ A .NET project template for creating new ConversaCore Blazor Server applications
 - Pre-configured Blazor Server with ConversaCore integration
 - Descriptor-based sample-topic registration with a stable start ID
 - Scoped `IConversationRuntime` wired directly to ConversaCore.UI
-- Sample topic with an adaptive card demonstrating the framework
+- Sample topics:
+  - `SampleTopic`: Minimal composed flow demonstrating prompt, quick answer, generated adaptive card, fallback, and completion
+  - `SampleToolTopic`: Bounded tool authoring demonstrating read-only lookup (`SampleLookupTool`) and confirmed mutating order (`SampleOrderTool`) with topic allowlists (`AllowedToolIds`)
+- Bounded tool catalog registration (`AddConversaCoreTools()`)
+- `AI_DEVELOPER_GUIDE.md`: Practical authoring guide for domain developers and coding assistants
 - No domain-agent subclass, manual topic registry, or UI event bridge
-
-**Installation:**
-```powershell
-cd ConversaCore.BlazorTemplateHost
-.\tools\build-template.ps1 -Install
-```
-
-**Usage:**
-```bash
-dotnet new conversacore-blazor -o C:\MyNewApp
-```
 
 ### 2. ConversaCore.TopicSimulator
 Console harness for testing individual TopicFlow instances in isolation.

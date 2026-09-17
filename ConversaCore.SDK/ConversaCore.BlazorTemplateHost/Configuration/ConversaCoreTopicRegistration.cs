@@ -1,15 +1,18 @@
+using ConversaCore.BlazorTemplateHost.Tools;
 using ConversaCore.BlazorTemplateHost.Topics.SampleTopic;
+using ConversaCore.BlazorTemplateHost.Topics.SampleToolTopic;
 using ConversaCore.Registration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ConversaCore.BlazorTemplateHost.Configuration
 {
     /// <summary>
-    /// Registers domain topics through immutable ConversaCore descriptors.
+    /// Registers domain topics and tools through immutable ConversaCore descriptors.
     /// </summary>
     public static class ConversaCoreTopicRegistration
     {
         public const string SampleTopicId = "sample.start";
+        public const string SampleToolTopicId = "sample.tool.start";
 
         public static ConversaCoreBuilder AddConversaCoreDomainTopics(this ConversaCoreBuilder builder)
         {
@@ -23,7 +26,29 @@ namespace ConversaCore.BlazorTemplateHost.Configuration
                     "sample topic"
                 };
             });
+
+            builder.AddTopic<SampleToolTopic>(SampleToolTopicId, options =>
+            {
+                options.DisplayName = "Sample tool conversation";
+                options.Description = "Bounded tool execution sample demonstrating read-only and confirmed mutating tools.";
+                options.TriggerPhrases = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "sample tool",
+                    "tools",
+                    "lookup",
+                    "order"
+                };
+            });
             // </conversacore-domain-topics>
+            return builder;
+        }
+
+        public static ConversaCoreBuilder AddConversaCoreTools(this ConversaCoreBuilder builder)
+        {
+            // <conversacore-tools>
+            builder.AddTool<SampleLookupTool>(SampleLookupTool.Descriptor);
+            builder.AddTool<SampleOrderTool>(SampleOrderTool.Descriptor);
+            // </conversacore-tools>
             return builder;
         }
 
