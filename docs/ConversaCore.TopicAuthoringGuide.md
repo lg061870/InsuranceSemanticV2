@@ -36,6 +36,8 @@ Topics (ComposedTopicFlow)
 > [!IMPORTANT]
 > **Domain developers and code generators must NEVER create custom `Activity` subclasses in domain projects.**
 > All conversational activities are provided by the framework (`SimpleActivity`, `DelayActivity`, `PromptActivity`, `InvokeToolActivity`, `PublishHostNotificationActivity`, `InvokeHostInteractionActivity`, etc.). Domain projects contain only topics, tools, data models, and host UI event handlers.
+>
+> For code generators (such as ScriptEditor#46) and AI coding assistants emitting topic code, see the formal [Generator Integration Contract](ConversaCore.GeneratorIntegrationContract.md) for the exact activity constructor capability matrix and syntax emission rules.
 
 ---
 

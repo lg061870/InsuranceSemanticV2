@@ -150,4 +150,7 @@ When modifying the template:
 
 ---
 
-For more information, see the main repository documentation at `/docs/ConversaCore.TopicAuthoringGuide.md`.
+For more information, see:
+- [ConversaCore Topic Authoring Guide](/docs/ConversaCore.TopicAuthoringGuide.md)
+- [ConversaCore Generator Integration Contract](/docs/ConversaCore.GeneratorIntegrationContract.md) (ScriptEditor#46)
+
