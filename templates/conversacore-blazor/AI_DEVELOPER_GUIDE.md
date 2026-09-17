@@ -42,6 +42,10 @@ Topic Flow (ComposedTopicFlow)
    - **CRITICAL**: `ConfirmationGranted` must be derived **strictly** from a deterministic user action (a card submission or QuickAnswer button click like "Confirm"). **Never allow LLM text or model output to grant confirmation.**
 4. **Clean Reset Lifecycle**:
    - Topics must reset cleanly via `ComposedTopicFlow` without needing constructor rebuilds.
+5. **Typed Host Boundary Only**:
+   - Never use legacy untyped `EventTriggerActivity`.
+   - Always use `PublishHostNotificationActivity<TPayload>` for one-way host notifications and `InvokeHostInteractionActivity<TRequest, TResponse>` for correlated host interactions.
+   - Never expose `TopicWorkflowContext` to the host application.
 
 ---
 
@@ -203,3 +207,71 @@ builder.AddTopic<CheckPartsTopic>("parts.check", options =>
 // 2. Register Tool
 builder.AddTool<CheckInventoryTool>(CheckInventoryTool.Descriptor);
 ```
+
+---
+
+## 6. Recipe 4: How to Author Typed Host Notifications and Interactions
+
+When the conversation needs to interact with the host application shell outside of the standard chat transcript (such as updating a dashboard widget, driving page navigation, or requesting user authorization in the containing app), use typed host outputs:
+
+### 1. Define Typed Contracts (in `Contracts/`)
+```csharp
+namespace MyDomainAgent.Contracts;
+
+// One-way notification
+public sealed record InventoryAlertNotification(string PartNumber, int StockLevel, string Message);
+
+// Correlated interaction request & response
+public sealed record ManagerApprovalRequest(string RequestId, string PartNumber, decimal TotalCost);
+public sealed record ManagerApprovalResponse(bool Approved, string ApproverName, string? Reason);
+```
+
+### 2. Topic Activities
+In your `ComposedTopicFlow`:
+```csharp
+// One-way notification:
+Add(new PublishHostNotificationActivity<InventoryAlertNotification>(
+    "parts.notify-low-stock",
+    "parts.low-stock",
+    version: 1,
+    ctx => new InventoryAlertNotification("PART-99", 2, "Low stock warning"),
+    _dispatcher,
+    _session));
+
+// Correlated two-way interaction (topic awaits host response):
+Add(new InvokeHostInteractionActivity<ManagerApprovalRequest, ManagerApprovalResponse>(
+    "parts.request-approval",
+    "parts.manager-approval",
+    version: 1,
+    timeout: TimeSpan.FromSeconds(30),
+    _coordinator,
+    ctx => new ManagerApprovalRequest("REQ-1", "PART-99", 199.99m),
+    resultContextKey: "parts.approval.result"));
+```
+
+### 3. Host UI Consumption (`Index.razor`)
+In the Blazor host page:
+```csharp
+<CustomChatWindowV3
+    Runtime="ConversationRuntime"
+    Style="ChatStyle.SidebarChat"
+    OnHostOutput="HandleHostOutputAsync" />
+
+@code {
+    private async Task HandleHostOutputAsync(ConversationHostOutputContext context)
+    {
+        switch (context.Output)
+        {
+            case HostNotification<InventoryAlertNotification> notification:
+                // Update host UI banner / state
+                break;
+
+            case HostInteractionRequest<ManagerApprovalRequest, ManagerApprovalResponse> request:
+                // Show host dialog, then respond:
+                await context.RespondAsync(new ManagerApprovalResponse(true, "Manager John", null));
+                break;
+        }
+    }
+}
+```
+

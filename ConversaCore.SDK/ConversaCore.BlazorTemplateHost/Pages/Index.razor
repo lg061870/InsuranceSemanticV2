@@ -1,7 +1,8 @@
-﻿@page "/"
+@page "/"
 
 @using ConversaCore.Runtime
 @using ConversaCore.UI.Models
+@using ConversaCore.BlazorTemplateHost.Contracts
 
 @inject IConversationRuntime ConversationRuntime
 
@@ -15,6 +16,32 @@
                 Use this template as a thin host shell for ConversaCore topics and the ConversaCore UI.
             </p>
         </header>
+
+        @if (_latestNotification != null)
+        {
+            <section class="cc-card cc-host-notification-card" role="status" aria-live="polite">
+                <h2>📢 Host Notification: @_latestNotification.Title</h2>
+                <p>@_latestNotification.Message</p>
+                <small>Severity: <strong>@_latestNotification.Severity</strong> | Timestamp: @_latestNotification.Timestamp.ToLocalTime().ToString("T")</small>
+            </section>
+        }
+
+        @if (_pendingInteractionRequest != null)
+        {
+            <section class="cc-card cc-host-interaction-card" role="region" aria-label="Host Action Required">
+                <h2>⚡ Host Action Required</h2>
+                <p><strong>@_pendingInteractionRequest.Prompt</strong></p>
+                <p class="text-muted">This request was dispatched across the host boundary and is awaiting a decision in the host application shell.</p>
+                <div class="cc-interaction-options" style="display: flex; gap: 8px; margin-top: 12px;">
+                    @foreach (var option in _pendingInteractionRequest.AvailableOptions)
+                    {
+                        <button class="btn btn-primary" @onclick="() => RespondToInteractionAsync(option)">
+                            @option
+                        </button>
+                    }
+                </div>
+            </section>
+        }
 
         <section class="cc-card">
             <h2>Getting started</h2>
@@ -30,6 +57,7 @@
             <ul>
                 <li>The chat UI is rendered in a dedicated right sidebar to match <code>ChatStyle.SidebarChat</code>.</li>
                 <li>Static web assets (CSS/JS/images) are served from <code>/_content/ConversaCore.UI</code>.</li>
+                <li>Host events (notifications and correlated interactions) cross the boundary through <code>OnHostOutput</code> without exposing workflow context.</li>
             </ul>
         </section>
     </main>
@@ -37,6 +65,48 @@
     <aside class="cc-home-sidebar" aria-label="Chat">
         <CustomChatWindowV3
             Runtime="ConversationRuntime"
-            Style="ChatStyle.SidebarChat" />
+            Style="ChatStyle.SidebarChat"
+            OnHostOutput="HandleHostOutputAsync" />
     </aside>
 </div>
+
+@code {
+    private SampleHostNotification? _latestNotification;
+    private ConversationHostOutputContext? _pendingInteractionContext;
+    private SampleHostInteractionRequest? _pendingInteractionRequest;
+
+    private async Task HandleHostOutputAsync(ConversationHostOutputContext context)
+    {
+        switch (context.Output)
+        {
+            case HostNotification<SampleHostNotification> notification:
+                _latestNotification = notification.Payload;
+                await InvokeAsync(StateHasChanged);
+                break;
+
+            case HostInteractionRequest<SampleHostInteractionRequest, SampleHostInteractionResponse> request:
+                _pendingInteractionContext = context;
+                _pendingInteractionRequest = request.Request;
+                await InvokeAsync(StateHasChanged);
+                break;
+        }
+    }
+
+    private async Task RespondToInteractionAsync(string choice)
+    {
+        if (_pendingInteractionContext != null)
+        {
+            var ctx = _pendingInteractionContext;
+            _pendingInteractionContext = null;
+            _pendingInteractionRequest = null;
+
+            var response = new SampleHostInteractionResponse(
+                SelectedOption: choice,
+                Comments: $"Host selection submitted at {DateTimeOffset.UtcNow:T}",
+                Confirmed: !string.Equals(choice, "Decline", StringComparison.OrdinalIgnoreCase));
+
+            await ctx.RespondAsync(response);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

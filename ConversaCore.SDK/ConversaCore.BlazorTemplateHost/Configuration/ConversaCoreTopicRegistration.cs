@@ -13,6 +13,7 @@ namespace ConversaCore.BlazorTemplateHost.Configuration
     {
         public const string SampleTopicId = "sample.start";
         public const string SampleToolTopicId = "sample.tool.start";
+        public const string SampleHostOutputTopicId = "sample.host.start";
 
         public static ConversaCoreBuilder AddConversaCoreDomainTopics(this ConversaCoreBuilder builder)
         {
@@ -37,6 +38,20 @@ namespace ConversaCore.BlazorTemplateHost.Configuration
                     "tools",
                     "lookup",
                     "order"
+                };
+            });
+
+            builder.AddTopic<ConversaCore.BlazorTemplateHost.Topics.SampleHostOutputTopic.SampleHostOutputTopic>(SampleHostOutputTopicId, options =>
+            {
+                options.DisplayName = "Sample host output conversation";
+                options.Description = "Bounded host-output sample demonstrating typed notifications and correlated interactions.";
+                options.TriggerPhrases = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "sample host",
+                    "host output",
+                    "notification",
+                    "interaction",
+                    "decision"
                 };
             });
             // </conversacore-domain-topics>

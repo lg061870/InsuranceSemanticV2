@@ -14,6 +14,7 @@ A .NET project template for creating new ConversaCore Blazor Server applications
 - Sample topics:
   - `SampleTopic`: Minimal composed flow demonstrating prompt, quick answer, generated adaptive card, fallback, and completion
   - `SampleToolTopic`: Bounded tool authoring demonstrating read-only lookup (`SampleLookupTool`) and confirmed mutating order (`SampleOrderTool`) with topic allowlists (`AllowedToolIds`)
+  - `SampleHostOutputTopic`: Bounded host-output authoring demonstrating typed one-way notifications (`SampleHostNotification`) and correlated two-way host interactions (`SampleHostInteractionRequest` / `SampleHostInteractionResponse`)
 - Bounded tool catalog registration (`AddConversaCoreTools()`)
 - `AI_DEVELOPER_GUIDE.md`: Practical authoring guide for domain developers and coding assistants
 - No domain-agent subclass, manual topic registry, or UI event bridge
