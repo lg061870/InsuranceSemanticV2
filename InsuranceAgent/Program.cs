@@ -208,17 +208,8 @@ internal class Program {
 
 
         // ------------------------------------------------------------
-        // EMBEDDINGS — used locally (Completely valid)
-        // ------------------------------------------------------------
-        builder.Services.AddOpenAIEmbeddingGenerator(
-            modelId: configuration["OpenAI:EmbeddingModel"] ?? "text-embedding-3-small",
-            apiKey: apiKey
-        );
-
-        // ------------------------------------------------------------
         // DATABASES / REPOSITORIES
         // ------------------------------------------------------------
-        builder.Services.AddSingleton<IVectorDatabaseService, SqliteVectorDatabaseService>();
         builder.Services.AddSingleton<InsuranceRuleRepository>();
 
         // ------------------------------------------------------------
