@@ -7,6 +7,10 @@ namespace ConversaCore.Events;
 /// to the chat window (e.g., highlight the prompt, show a hint message).
 /// Routed through CustomEventTriggered events.
 /// </summary>
+/// <remarks>
+/// Deprecated in favor of typed host notification and interaction output envelopes.
+/// </remarks>
+[Obsolete("ChatInteractionPayload is deprecated. Use typed host notification or interaction payloads instead.")]
 public sealed class ChatInteractionPayload
 {
     public ChatInteractionType Type { get; set; } = ChatInteractionType.RequireUserAttention;
@@ -28,6 +32,7 @@ public sealed class ChatInteractionPayload
 /// Well-known chat interaction kinds that activities can request.
 /// Extend this as new UX patterns emerge.
 /// </summary>
+[Obsolete("ChatInteractionType is deprecated. Use typed host notification or interaction payloads instead.")]
 public enum ChatInteractionType
 {
     /// <summary>

@@ -1,3 +1,5 @@
+#pragma warning disable CS0618 // Unit test suite for legacy EventTriggerActivity
+
 using System;
 using System.Threading;
 using System.Threading.Tasks;

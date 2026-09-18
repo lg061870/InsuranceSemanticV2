@@ -1,4 +1,4 @@
-﻿using ConversaCore.Core;
+using ConversaCore.Core;
 using ConversaCore.Events;   // for TopicStateMachine<TState>
 using ConversaCore.Interfaces;
 using ConversaCore.Models;         // for TopicWorkflowContext, ActivityResult
@@ -209,6 +209,7 @@ public abstract class TopicFlow : ITopic, ITerminable {
     public event EventHandler<ActivityCompletedEventArgs>? ActivityCompleted;
     public event EventHandler<TopicInsertedEventArgs>? TopicInserted;
     public event EventHandler<ActivityLifecycleEventArgs>? ActivityLifecycleChanged;
+    [Obsolete("CustomEventTriggered is deprecated and unobserved by the runtime. Use PublishHostNotificationActivity<TPayload> or InvokeHostInteractionActivity<TRequest, TResponse> to communicate with the host.")]
     public event EventHandler<CustomEventTriggeredEventArgs>? CustomEventTriggered;
     public event EventHandler<AsyncQueryCompletedEventArgs>? AsyncActivityCompleted;
 

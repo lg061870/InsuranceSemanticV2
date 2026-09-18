@@ -1,3 +1,5 @@
+#pragma warning disable CS0618 // Test suite exercises legacy compatibility registration APIs
+
 using System;
 using System.Collections.Generic;
 using System.Linq;

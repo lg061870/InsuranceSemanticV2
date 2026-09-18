@@ -1,3 +1,5 @@
+#pragma warning disable CS0618 // Characterization test suite intentionally exercises legacy obsolete APIs
+
 using ConversaCore.Context;
 using ConversaCore.Models;
 using ConversaCore.TopicFlow;

@@ -152,6 +152,7 @@
 
     /// <summary>Temporary compatibility fallback for applications not yet migrated to IConversationRuntime.</summary>
     [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("AgentService is obsolete. Use Runtime parameter of type IConversationRuntime instead.")]
     [Parameter] public DomainAgentService? AgentService { get; set; }
     
     /// <summary>
@@ -161,6 +162,7 @@
     
     // Allow consumer to provide a subscribe method via parameter
     [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("SubscribeToEvents is obsolete. Subscribe to OnHostOutput or observe IConversationRuntime outputs instead.")]
     [Parameter] public Action<CustomChatWindowV3>? SubscribeToEvents { get; set; }
 
     // ========== STATE ========== 

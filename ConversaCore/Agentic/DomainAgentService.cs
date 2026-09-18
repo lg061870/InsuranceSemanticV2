@@ -1,4 +1,4 @@
-﻿using ConversaCore.Cards;
+using ConversaCore.Cards;
 using ConversaCore.Context;
 using ConversaCore.Events;
 using ConversaCore.Interfaces;
@@ -18,6 +18,16 @@ namespace ConversaCore.Agentic;
 /// Provides core conversation orchestration and requires domain implementations
 /// to handle UI events via abstract event handlers.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Deprecated:</b> Subclassing orchestration is superseded by framework-owned
+/// <see cref="ConversaCore.Runtime.IConversationRuntime"/> and descriptor-based topic registration.
+/// Domain hosts should register topics using <c>ConversaCoreBuilder.AddTopic&lt;TTopic&gt;(topicId)</c>
+/// and interact with the conversation through <see cref="ConversaCore.Runtime.IConversationRuntime"/>.
+/// See <c>docs/ConversaCore.TopicAuthoringGuide.md</c> for migration guidance.
+/// </para>
+/// </remarks>
+[Obsolete("DomainAgentService is deprecated and superseded by IConversationRuntime and descriptor-based topic registration. See docs/ConversaCore.TopicAuthoringGuide.md for migration guidance.")]
 public abstract class DomainAgentService {
 
     protected readonly TopicRegistry _topicRegistry;

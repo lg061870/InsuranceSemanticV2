@@ -183,6 +183,7 @@ public static class ConversaCoreBuilderCompatibilityExtensions
     /// <see cref="ConversaCoreBuilderTopicExtensions.AddTopic(ConversaCoreBuilder, TopicDescriptor)"/>
     /// caller is subject to.
     /// </exception>
+    [Obsolete("AddTopicsFromLegacyRegistrations is a temporary compatibility bridge. Migrate topic registrations to ConversaCoreBuilder.AddTopic<TTopic>(topicId) or ConversaCoreTopicRegistration with immutable topic descriptors.")]
     public static ConversaCoreBuilder AddTopicsFromLegacyRegistrations(
         this ConversaCoreBuilder builder,
         IReadOnlyList<string>? factoryTopicIds = null,

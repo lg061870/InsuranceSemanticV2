@@ -333,6 +333,7 @@ public sealed class ConversationRuntimeTests
             Task.FromResult(1f);
     }
 
+#pragma warning disable CS0618 // Intentional backward-compatibility tests for legacy EventTriggerActivity
     private sealed class EventFlow : ConversaCore.TopicFlow.TopicFlow
     {
         public EventFlow()
@@ -396,6 +397,7 @@ public sealed class ConversationRuntimeTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(1f);
     }
+#pragma warning restore CS0618
 
     private sealed class AppointmentCardActivity(TopicWorkflowContext context)
         : AdaptiveCardActivity<AppointmentInput>(

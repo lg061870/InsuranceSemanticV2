@@ -8,6 +8,13 @@ using Microsoft.Extensions.Logging;
 
 namespace SimpleBlazorDemo.Services;
 
+/// <summary>
+/// Domain agent service inheriting DomainAgentService.
+/// </summary>
+/// <remarks>
+/// Obsolete. Superseded by IConversationRuntime and descriptor-based topic registration.
+/// </remarks>
+[Obsolete("SimpleDomainAgentService is obsolete and superseded by IConversationRuntime and descriptor-based topic registration.")]
 public class SimpleDomainAgentService : DomainAgentService
 {
     public SimpleDomainAgentService(

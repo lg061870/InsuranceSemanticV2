@@ -1,4 +1,4 @@
-﻿using ConversaCore.Cards;
+using ConversaCore.Cards;
 using ConversaCore.Context;
 using ConversaCore.Events;
 using ConversaCore.Interfaces;
@@ -14,6 +14,13 @@ using InsuranceAgent.Topics;
 using System.Reflection;
 using System.Text.Json;
 
+/// <summary>
+/// Legacy agent service.
+/// </summary>
+/// <remarks>
+/// Obsolete and scheduled for removal in CC-701. Superseded by IConversationRuntime and descriptor-based topic registration.
+/// </remarks>
+[Obsolete("InsuranceAgentService is obsolete and superseded by IConversationRuntime and descriptor-based topic registration. See docs/ConversaCore.TopicAuthoringGuide.md for migration guidance.")]
 public class InsuranceAgentService {
 
     private readonly TopicRegistry _topicRegistry;

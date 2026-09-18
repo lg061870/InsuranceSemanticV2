@@ -1,3 +1,5 @@
+#pragma warning disable CS0618 // Unit test suite for LegacyTopicOutputAdapter
+
 using ConversaCore.Context;
 using ConversaCore.Events;
 using ConversaCore.Registration;

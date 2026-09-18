@@ -1,4 +1,4 @@
-﻿using ConversaCore.Agentic;
+using ConversaCore.Agentic;
 using ConversaCore.Context;
 using ConversaCore.Events;
 using ConversaCore.Interfaces;
@@ -8,6 +8,13 @@ using ConversaCore.Topics;
 
 namespace InsuranceLeadsAgent.Services;
 
+/// <summary>
+/// Domain agent service inheriting DomainAgentService.
+/// </summary>
+/// <remarks>
+/// Obsolete. Superseded by IConversationRuntime and descriptor-based topic registration.
+/// </remarks>
+[Obsolete("InsuranceLeadsAgent is obsolete and superseded by IConversationRuntime and descriptor-based topic registration.")]
 public class InsuranceLeadsAgent : DomainAgentService {
     public InsuranceLeadsAgent(
         TopicRegistry topicRegistry,

@@ -1,4 +1,4 @@
-﻿using ConversaCore.Context;
+using ConversaCore.Context;
 using ConversaCore.DTO;
 using ConversaCore.Events;
 using ConversaCore.Interfaces;
@@ -12,6 +12,12 @@ namespace ConversaCore.TopicFlow;
 /// Supports both fire-and-forget events (continues execution immediately)
 /// and blocking events (waits for UI response before continuing).
 /// </summary>
+/// <remarks>
+/// Deprecated in favor of typed host output envelopes: use
+/// <see cref="ConversaCore.TopicFlow.PublishHostNotificationActivity{TPayload}"/> for one-way notifications or
+/// <see cref="ConversaCore.TopicFlow.InvokeHostInteractionActivity{TRequest, TResponse}"/> for correlated two-way interactions.
+/// </remarks>
+[Obsolete("EventTriggerActivity is deprecated. Use PublishHostNotificationActivity<TPayload> for one-way notifications or InvokeHostInteractionActivity<TRequest, TResponse> for correlated two-way interactions.")]
 public class EventTriggerActivity : TopicFlowActivity, ICustomEventTriggeredActivity {
     private readonly ILogger? _logger;
     private readonly IConversationContext? _conversationContext;

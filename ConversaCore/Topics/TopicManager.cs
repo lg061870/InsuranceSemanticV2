@@ -1,4 +1,4 @@
-using ConversaCore.Context;
+ï»¿using ConversaCore.Context;
 using ConversaCore.Models;
 using ConversaCore.TopicFlow;
 using Microsoft.Extensions.Logging;
@@ -8,6 +8,10 @@ namespace ConversaCore.Topics;
 /// <summary>
 /// Interface for the topic manager service.
 /// </summary>
+/// <remarks>
+/// Deprecated in favor of <see cref="ConversaCore.Runtime.IConversationRuntime"/> and framework routing.
+/// </remarks>
+[Obsolete("ITopicManager is deprecated and superseded by IConversationRuntime and framework routing. Use IConversationRuntime instead.")]
 public interface ITopicManager {
     /// <summary>
     /// Processes a user message through the available topics.
@@ -20,6 +24,10 @@ public interface ITopicManager {
 /// Responsible for coordinating active topics, selecting the best topic,
 /// and ensuring the TopicWorkflowContext flows across.
 /// </summary>
+/// <remarks>
+/// Deprecated in favor of <see cref="ConversaCore.Runtime.IConversationRuntime"/> and framework routing.
+/// </remarks>
+[Obsolete("TopicManager is deprecated and superseded by IConversationRuntime and framework routing. Use IConversationRuntime instead.")]
 public class TopicManager : ITopicManager {
     private readonly IEnumerable<ITopic> _topics;
     private readonly IConversationContext _context;
@@ -44,13 +52,13 @@ public class TopicManager : ITopicManager {
         _logger.LogInformation("Processing message: {Message}",
             string.IsNullOrEmpty(message) ? "<empty>" : message[..Math.Min(30, message.Length)]);
 
-        // 1. If there’s an active topic, try that first
+        // 1. If there's an active topic, try that first
         if (!string.IsNullOrEmpty(_context.CurrentTopicName)) {
             var activeTopic = _topics.FirstOrDefault(t => t.Name == _context.CurrentTopicName);
             if (activeTopic != null) {
                 var result = await activeTopic.ProcessMessageAsync(message, cancellationToken);
 
-                // ?? ensure wfContext crosses over
+                // Ensure wfContext crosses over
                 result.wfContext = _wfContext;
 
                 if (result.IsHandled) {
@@ -67,7 +75,7 @@ public class TopicManager : ITopicManager {
                 if (confidence > 0.5f) {
                     var result = await topic.ProcessMessageAsync(message, cancellationToken);
 
-                    // ?? attach workflow context
+                    // Attach workflow context
                     result.wfContext = _wfContext;
 
                     if (result.IsHandled) {
@@ -93,7 +101,7 @@ public class TopicManager : ITopicManager {
             _logger.LogInformation("Fallback to default topic: {TopicName}", defaultTopic.Name);
             var result = await defaultTopic.ProcessMessageAsync(message, cancellationToken);
 
-            // ?? attach wfContext
+            // Attach wfContext
             result.wfContext = _wfContext;
 
             return result;

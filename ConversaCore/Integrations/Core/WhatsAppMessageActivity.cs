@@ -12,6 +12,12 @@ namespace ConversaCore.Integrations.Core;
 /// account configured under the "WhatsApp" integration, but the payload includes
 /// an optional TenantId for future multi-tenant routing.
 /// </summary>
+/// <remarks>
+/// Provider-specific workflow activities are deprecated. Model third-party messaging as typed tools implementing
+/// <see cref="ConversaCore.Tools.IConversaTool{TRequest, TResult}"/> and execute them via
+/// <see cref="ConversaCore.TopicFlow.InvokeToolActivity{TTool, TRequest, TResult}"/>.
+/// </remarks>
+[Obsolete("Provider-specific workflow activities are deprecated. Model third-party messaging as typed tools implementing IConversaTool<TRequest, TResult> and execute them via InvokeToolActivity<TTool, TRequest, TResult>.")]
 public class WhatsAppMessageActivity : TopicFlowActivity
 {
     private readonly IIntegrationService _integrationService;

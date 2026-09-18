@@ -10,6 +10,10 @@ namespace ConversaCore.TopicFlow;
 /// briefly draw the user's attention to the text input prompt
 /// (e.g., by pulsing/highlighting it and showing a short hint).
 /// </summary>
+/// <remarks>
+/// Deprecated in favor of typed host notification activities (<see cref="PublishHostNotificationActivity{TPayload}"/>) or standard UI outputs.
+/// </remarks>
+[Obsolete("ChatPromptAttentionActivity is deprecated. Use typed host notification activities (PublishHostNotificationActivity<TPayload>) or standard UI outputs instead.")]
 public class ChatPromptAttentionActivity : TopicFlowActivity, ICustomEventTriggeredActivity
 {
     public const string DefaultEventName = "PromptAttention";

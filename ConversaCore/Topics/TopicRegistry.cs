@@ -11,6 +11,12 @@ namespace ConversaCore.Topics {
     /// Simple registry for all available topics in the system.
     /// Implements ITerminable to support proper cleanup of topics during shutdown or reset.
     /// </summary>
+    /// <remarks>
+    /// TopicRegistry is deprecated. Topic catalog and routing are framework-managed via immutable
+    /// <see cref="ConversaCore.Registration.TopicDescriptor"/>, <see cref="ConversaCore.Runtime.ITopicCatalog"/>,
+    /// and scoped <see cref="ConversaCore.Runtime.ITopicActivator"/>.
+    /// </remarks>
+    [Obsolete("TopicRegistry is deprecated. Topic catalog and routing are framework-managed via immutable TopicDescriptors, ITopicCatalog, and scoped ITopicActivator.")]
     public class TopicRegistry : ITerminable {
         private readonly List<ITopic> _topics = new();
         private readonly ILogger<TopicRegistry>? _logger;

@@ -1,4 +1,4 @@
-﻿using ConversaCore.Cards;
+using ConversaCore.Cards;
 using ConversaCore.Context;
 using ConversaCore.TopicFlow;
 using ConversaCore.Topics;
@@ -9,6 +9,13 @@ using InsuranceAgent.Topics;
 
 namespace InsuranceAgent.Services;
 
+/// <summary>
+/// Domain agent service inheriting DomainAgentService.
+/// </summary>
+/// <remarks>
+/// Obsolete and scheduled for removal in CC-701. Superseded by IConversationRuntime and descriptor-based topic registration.
+/// </remarks>
+[Obsolete("InsuranceAgentServiceV2 is obsolete and superseded by IConversationRuntime and descriptor-based topic registration. See docs/ConversaCore.TopicAuthoringGuide.md for migration guidance.")]
 public class InsuranceAgentServiceV2 : DomainAgentService  { 
 
     // Activity IDs for the compliance flowchart

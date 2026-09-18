@@ -1,3 +1,5 @@
+#pragma warning disable CS0618 // DI tests verify legacy TopicRegistry/ITopicManager registrations remain present until CC-704
+
 using System;
 using System.Collections.Generic;
 using System.Linq;

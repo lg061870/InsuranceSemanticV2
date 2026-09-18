@@ -7,6 +7,11 @@ namespace ConversaCore.Topics {
     /// Builder for creating and configuring TopicFlow instances using TopicFlowActivity subclasses.
     /// Queue-driven: activities run in the order they are added.
     /// </summary>
+    /// <remarks>
+    /// FlowBuilder is obsolete and non-functional. Derive topics from <see cref="ConversaCore.TopicFlow.ComposedTopicFlow"/>
+    /// and implement <c>ComposeWorkflow()</c> instead.
+    /// </remarks>
+    [Obsolete("FlowBuilder is obsolete and non-functional. Derive topics from ComposedTopicFlow and implement ComposeWorkflow() instead.")]
     public class FlowBuilder {
         private readonly string _flowName;
         private readonly TopicWorkflowContext _context;
@@ -115,6 +120,7 @@ namespace ConversaCore.Topics {
         }
     }
 
+    [Obsolete("FlowBuilder is obsolete. Derive topics from ComposedTopicFlow instead.")]
     public class ActivityBuilder {
         protected readonly FlowBuilder _flowBuilder;
         protected readonly string _activityId;
@@ -132,6 +138,7 @@ namespace ConversaCore.Topics {
         public FlowBuilder AsStartingActivity() => _flowBuilder.StartWith(_activityId);
     }
 
+    [Obsolete("FlowBuilder is obsolete. Derive topics from ComposedTopicFlow instead.")]
     public class ConditionalActivityBuilder : ActivityBuilder {
         private readonly ConditionalActivity _conditionalActivity;
 

@@ -1,4 +1,4 @@
-﻿#pragma warning disable SKEXP0010
+#pragma warning disable SKEXP0010
 
 using ConversaCore.Context;
 using ConversaCore.Interfaces;
@@ -164,6 +164,13 @@ public static class ServiceCollectionExtensions {
         Console.WriteLine("ConversaCore successfully registered.");
     }
 
+    /// <summary>
+    /// Obsolete method for resetting ConversaCore via singleton topic registry.
+    /// </summary>
+    /// <remarks>
+    /// Reset is conversation-scoped. Use <c>IConversationRuntime.ResetAsync()</c> instead.
+    /// </remarks>
+    [Obsolete("ResetConversaCore is obsolete. Reset is conversation-scoped; use IConversationRuntime.ResetAsync() instead of resetting singleton topic registry state.")]
     public static void ResetConversaCore(this IServiceProvider serviceProvider) {
         var topicRegistry = serviceProvider.GetRequiredService<TopicRegistry>();
         topicRegistry.Reset();
@@ -172,6 +179,15 @@ public static class ServiceCollectionExtensions {
         }
     }
 
+    /// <summary>
+    /// Obsolete method for imperatively copying resolved scoped ITopic instances into TopicRegistry.
+    /// </summary>
+    /// <remarks>
+    /// Manual singleton registry configuration violates scoped lifetime boundaries.
+    /// Register topics using <c>ConversaCoreBuilder.AddTopic&lt;TTopic&gt;(topicId)</c> or
+    /// <c>ConversaCoreTopicRegistration</c> with immutable topic descriptors instead.
+    /// </remarks>
+    [Obsolete("ConfigureTopics is obsolete and violates scoped lifetime boundaries. Use ConversaCoreBuilder.AddTopic<TTopic>(topicId) or ConversaCoreTopicRegistration with immutable topic descriptors instead of manual singleton registry configuration.")]
     public static TopicRegistry ConfigureTopics(this TopicRegistry registry, IServiceProvider sp) {
         Log("Starting ConfigureTopics() ...");
         try {

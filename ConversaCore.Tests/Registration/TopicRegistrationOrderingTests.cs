@@ -1,3 +1,5 @@
+#pragma warning disable CS0618 // Compatibility ordering tests exercise legacy AddTopicsFromLegacyRegistrations until CC-704
+
 using System;
 using System.Collections.Generic;
 using System.Linq;

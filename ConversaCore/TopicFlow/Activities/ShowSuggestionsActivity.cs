@@ -8,6 +8,10 @@ namespace ConversaCore.TopicFlow;
 /// outside the chat transcript. When a pill is clicked, the UI should send the
 /// suggestion text back as a normal user message.
 /// </summary>
+/// <remarks>
+/// Deprecated in favor of typed host notification activities (<see cref="PublishHostNotificationActivity{TPayload}"/>) or standard UI outputs.
+/// </remarks>
+[Obsolete("ShowSuggestionsActivity is deprecated. Use PublishHostNotificationActivity<TPayload> or standard UI outputs instead.")]
 public class ShowSuggestionsActivity : TopicFlowActivity, ICustomEventTriggeredActivity
 {
     public const string DefaultEventName = "UpdateSuggestions";
