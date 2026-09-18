@@ -1,17 +1,14 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace ConversaCore.TopicFlow;
 
 public static class TopicWorkflowContextExtensions {
     public static bool TryGetValue(this TopicWorkflowContext context, string key, out object? value) {
-        value = null;
-
-        var field = context.GetType().GetField("_values", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        if (field?.GetValue(context) is IDictionary<string, object?> dict) {
-            return dict.TryGetValue(key, out value);
+        if (context == null) {
+            value = null;
+            return false;
         }
-
-        return false;
+        return context.TryGetValue(key, out value);
     }
     /// <summary>
     /// Gets a string value from context with multiple key fallbacks

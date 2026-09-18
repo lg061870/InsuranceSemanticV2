@@ -252,17 +252,8 @@ public abstract class DomainAgentService {
     }
 
     private void ForceTopicStateMachineToIdle(TopicFlow.TopicFlow topic, string name) {
-        var fsmField = topic.GetType().BaseType?
-            .GetField("_fsm", BindingFlags.NonPublic | BindingFlags.Instance);
-
-        if (fsmField?.GetValue(topic) is ITopicStateMachine<TopicFlow.FlowState> fsm) {
-            fsm.ForceState(TopicFlow.FlowState.Idle, $"Forced reset to Idle in {name}");
-            fsm.ClearTransitionHistory();
-            LogInfo("0010018", name);
-        }
-        else {
-            LogWarn("0010019", name);
-        }
+        topic.ForceState(TopicFlow.TopicFlow.FlowState.Idle, $"Forced reset to Idle in {name}");
+        LogInfo("0010018", name);
     }
 
     protected class PendingSubTopic {

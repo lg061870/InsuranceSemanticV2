@@ -1,7 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -80,13 +79,8 @@ public sealed class ConversationStartTopic : ConversaCore.TopicFlow.TopicFlow {
         Context.SetValue(ContextFlag, false);
         base.Reset();
 
-        // Reset internal FSM state safely
-        var stateMachineField = typeof(ConversaCore.TopicFlow.TopicFlow)
-            .GetField("_fsm", BindingFlags.NonPublic | BindingFlags.Instance);
-        var stateMachine = stateMachineField?.GetValue(this);
-
-        if (stateMachine is ConversaCore.StateMachine.ITopicStateMachine<ConversaCore.TopicFlow.TopicFlow.FlowState> fsm)
-            fsm.ForceState(ConversaCore.TopicFlow.TopicFlow.FlowState.Idle, "Forced reset to Idle in ConversationStartTopic.Reset");
+        // Reset internal FSM state safely without reflection
+        ForceState(ConversaCore.TopicFlow.TopicFlow.FlowState.Idle, "Forced reset to Idle in ConversationStartTopic.Reset");
 
         // Reset conversation metadata
         _conversationContext.SetValue("ConversationStartTopic_create", DateTime.UtcNow.ToString("o"));
@@ -137,18 +131,7 @@ public sealed class ConversationStartTopic : ConversaCore.TopicFlow.TopicFlow {
     // Update trigger activity (reflective)
     // -------------------------------------------------------------
     private void UpdateNextTopicFromContext() {
-        var activities = GetType()
-            .BaseType?
-            .GetField("_activities", BindingFlags.NonPublic | BindingFlags.Instance)?
-            .GetValue(this) as List<TopicFlowActivity>;
-
-        if (activities == null) {
-            _logger.LogWarning("[ConversationStartTopic] Could not access activities collection through reflection");
-            return;
-        }
-
-        var triggerActivity = activities.FirstOrDefault(a => a.Id == "TriggerNextTopic") as TriggerTopicActivity;
-        if (triggerActivity != null) {
+        if (GetActivity("TriggerNextTopic") is TriggerTopicActivity triggerActivity) {
             string nextTopicName = Context.GetValue<string>("next_topic") ?? "FallbackTopic";
             if (triggerActivity.TopicToTrigger != nextTopicName) {
                 _logger.LogInformation("[ConversationStartTopic] Updating next topic from {Old} to {New}",
@@ -161,11 +144,8 @@ public sealed class ConversationStartTopic : ConversaCore.TopicFlow.TopicFlow {
                     waitForCompletion: false,
                     _conversationContext);
 
-                int index = activities.IndexOf(triggerActivity);
-                if (index >= 0) {
-                    activities[index] = updatedTrigger;
-                    _logger.LogInformation("[ConversationStartTopic] Successfully updated trigger activity");
-                }
+                Add(updatedTrigger);
+                _logger.LogInformation("[ConversationStartTopic] Successfully updated trigger activity");
             }
         }
     }

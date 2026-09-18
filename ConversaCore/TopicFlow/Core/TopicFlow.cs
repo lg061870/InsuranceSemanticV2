@@ -179,6 +179,23 @@ public abstract class TopicFlow : ITopic, ITerminable {
     }
 
     /// <summary>
+    /// Forces the topic state machine into the specified state and clears transition history.
+    /// Provides a safe framework-owned alternative to reflection-based FSM manipulation.
+    /// </summary>
+    public void ForceState(FlowState state, string reason) {
+        _fsm.ForceState(state, reason);
+        _fsm.ClearTransitionHistory();
+    }
+
+    /// <summary>
+    /// Gets an activity by its identifier, or null if not found.
+    /// </summary>
+    public TopicFlowActivity? GetActivity(string activityId) {
+        if (string.IsNullOrEmpty(activityId)) return null;
+        return _activities.TryGetValue(activityId, out var activity) ? activity : null;
+    }
+
+    /// <summary>
     /// Clears all activities and the activity queue. For use in derived classes.
     /// </summary>
     protected void ClearActivities()
