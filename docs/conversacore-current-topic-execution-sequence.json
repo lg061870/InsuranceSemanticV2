@@ -2,12 +2,12 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "ConversaCore Current Topic Execution Sequence",
+    "title": "ConversaCore Topic Execution Sequence",
     "locale": "en",
     "output": "conversacore-current-topic-execution-sequence.html",
     "quality_profile": "showcase",
     "column_fit": "spread",
-    "viewBox": [820, 500]
+    "viewBox": [960, 560]
   },
   "participants": [
     {
@@ -23,40 +23,46 @@
       "sublabel": "CustomChatWindowV3"
     },
     {
-      "id": "domain_agent",
+      "id": "runtime",
       "type": "backend",
-      "label": "Domain Agent",
-      "sublabel": "DomainAgentService"
+      "label": "Runtime",
+      "sublabel": "IConversationRuntime"
     },
     {
-      "id": "topic_registry",
+      "id": "router",
       "type": "backend",
-      "label": "Topic Registry",
-      "sublabel": "bounded topic catalog"
+      "label": "Router",
+      "sublabel": "ITopicRouter"
+    },
+    {
+      "id": "runner",
+      "type": "backend",
+      "label": "Runner",
+      "sublabel": "IWorkflowRunner"
     },
     {
       "id": "topic_flow",
       "type": "backend",
       "label": "TopicFlow",
-      "sublabel": "resumable workflow"
+      "sublabel": "ComposedTopicFlow"
     },
     {
       "id": "activity",
       "type": "backend",
       "label": "Activity",
-      "sublabel": "controlled step"
+      "sublabel": "cards, tools, prompts"
     }
   ],
   "segments": [
     {
-      "from": 262,
-      "to": 342,
-      "label": "Execute its activity queue"
+      "from": 294,
+      "to": 364,
+      "label": "Execute active topic activities"
     },
     {
-      "from": 348,
-      "to": 418,
-      "label": "Return UI events"
+      "from": 378,
+      "to": 446,
+      "label": "Dispatch typed outputs to UI"
     }
   ],
   "messages": [
@@ -65,46 +71,54 @@
       "from": "user",
       "to": "chat_ui",
       "y": 160,
-      "label": "submit message",
+      "label": "submit message or card",
       "variant": "emphasis"
     },
     {
-      "id": "raise-user-event",
+      "id": "process-message",
       "from": "chat_ui",
-      "to": "domain_agent",
+      "to": "runtime",
       "y": 188,
-      "label": "UserMessageReceived(message)",
+      "label": "ProcessMessageAsync(message)",
       "variant": "emphasis"
     },
     {
-      "id": "find-topic",
-      "from": "domain_agent",
-      "to": "topic_registry",
+      "id": "route-topic",
+      "from": "runtime",
+      "to": "router",
       "y": 216,
-      "label": "FindBestTopicAsync(message)",
+      "label": "RouteOrResumeAsync(message)",
       "variant": "emphasis"
     },
     {
-      "id": "return-topic",
-      "from": "topic_registry",
-      "to": "domain_agent",
+      "id": "return-match",
+      "from": "router",
+      "to": "runtime",
       "y": 244,
-      "label": "topic + confidence",
+      "label": "TopicMatch / ActiveTopic",
       "variant": "return"
     },
     {
       "id": "run-topic",
-      "from": "domain_agent",
-      "to": "topic_flow",
+      "from": "runtime",
+      "to": "runner",
       "y": 272,
-      "label": "HookTopicEvents(); RunAsync()",
+      "label": "ExecuteAsync(topic, message)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "advance-flow",
+      "from": "runner",
+      "to": "topic_flow",
+      "y": 300,
+      "label": "ProcessAsync(message)",
       "variant": "emphasis"
     },
     {
       "id": "run-activity",
       "from": "topic_flow",
       "to": "activity",
-      "y": 300,
+      "y": 328,
       "label": "RunAsync(context, input)",
       "variant": "emphasis"
     },
@@ -112,32 +126,32 @@
       "id": "activity-result",
       "from": "activity",
       "to": "topic_flow",
-      "y": 328,
-      "label": "ActivityResult + output events",
+      "y": 356,
+      "label": "ActivityResult",
       "variant": "return"
     },
     {
-      "id": "bubble-events",
-      "from": "topic_flow",
-      "to": "domain_agent",
-      "y": 356,
-      "label": "message / card / lifecycle events",
-      "variant": "dashed"
+      "id": "emit-output",
+      "from": "runner",
+      "to": "runtime",
+      "y": 384,
+      "label": "Emit output events to dispatcher",
+      "variant": "return"
     },
     {
-      "id": "notify-ui",
-      "from": "domain_agent",
+      "id": "dispatch-ui",
+      "from": "runtime",
       "to": "chat_ui",
-      "y": 384,
-      "label": "ActivityMessageReady / CardReady",
+      "y": 412,
+      "label": "IConversationOutput stream",
       "variant": "return"
     },
     {
       "id": "render-response",
       "from": "chat_ui",
       "to": "user",
-      "y": 412,
-      "label": "render response or Adaptive Card",
+      "y": 440,
+      "label": "render message, card, or host UI",
       "variant": "return"
     }
   ],
@@ -145,31 +159,37 @@
     {
       "participant": "chat_ui",
       "from": 154,
-      "to": 420,
+      "to": 448,
       "type": "frontend"
     },
     {
-      "participant": "domain_agent",
+      "participant": "runtime",
       "from": 182,
-      "to": 392,
+      "to": 420,
       "type": "backend"
     },
     {
-      "participant": "topic_registry",
+      "participant": "router",
       "from": 210,
       "to": 252,
       "type": "backend"
     },
     {
-      "participant": "topic_flow",
+      "participant": "runner",
       "from": 266,
+      "to": 392,
+      "type": "backend"
+    },
+    {
+      "participant": "topic_flow",
+      "from": 294,
       "to": 364,
       "type": "backend"
     },
     {
       "participant": "activity",
-      "from": 294,
-      "to": 336,
+      "from": 322,
+      "to": 362,
       "type": "backend"
     }
   ]

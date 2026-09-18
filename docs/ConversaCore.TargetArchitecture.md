@@ -48,12 +48,13 @@ The application supplies topics, tools, domain services, and host-event reaction
 | Domain application such as `InsuranceAgent` | Topics, domain models, tools, host-event contracts and reactions, domain infrastructure adapters |
 | `LiveAgentConsole` / `LiveAgentConsoleV2` | Separate human-agent application consuming qualified leads; not a ConversaCore implementation |
 
-The existing product and execution diagrams document the current system and remain useful as an as-is baseline:
+The target product, execution sequence, and generated authoring pipeline diagrams document the implemented ConversaCore architecture:
 
-- [Current product architecture](./conversacore-current-product-architecture.html)
-- [Current topic execution sequence](./conversacore-current-topic-execution-sequence.html)
+- [ConversaCore Product Architecture](./conversacore-current-product-architecture.html)
+- [ConversaCore Topic Execution Sequence](./conversacore-current-topic-execution-sequence.html)
+- [ConversaCore Generated Authoring and Activation Pipeline](./conversacore-generated-authoring-pipeline.html)
 
-Those diagrams should be regenerated as target-state diagrams after the public contracts in this document are implemented.
+These diagrams are maintained and validated using Archify from repository code and contracts.
 
 ## 3. Goals and non-goals
 

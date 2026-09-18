@@ -2,26 +2,26 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "ConversaCore Current Product Architecture",
+    "title": "ConversaCore Product Architecture",
     "locale": "en",
     "output": "conversacore-current-product-architecture.html",
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/lg061870/InsuranceSemanticV2.git",
-      "revision": "84f3ad035bbfbda90055c9e8af8c286a7d7c721e"
+      "revision": "9a3cbcb3d0e51eb49630fa81bd84187e81809e2f"
     },
     "views": [
       {
         "id": "bounded-runtime",
         "label": "Bounded conversation runtime",
-        "focus": ["ui", "domain_agent", "topic_routing", "topic_runtime", "activity_runtime"],
-        "note": "The developer-authored TopicFlow controls execution from UI input through framework activities."
+        "focus": ["ui", "runtime_facade", "topic_routing", "topic_runtime", "activity_runtime"],
+        "note": "Scoped IConversationRuntime coordinates execution through ComposedTopicFlow and framework activities."
       },
       {
         "id": "ui-contract",
-        "label": "UI and agent contract",
-        "focus": ["ui", "domain_agent"],
-        "note": "ConversaCore.UI raises user-interaction events and renders messages, cards, and state events."
+        "label": "UI and runtime contract",
+        "focus": ["ui", "runtime_facade"],
+        "note": "ConversaCore.UI invokes IConversationRuntime methods and observes typed output stream events."
       },
       {
         "id": "ai-and-knowledge",
@@ -49,13 +49,8 @@
       "sources": [
         {
           "path": "ConversaCore.UI/Components/CustomChatWindowV3.razor",
-          "line": 143,
-          "label": "Agent binding"
-        },
-        {
-          "path": "ConversaCore.UI/Components/CustomChatWindowV3.razor",
-          "line": 636,
-          "label": "Interaction events"
+          "line": 42,
+          "label": "Runtime binding"
         },
         {
           "path": "ConversaCore.UI/Components/AdaptiveCardRenderer.razor",
@@ -68,20 +63,20 @@
       "size": [170, 80]
     },
     {
-      "id": "domain_agent",
+      "id": "runtime_facade",
       "type": "backend",
-      "label": "DomainAgentService",
-      "sublabel": "Domain extension and UI orchestration",
+      "label": "IConversationRuntime",
+      "sublabel": "Scoped runtime facade & dispatcher",
       "sources": [
         {
-          "path": "ConversaCore/Agentic/DomainAgentService.cs",
-          "line": 21,
-          "label": "Agent base"
+          "path": "ConversaCore/Runtime/IConversationRuntime.cs",
+          "line": 15,
+          "label": "Runtime contract"
         },
         {
-          "path": "ConversaCore/Agentic/DomainAgentService.cs",
-          "line": 39,
-          "label": "Output events"
+          "path": "ConversaCore/Runtime/ConversationRuntime.cs",
+          "line": 35,
+          "label": "Runtime coordinator"
         }
       ],
       "row": 1,
@@ -91,18 +86,18 @@
     {
       "id": "topic_routing",
       "type": "backend",
-      "label": "Topic Routing",
-      "sublabel": "TopicManager + TopicRegistry",
+      "label": "Topic Catalog & Router",
+      "sublabel": "ITopicCatalog + ITopicRouter",
       "sources": [
         {
-          "path": "ConversaCore/Topics/TopicManager.cs",
-          "line": 43,
+          "path": "ConversaCore/Runtime/TopicRouter.cs",
+          "line": 28,
           "label": "Route or resume"
         },
         {
-          "path": "ConversaCore/Topics/TopicRegistry.cs",
-          "line": 226,
-          "label": "Best-topic search"
+          "path": "ConversaCore/Runtime/TopicCatalog.cs",
+          "line": 18,
+          "label": "Topic descriptors"
         }
       ],
       "row": 1,
@@ -112,18 +107,18 @@
     {
       "id": "topic_runtime",
       "type": "backend",
-      "label": "TopicFlow Runtime",
-      "sublabel": "Stateful and resumable workflow",
+      "label": "TopicFlow & Runner",
+      "sublabel": "ComposedTopicFlow + IWorkflowRunner",
       "sources": [
         {
-          "path": "ConversaCore/TopicFlow/Core/TopicFlow.cs",
-          "line": 16,
-          "label": "Workflow base"
+          "path": "ConversaCore/TopicFlow/Core/ComposedTopicFlow.cs",
+          "line": 20,
+          "label": "Composed topic flow"
         },
         {
-          "path": "ConversaCore/TopicFlow/Core/TopicFlow.cs",
-          "line": 390,
-          "label": "Process and run"
+          "path": "ConversaCore/Runtime/WorkflowRunner.cs",
+          "line": 28,
+          "label": "Runner orchestration"
         }
       ],
       "row": 1,
@@ -134,17 +129,17 @@
       "id": "activity_runtime",
       "type": "backend",
       "label": "Activity Runtime",
-      "sublabel": "Messages, input, cards, decisions",
+      "sublabel": "Cards, tools, host events, prompts",
       "sources": [
         {
-          "path": "ConversaCore/TopicFlow/Core/TopicFlowActivity.cs",
-          "line": 16,
-          "label": "Activity base"
+          "path": "ConversaCore/TopicFlow/Activities/AdaptiveCardActivity.Generic.cs",
+          "line": 30,
+          "label": "Card activity"
         },
         {
-          "path": "ConversaCore/TopicFlow/Core/TopicFlowActivity.cs",
-          "line": 151,
-          "label": "Activity execution"
+          "path": "ConversaCore/TopicFlow/Activities/InvokeToolActivity.cs",
+          "line": 25,
+          "label": "Tool activity"
         }
       ],
       "row": 1,
@@ -154,22 +149,43 @@
     {
       "id": "conversation_context",
       "type": "backend",
-      "label": "Conversation Context",
-      "sublabel": "Models, variables, topic call stack",
+      "label": "Workflow Context",
+      "sublabel": "TopicWorkflowContext & state",
       "sources": [
         {
           "path": "ConversaCore/Context/ConversationContext.cs",
-          "line": 74,
+          "line": 25,
           "label": "Context values"
         },
         {
-          "path": "ConversaCore/Context/ConversationContext.cs",
-          "line": 321,
-          "label": "Nested calls"
+          "path": "ConversaCore/TopicFlow/Core/TopicWorkflowContext.cs",
+          "line": 15,
+          "label": "Workflow state"
         }
       ],
       "row": 2,
       "col": 3,
+      "size": [170, 80]
+    },
+    {
+      "id": "tool_services",
+      "type": "backend",
+      "label": "Tool Catalog & Executor",
+      "sublabel": "IToolCatalog + IToolExecutor",
+      "sources": [
+        {
+          "path": "ConversaCore/Tools/ToolExecutor.cs",
+          "line": 22,
+          "label": "Tool execution"
+        },
+        {
+          "path": "ConversaCore/Tools/ToolCatalog.cs",
+          "line": 18,
+          "label": "Tool catalog"
+        }
+      ],
+      "row": 2,
+      "col": 4,
       "size": [170, 80]
     },
     {
@@ -236,7 +252,7 @@
     {
       "kind": "region",
       "label": "ConversaCore",
-      "wraps": ["domain_agent", "topic_routing", "topic_runtime", "activity_runtime", "conversation_context", "knowledge_services", "semantic_services"],
+      "wraps": ["runtime_facade", "topic_routing", "topic_runtime", "activity_runtime", "conversation_context", "tool_services", "knowledge_services", "semantic_services"],
       "pad": 26
     }
   ],
@@ -244,21 +260,21 @@
     {
       "id": "ui-requests",
       "from": "ui",
-      "to": "domain_agent",
+      "to": "runtime_facade",
       "label": "interaction events",
       "labelAt": [243, 294],
       "variant": "emphasis"
     },
     {
       "id": "ui-output",
-      "from": "domain_agent",
+      "from": "runtime_facade",
       "to": "ui",
-      "label": "message / card / state events",
+      "label": "message / card / output events",
       "labelAt": [243, 390]
     },
     {
-      "id": "agent-routing",
-      "from": "domain_agent",
+      "id": "runtime-routing",
+      "from": "runtime_facade",
       "to": "topic_routing",
       "variant": "emphasis"
     },
@@ -288,6 +304,13 @@
       "label": "models / variables"
     },
     {
+      "id": "tool-invocation",
+      "from": "activity_runtime",
+      "to": "tool_services",
+      "label": "typed tool calls",
+      "labelAt": [961, 440]
+    },
+    {
       "id": "optional-ai",
       "from": "activity_runtime",
       "to": "semantic_services",
@@ -314,18 +337,18 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Bounded control",
+      "title": "Single Runtime Authority",
       "items": [
-        "TopicFlow owns the conversation trajectory",
-        "AI is invoked by explicit activities, not granted control of the application"
+        "IConversationRuntime coordinates routing, workflow execution, and typed output dispatch",
+        "Deterministic ComposedTopicFlow controls execution; models cannot bypass policies or allowlists"
       ]
     },
     {
       "dot": "violet",
-      "title": "Developer model",
+      "title": "Authoring & Tool Safety",
       "items": [
-        "Domain apps extend DomainAgentService and register ITopic implementations",
-        "Topics compose framework activities, cards, rules, retrieval, and subtopics"
+        "ComposedTopicFlow composes typed activities post-DI without a runtime JSON interpreter",
+        "InvokeToolActivity enforces topic allowlists and derives human confirmation strictly from user choice"
       ]
     }
   ]

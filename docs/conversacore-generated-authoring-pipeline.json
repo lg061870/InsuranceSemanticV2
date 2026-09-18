@@ -1,0 +1,82 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "ConversaCore Generated Authoring and Activation Pipeline",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "generation-path",
+        "label": "Generation to execution",
+        "focus": ["diagram", "roslyn", "builder", "di_scope", "topic_compose", "run_activity", "output_stream"],
+        "note": "Follow the generated C# authoring flow from diagram schema through post-DI execution."
+      },
+      {
+        "id": "safety-policy",
+        "label": "Tool allowlist & policy",
+        "focus": ["run_activity", "policy_gate", "tool_exec"],
+        "note": "Tool execution is guarded by explicit topic allowlists and human confirmation."
+      }
+    ],
+    "output": "conversacore-generated-authoring-pipeline.html"
+  },
+  "lanes": [
+    { "id": "authoring", "label": "Authoring (ScriptEditor#46)" },
+    { "id": "framework", "label": "ConversaCore DI & Registration" },
+    { "id": "runtime", "label": "Scoped TopicFlow Execution" },
+    { "id": "policy", "label": "Tool & Host Policy", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "generation", "label": "Generation & Build", "fromCol": 0, "toCol": 1 },
+    { "id": "registration", "label": "Registration & Activation", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "execution", "label": "Execution & Policy", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "authoring_boundary", "label": "ScriptEditor boundary", "lane": "authoring", "fromCol": 0, "toCol": 1 },
+    { "id": "activation_scope", "label": "Scoped DI resolution", "lane": "framework", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "execution_flow", "label": "Post-DI topic graph", "lane": "runtime", "fromCol": 3, "toCol": 5, "variant": "emphasis" },
+    { "id": "policy_check", "label": "Safety enforcement", "lane": "policy", "fromCol": 4, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": ["diagram", "roslyn", "builder", "di_scope", "topic_compose", "run_activity", "output_stream"],
+  "nodes": [
+    { "id": "diagram", "lane": "authoring", "col": 0, "type": "frontend", "label": "Visual Diagram", "sublabel": "ScriptEditor schema", "width": 132 },
+    { "id": "roslyn", "lane": "authoring", "col": 1, "type": "backend", "label": "C# Generator", "sublabel": "ComposedTopicFlow C#", "width": 132 },
+    { "id": "builder", "lane": "framework", "col": 2, "type": "backend", "label": "Topic Descriptor", "sublabel": "AddTopic<TTopic>()", "width": 132 },
+    { "id": "di_scope", "lane": "framework", "col": 3, "type": "backend", "label": "Scoped DI Container", "sublabel": "factory + context", "width": 132 },
+    { "id": "topic_compose", "lane": "runtime", "col": 3, "type": "backend", "label": "ComposedTopicFlow", "sublabel": "ComposeWorkflow()", "width": 132 },
+    { "id": "run_activity", "lane": "runtime", "col": 4, "type": "backend", "label": "Activity Runtime", "sublabel": "cards, tools, prompts", "width": 132 },
+    { "id": "output_stream", "lane": "runtime", "col": 5, "type": "messagebus", "label": "Typed Outputs", "sublabel": "IConversationOutput", "width": 132 },
+    { "id": "policy_gate", "lane": "policy", "col": 4, "type": "security", "label": "Allowlist Policy", "sublabel": "AllowedToolIds check", "width": 132 },
+    { "id": "tool_exec", "lane": "policy", "col": 5, "type": "cloud", "label": "InvokeToolActivity", "sublabel": "typed tool execution", "width": 132 }
+  ],
+  "edges": [
+    { "id": "diagram-roslyn", "from": "diagram", "to": "roslyn", "variant": "default" },
+    { "id": "roslyn-builder", "from": "roslyn", "to": "builder", "label": "emits C#", "variant": "emphasis" },
+    { "id": "builder-di", "from": "builder", "to": "di_scope", "label": "registers descriptor", "variant": "default" },
+    { "id": "di-compose", "from": "di_scope", "to": "topic_compose", "label": "scoped activation", "variant": "emphasis" },
+    { "id": "compose-activity", "from": "topic_compose", "to": "run_activity", "label": "post-DI compose", "variant": "emphasis" },
+    { "id": "activity-output", "from": "run_activity", "to": "output_stream", "label": "dispatches output", "variant": "emphasis" },
+    { "id": "activity-policy", "from": "run_activity", "to": "policy_gate", "label": "tool requested", "variant": "security" },
+    { "id": "policy-tool", "from": "policy_gate", "to": "tool_exec", "label": "verified allowlist", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "No Runtime JSON Interpreter",
+      "items": [
+        "ScriptEditor#46 generates compilable C# source classes inheriting ComposedTopicFlow",
+        "Framework activates topics via typed DI without dynamic reflection or JSON interpretation"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Policy & Human Confirmation",
+      "items": [
+        "Mutating tools require explicit topic allowlist registration and user choice confirmation",
+        "Typed host notifications and interactions prevent unstructured payload leakage"
+      ]
+    }
+  ]
+}
