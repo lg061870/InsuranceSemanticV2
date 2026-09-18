@@ -1,4 +1,4 @@
-﻿#pragma warning disable SKEXP0010
+#pragma warning disable SKEXP0010
 
 using ConversaCore;
 using ConversaCore.Interfaces;
@@ -274,20 +274,6 @@ internal class Program {
         app.MapBlazorHub();
         app.MapFallbackToPage("/_Host");
         app.MapControllers();
-
-        // ------------------------------------------------------------
-        // TOPIC CONFIG
-        // ------------------------------------------------------------
-        Console.WriteLine($"[{sw.ElapsedMilliseconds}ms] 🔍 Configuring topics...");
-
-        try {
-            using var scope = app.Services.CreateScope();
-            var topicRegistry = scope.ServiceProvider.GetRequiredService<TopicRegistry>();
-            topicRegistry.ConfigureTopics(scope.ServiceProvider);
-            Console.WriteLine($"[{sw.ElapsedMilliseconds}ms]   ✅ Topic configuration complete");
-        } catch (Exception ex) {
-            Console.WriteLine($"[{sw.ElapsedMilliseconds}ms]   ❌ Topic configuration ERROR: {ex}");
-        }
 
         // ------------------------------------------------------------
         // SQLITE HEALTH CHECK
