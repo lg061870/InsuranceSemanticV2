@@ -1,9 +1,15 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>ConversaCore</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>ConversaCore</Authors>
+    <Company>ConversaCore</Company>
+    <Description>ConversaCore conversation framework runtime, workflow orchestration, and authoring contracts.</Description>
+    <PackageTags>conversational-ai;workflow;bot;orchestration</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

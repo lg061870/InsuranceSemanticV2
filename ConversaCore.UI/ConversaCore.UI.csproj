@@ -5,6 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <PackageId>ConversaCore.UI</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>ConversaCore</Authors>
+    <Company>ConversaCore</Company>
+    <Description>ConversaCore Blazor chat, adaptive card, and presentation components.</Description>
+    <PackageTags>conversational-ai;blazor;ui;adaptive-cards</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

@@ -7,6 +7,9 @@
     <AspNetCoreHostingModel>OutOfProcess</AspNetCoreHostingModel>
     <AspNetCoreModuleStdoutLogEnabled>true</AspNetCoreModuleStdoutLogEnabled>
     <AspNetCoreModuleStdoutLogFile>.\logs\stdout</AspNetCoreModuleStdoutLogFile>
+    <!--#if (usePackages)-->
+    <ConversaCoreUsePackages>true</ConversaCoreUsePackages>
+    <!--#endif-->
   </PropertyGroup>
 
   <!--#if (false)-->
@@ -16,13 +19,18 @@
   </ItemGroup>
   <!--#endif-->
 
-  <!-- Repository builds use source projects; generated projects use release DLLs until CC-607 package migration. -->
+  <!-- Repository builds use source projects; package consumers use ConversaCore packages; standalone local builds fall back to release DLLs until WP7 cleanup -->
   <ItemGroup Condition="'$(ConversaCoreDev)' == 'true'">
     <ProjectReference Include="..\..\ConversaCore\ConversaCore.csproj" />
     <ProjectReference Include="..\..\ConversaCore.UI\ConversaCore.UI.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(ConversaCoreDev)' != 'true'">
+  <ItemGroup Condition="'$(ConversaCoreDev)' != 'true' and '$(ConversaCoreUsePackages)' == 'true'">
+    <PackageReference Include="ConversaCore" Version="1.0.0" />
+    <PackageReference Include="ConversaCore.UI" Version="1.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(ConversaCoreDev)' != 'true' and '$(ConversaCoreUsePackages)' != 'true'">
     <Reference Include="ConversaCore">
       <HintPath>lib\ConversaCore.dll</HintPath>
       <Private>true</Private>

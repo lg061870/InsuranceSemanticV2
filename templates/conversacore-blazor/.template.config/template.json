@@ -11,6 +11,14 @@
     "language": "C#",
     "type": "project"
   },
+  "symbols": {
+    "usePackages": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Configure the project to consume ConversaCore NuGet packages directly."
+    }
+  },
   "sources": [
     {
       "source": "./",

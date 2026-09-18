@@ -111,11 +111,10 @@ The template automatically excludes:
 - Template tools and artifacts
 - Custom build configuration (`Directory.Build.props`)
 
-### Framework references
-Repository builds use `ConversaCoreDev` project references so template source is always checked
-against the current framework. Generated projects continue to use the DLLs in `lib/` until the
-package-consumption work tracked by CC-607 replaces them. Building the main framework projects
-refreshes those source-template DLLs through their post-build targets.
+### Framework references & NuGet package consumption
+- **Development within repository:** Repository builds use `ConversaCoreDev=true` project references so template source is always checked against the current framework.
+- **Package consumption (recommended):** Generated and standalone projects consume `ConversaCore` and `ConversaCore.UI` (v1.0.0) NuGet packages directly from NuGet or a local feed (`artifacts/packages`), requiring zero copied binaries. Pass `--usePackages true` when instantiating the template (`dotnet new conversacore-blazor -n MyAgent --usePackages true`) or specify `-p:ConversaCoreUsePackages=true`.
+- **Standalone legacy mode:** Standalone projects without a NuGet package source fall back to the release DLLs in `lib/` until their removal in WP7 (CC-708). Building the main framework projects refreshes those source-template DLLs through their post-build targets.
 
 ## Troubleshooting
 
