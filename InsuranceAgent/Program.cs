@@ -209,7 +209,7 @@ internal class Program {
         // ------------------------------------------------------------
         // DATABASES / REPOSITORIES
         // ------------------------------------------------------------
-        builder.Services.AddSingleton<InsuranceRuleRepository>();
+        builder.Services.AddScoped<InsuranceRuleRepository>();
 
         // ------------------------------------------------------------
         // RULE INDEXER / STORE (sample implementations for developer testing)
