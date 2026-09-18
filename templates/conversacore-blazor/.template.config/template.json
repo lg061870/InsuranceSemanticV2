@@ -15,7 +15,7 @@
     "usePackages": {
       "type": "parameter",
       "datatype": "bool",
-      "defaultValue": "false",
+      "defaultValue": "true",
       "description": "Configure the project to consume ConversaCore NuGet packages directly."
     }
   },
@@ -41,7 +41,8 @@
         "**/*.vstemplate",
         "**/*.ps1",
         "templates/**",
-        "artifacts/**"
+        "artifacts/**",
+        "lib/**"
       ]
     }
   ]

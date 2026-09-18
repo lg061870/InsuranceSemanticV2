@@ -19,40 +19,16 @@
   </ItemGroup>
   <!--#endif-->
 
-  <!-- Repository builds use source projects; package consumers use ConversaCore packages; standalone local builds fall back to release DLLs until WP7 cleanup -->
+  <!-- Repository builds use source projects; template consumers use ConversaCore NuGet packages -->
   <ItemGroup Condition="'$(ConversaCoreDev)' == 'true'">
     <ProjectReference Include="..\..\ConversaCore\ConversaCore.csproj" />
     <ProjectReference Include="..\..\ConversaCore.UI\ConversaCore.UI.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(ConversaCoreDev)' != 'true' and '$(ConversaCoreUsePackages)' == 'true'">
+  <ItemGroup Condition="'$(ConversaCoreDev)' != 'true'">
     <PackageReference Include="ConversaCore" Version="1.0.0" />
     <PackageReference Include="ConversaCore.UI" Version="1.0.0" />
   </ItemGroup>
-
-  <ItemGroup Condition="'$(ConversaCoreDev)' != 'true' and '$(ConversaCoreUsePackages)' != 'true'">
-    <Reference Include="ConversaCore">
-      <HintPath>lib\ConversaCore.dll</HintPath>
-      <Private>true</Private>
-      <CopyLocal>true</CopyLocal>
-    </Reference>
-    <Reference Include="ConversaCore.UI">
-      <HintPath>lib\ConversaCore.UI.dll</HintPath>
-      <Private>true</Private>
-      <CopyLocal>true</CopyLocal>
-    </Reference>
-  </ItemGroup>
-
-  <!--#if (false)-->
-  <!-- TEMPLATE SOURCE ONLY: Ensure lib DLLs are included when building the template -->
-  <ItemGroup>
-    <Content Include="lib\*.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-      <Link>%(Filename)%(Extension)</Link>
-    </Content>
-  </ItemGroup>
-  <!--#endif-->
 
   <!-- Add required NuGet packages that ConversaCore depends on -->
   <ItemGroup>

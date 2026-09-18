@@ -18,6 +18,8 @@ namespace ConversaCore.Tests.Authoring;
 
 public sealed class TemplateGeneratedConsumerValidationTests
 {
+    private static readonly SemaphoreSlim PackagingLock = new(1, 1);
+
     [Fact]
     public async Task Template_InstantiateAndBuild_SucceedsStandalone()
     {
@@ -27,6 +29,9 @@ public sealed class TemplateGeneratedConsumerValidationTests
         try
         {
             var repoRoot = FindRepositoryRoot();
+            var packagesDir = Path.Combine(repoRoot, "artifacts", "packages");
+            EnsurePackagesBuilt(repoRoot, packagesDir);
+
             var templateSource = Path.Combine(repoRoot, "templates", "conversacore-blazor");
             Assert.True(Directory.Exists(templateSource), $"Template source not found at {templateSource}");
 
@@ -43,6 +48,17 @@ public sealed class TemplateGeneratedConsumerValidationTests
             var projectFile = Path.Combine(tempDirectory, $"{projectName}.csproj");
             Assert.True(File.Exists(projectFile), $"Project file not created: {projectFile}");
 
+            // Write nuget.config pointing to local packages directory
+            var nugetConfig = $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key=""LocalArtifacts"" value=""{packagesDir}"" />
+    <add key=""nuget.org"" value=""https://api.nuget.org/v3/index.json"" />
+  </packageSources>
+</configuration>";
+            await File.WriteAllTextAsync(Path.Combine(tempDirectory, "nuget.config"), nugetConfig);
+
             // 3. Verify domain tools were NOT excluded
             var toolsFolder = Path.Combine(tempDirectory, "Tools");
             Assert.True(Directory.Exists(toolsFolder), $"Tools folder not created: {toolsFolder}");
@@ -52,7 +68,11 @@ public sealed class TemplateGeneratedConsumerValidationTests
             // 4. Verify build-template script was excluded
             Assert.False(File.Exists(Path.Combine(toolsFolder, "build-template.ps1")), "build-template.ps1 should be excluded from instantiated project.");
 
-            // 5. Build instantiated project standalone (using lib\ConversaCore.dll references)
+            // 5. Verify NO lib folder exists (zero copied binaries)
+            var libFolder = Path.Combine(tempDirectory, "lib");
+            Assert.False(Directory.Exists(libFolder), "Template must not contain or emit a lib folder with copied binaries.");
+
+            // 6. Build instantiated project standalone (using NuGet packages)
             var buildResult = await RunDotnetProcessAsync($"build \"{projectFile}\"", tempDirectory);
             Assert.True(buildResult.ExitCode == 0, $"dotnet build failed: {buildResult.Output}\n{buildResult.Error}");
 
@@ -355,6 +375,41 @@ public sealed class TemplateGeneratedConsumerValidationTests
         var stderr = await stderrTask;
 
         return (process.ExitCode, stdout, stderr);
+    }
+
+    private static void EnsurePackagesBuilt(string repoRoot, string packagesDir)
+    {
+        PackagingLock.Wait();
+        try
+        {
+            Directory.CreateDirectory(packagesDir);
+            var corePackage = Path.Combine(packagesDir, "ConversaCore.1.0.0.nupkg");
+            var uiPackage = Path.Combine(packagesDir, "ConversaCore.UI.1.0.0.nupkg");
+
+            if (File.Exists(corePackage) && File.Exists(uiPackage))
+            {
+                return;
+            }
+
+            var coreCsproj = Path.Combine(repoRoot, "ConversaCore", "ConversaCore.csproj");
+            var uiCsproj = Path.Combine(repoRoot, "ConversaCore.UI", "ConversaCore.UI.csproj");
+
+            var packCore = RunDotnetProcessAsync($"pack \"{coreCsproj}\" -c Release -o \"{packagesDir}\"", repoRoot).GetAwaiter().GetResult();
+            if (packCore.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"Failed to pack ConversaCore: {packCore.Output}\n{packCore.Error}");
+            }
+
+            var packUi = RunDotnetProcessAsync($"pack \"{uiCsproj}\" -c Release -o \"{packagesDir}\"", repoRoot).GetAwaiter().GetResult();
+            if (packUi.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"Failed to pack ConversaCore.UI: {packUi.Output}\n{packUi.Error}");
+            }
+        }
+        finally
+        {
+            PackagingLock.Release();
+        }
     }
 
     private sealed class FakeChatCompletionService : IChatCompletionService

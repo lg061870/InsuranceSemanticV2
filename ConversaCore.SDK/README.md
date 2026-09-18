@@ -74,9 +74,6 @@ ConversaCore.BlazorTemplateHost/
 │   └── SampleTopic/                      # Sample topic with cards
 ├── Pages/
 │   └── Index.razor                       # Chat UI bound to IConversationRuntime
-├── lib/
-│   ├── ConversaCore.dll                  # Framework DLLs
-│   └── ConversaCore.UI.dll
 └── templates/
     └── conversacore-blazor/
         └── .template.config/
@@ -86,6 +83,8 @@ ConversaCore.BlazorTemplateHost/
 ## Dependencies
 
 The template project includes all required NuGet packages:
+- ConversaCore (1.0.0)
+- ConversaCore.UI (1.0.0)
 - Microsoft.SemanticKernel.Connectors.* (1.71.0)
 - Microsoft.Data.Sqlite (9.0.10)
 - Microsoft.Extensions.AI (10.2.0)
@@ -113,8 +112,7 @@ The template automatically excludes:
 
 ### Framework references & NuGet package consumption
 - **Development within repository:** Repository builds use `ConversaCoreDev=true` project references so template source is always checked against the current framework.
-- **Package consumption (recommended):** Generated and standalone projects consume `ConversaCore` and `ConversaCore.UI` (v1.0.0) NuGet packages directly from NuGet or a local feed (`artifacts/packages`), requiring zero copied binaries. Pass `--usePackages true` when instantiating the template (`dotnet new conversacore-blazor -n MyAgent --usePackages true`) or specify `-p:ConversaCoreUsePackages=true`.
-- **Standalone legacy mode:** Standalone projects without a NuGet package source fall back to the release DLLs in `lib/` until their removal in WP7 (CC-708). Building the main framework projects refreshes those source-template DLLs through their post-build targets.
+- **Package consumption:** Standalone template consumers consume `ConversaCore` and `ConversaCore.UI` (v1.0.0) NuGet packages directly from NuGet or a local feed (`artifacts/packages`), requiring zero copied binaries.
 
 ## Troubleshooting
 
@@ -133,7 +131,7 @@ dotnet build
 - Uninstall and reinstall the template
 
 **Missing Dependencies:**
-- Ensure `lib/ConversaCore.dll` and `lib/ConversaCore.UI.dll` exist
+- Ensure `ConversaCore` and `ConversaCore.UI` packages are built (`dotnet pack`) or available on your package source
 - Run `dotnet restore` in the template project
 
 ## Contributing
