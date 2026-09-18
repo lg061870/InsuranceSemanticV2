@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ConversaCore.Models {
@@ -30,7 +30,7 @@ namespace ConversaCore.Models {
 
         /// <summary>
         /// General-purpose event list for UI or service consumers.
-        /// This is what InsuranceAgentService copies into ChatResponse.Events.
+        /// This is what conversation services copy into ChatResponse.Events.
         /// </summary>
         public List<ChatEvent>? Events { get; set; }
 
