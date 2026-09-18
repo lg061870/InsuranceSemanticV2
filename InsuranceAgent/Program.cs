@@ -158,7 +158,6 @@ internal class Program {
                 "RadioButtonDemoTopic",
                 "NewbieTopic",
                 "SemanticActivitiesDemoTopic",
-                "EventTriggerDemoTopic",
                 "ZapierIntegrationDemoTopic"
             })
             .AddTopic<MarketingT1Topic>(

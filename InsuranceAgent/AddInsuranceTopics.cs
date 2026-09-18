@@ -1,4 +1,4 @@
-﻿using ConversaCore.Context;
+using ConversaCore.Context;
 using ConversaCore.SystemTopics;
 using ConversaCore.TopicFlow;
 using ConversaCore.Topics;
@@ -150,12 +150,6 @@ public static class InsuranceTopicRegistrationExtensions {
             sp.GetRequiredService<ILogger<SemanticActivitiesDemoTopic>>(),
             sp.GetRequiredService<IConversationContext>(),
             sp.GetRequiredService<Kernel>()
-        ));
-
-        AddTopic(sp => new EventTriggerDemoTopic(
-            sp.GetRequiredService<TopicWorkflowContext>(),
-            sp.GetRequiredService<ILogger<EventTriggerDemoTopic>>(),
-            sp.GetRequiredService<IConversationContext>()
         ));
 
         AddTopic(sp => new ZapierIntegrationDemoTopic(

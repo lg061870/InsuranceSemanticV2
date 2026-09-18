@@ -9,12 +9,8 @@ namespace InsuranceAgent.Topics;
 /// Updated ComplianceTopic — collects TCPA consent and ZIP code,
 /// determines California residency, and optionally triggers CaliforniaResidentTopic.
 /// </summary>
-public class ComplianceTopic : ComposedTopicFlow, ITopicTriggeredActivity {
+public class ComplianceTopic : ComposedTopicFlow {
     public const string ActivityId_ShowCard = "ShowComplianceCard";
-
-    public event EventHandler<TopicTriggeredEventArgs>? TopicTriggered;
-
-    public bool WaitForCompletion => false;
 
     public static readonly string[] IntentKeywords = new[]
     {
