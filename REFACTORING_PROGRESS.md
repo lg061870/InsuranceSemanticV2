@@ -1,4 +1,11 @@
-# Agent Service Refactoring Progress
+# [HISTORICAL / SUPERSEDED] Agent Service Refactoring Progress
+
+> [!WARNING]
+> **HISTORICAL DOCUMENTATION**
+>
+> This document tracked the historical incremental refactoring into `DomainAgentService` and `InsuranceAgentServiceV2`.
+> As of the ConversaCore architecture transformation, `InsuranceAgentServiceV2` and `HybridChatService` have been removed, `DomainAgentService` is obsolete, and the system uses `IConversationRuntime`, `TopicDescriptor`, and `ComposedTopicFlow`.
+> See `docs/ConversaCore.TopicAuthoringGuide.md` and `docs/ConversaCore.TargetArchitecture.md` for current architecture.
 
 ## Overview
 This document tracks the incremental refactoring of `HybridChatService` functionality into `DomainAgentService` and `InsuranceAgentServiceV2` without breaking existing code.

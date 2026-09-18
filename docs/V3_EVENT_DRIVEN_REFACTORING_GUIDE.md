@@ -1,6 +1,24 @@
-# V3 Event-Driven Architecture Refactoring Guide
+# [HISTORICAL / SUPERSEDED] V3 Event-Driven Architecture Refactoring Guide
 
-## ?? **Overview**
+> [!WARNING]
+> **HISTORICAL AND SUPERSEDED ARCHITECTURE (PRE-TRANSFORMATION V3)**
+>
+> This guide documents the legacy V3 intermediate event pattern (`CustomChatWindowV3` raising events handled by `DomainAgentService` subclasses such as `InsuranceAgentServiceV2`).
+>
+> **THIS PATTERN HAS BEEN FORMALLY RETIRED AND REPLACED:**
+> - **Single Runtime Authority**: Applications interact exclusively via the scoped `IConversationRuntime` interface (`StartConversationAsync`, `ProcessMessageAsync`, `SubmitCardAsync`, `ResetAsync`, and `Subscribe`), with typed output streaming (`IConversationOutputDispatcher`, `OnHostOutput`).
+> - **Domain Services Removed**: `InsuranceAgentServiceV2` and domain agent subclasses have been completely deleted. Domain hosts register topics via `ConversaCoreBuilder.AddTopic` / `TopicDescriptor`.
+> - **Topic Authoring**: Hand-authored and generated topics inherit from `ComposedTopicFlow` with post-construction composition via `ComposeWorkflow()`, typed models, and DataAnnotations.
+> - **Host Communication**: Custom host outputs use strongly typed `PublishHostNotificationActivity<TPayload>` and `InvokeHostInteractionActivity<TRequest, TResponse>` instead of untyped event args or reflection.
+>
+> **Canonical Current Documentation:**
+> - [ConversaCore Topic Authoring Guide](ConversaCore.TopicAuthoringGuide.md)
+> - [ConversaCore Target Architecture](ConversaCore.TargetArchitecture.md)
+> - [ConversaCore Generated Authoring Architecture](ConversaCore.GeneratedAuthoringArchitecture.md)
+> - [ConversaCore Generator Integration Contract](ConversaCore.GeneratorIntegrationContract.md)
+> - [ConversaCore Architecture Decisions (ADR-007)](ConversaCore.ArchitectureDecisions.md)
+
+## ⚠️ Historical Context
 
 This guide provides step-by-step instructions for refactoring the V3 chat window architecture from direct method calls to an event-driven pattern. This improves decoupling, testability, and enforces proper domain implementation patterns.
 

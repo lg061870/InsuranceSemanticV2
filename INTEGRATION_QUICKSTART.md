@@ -329,7 +329,7 @@ See [INTEGRATION_ROADMAP.md](../INTEGRATION_ROADMAP.md) for full implementation 
 
 ### Example Topics
 - `ZapierIntegrationDemoTopic.cs` - Basic webhook demo
-- `EventTriggerDemoTopic.cs` - Event-driven patterns
+- `SampleHostOutputTopic.cs` - Typed host notifications and interactions (`PublishHostNotificationActivity`, `InvokeHostInteractionActivity`)
 - `HandDownDemoTopic.cs` - Sub-topic calling patterns
 
 ### Troubleshooting
