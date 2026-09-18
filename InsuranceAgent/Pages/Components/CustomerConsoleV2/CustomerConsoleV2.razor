@@ -1,4 +1,4 @@
-﻿@using System.Text.Json
+@using System.Text.Json
 @using ConversaCore.TopicFlow
 @using ConversaCore.Models
 @using InsuranceAgent.Topics
@@ -10,6 +10,7 @@
 
 @inject IJSRuntime JS
 @inject ILogger<CustomerConsoleV2>? Logger
+@inject TopicWorkflowContext? WorkflowContext
 @inherits ComponentBase
 
 @if (IsVisible) {
@@ -186,6 +187,10 @@
 @code {
     [Parameter] public bool IsVisible { get; set; } = true;
     [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public TopicWorkflowContext? Context {
+        get => context;
+        set => context = value;
+    }
 
     private int AgentCount { get; set; } = 0;
 
@@ -198,6 +203,7 @@
 
     override protected void OnInitialized() {
         base.OnInitialized();
+        context ??= Context ?? WorkflowContext;
     }
 
     private readonly List<ProgressStep> progressSteps = new()
@@ -400,6 +406,8 @@
 
         if (ctx != null)
             context = ctx;
+        else
+            context ??= Context ?? WorkflowContext;
 
         await AnimateProgressListAsync(eventName);
 

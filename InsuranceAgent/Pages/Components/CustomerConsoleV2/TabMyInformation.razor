@@ -1,4 +1,4 @@
-﻿@using ConversaCore.TopicFlow
+@using ConversaCore.TopicFlow
 @using InsuranceAgent.Extensions
 
 <div id="my-information-panel" class="tab-content p-8 overflow-y-auto max-h-[85vh]">
@@ -420,6 +420,7 @@
     // ============================================================
     private string GetValue(string key) {
         try {
+            if (Context == null) return "N/A";
             var v = Context.GetValue<object>(key);
             if (v == null) return "N/A";
             var s = v.ToString();
