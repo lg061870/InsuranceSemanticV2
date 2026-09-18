@@ -82,3 +82,8 @@ nul
 
 # Archify render-validation artifacts (regenerated on demand)
 docs/*.visual-check.*
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal

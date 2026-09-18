@@ -7,8 +7,9 @@
     }
   },
   "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost\\SQLEXPRESS;Database=InsuranceSemanticV2;Trusted_Connection=True;TrustServerCertificate=True;"
+    "DefaultConnection": "Data Source=insurance.db"
   },
+  "UseSqlite": true,
   "LeadLifecycle": {
     "OnHoldThresholdMinutes": 5,
     "AbandonedThresholdHours": 10

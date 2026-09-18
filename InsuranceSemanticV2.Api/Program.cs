@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using InsuranceSemanticV2.Api.Endpoints;
 using InsuranceSemanticV2.Api.Hubs;
 using InsuranceSemanticV2.Api.Services;
@@ -90,20 +90,38 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Support both SQL Server (production) and InMemory (testing)
+// Support SQL Server (production), SQLite (local dev), and InMemory (testing)
 var useInMemoryDatabase = builder.Configuration.GetValue<bool>("UseInMemoryDatabase");
+var useSqlite = builder.Configuration.GetValue<bool>("UseSqlite");
+var defaultConn = builder.Configuration.GetConnectionString("DefaultConnection");
+
 if (useInMemoryDatabase)
 {
     builder.Services.AddDbContext<AppDbContext>(options =>
         options.UseInMemoryDatabase("TestDb"));
 }
+else if (useSqlite || (!string.IsNullOrEmpty(defaultConn) && defaultConn.Contains("Data Source=", StringComparison.OrdinalIgnoreCase) && !defaultConn.Contains("Server=", StringComparison.OrdinalIgnoreCase)))
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseSqlite(defaultConn ?? "Data Source=insurance.db"));
+}
 else
 {
     builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+        options.UseSqlServer(defaultConn));
 }
 
 var app = builder.Build();
+
+// Ensure database schema is created for SQLite
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    if (dbContext.Database.IsSqlite())
+    {
+        dbContext.Database.EnsureCreated();
+    }
+}
 
 // Create logs directory and write startup diagnostics (non-blocking)
 _ = Task.Run(async () =>

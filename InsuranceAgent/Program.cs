@@ -232,6 +232,11 @@ internal class Program {
             client.BaseAddress = new Uri(apiBaseUrl);
         });
 
+        builder.Services.AddHttpClient("ApiClient", client =>
+        {
+            client.BaseAddress = new Uri(apiBaseUrl);
+        });
+
         // ------------------------------------------------------------
         // BUILD APP
         // ------------------------------------------------------------
