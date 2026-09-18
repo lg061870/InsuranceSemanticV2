@@ -1,5 +1,4 @@
 using System.Threading.Channels;
-using System.Text.Json;
 using ConversaCore.Events;
 using ConversaCore.Models;
 using ConversaCore.Registration;
@@ -34,8 +33,7 @@ public sealed class LegacyTopicOutputAdapter : ILegacyTopicOutputAdapter
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(topic);
         return topic is Flow flow
-            ? new FlowLease(_session.ConversationId, descriptor.TopicId, flow, _dispatcher,
-                _interactionCoordinator, _logger)
+            ? new FlowLease(_session.ConversationId, descriptor.TopicId, flow, _dispatcher, _logger)
             : EmptyLease.Instance;
     }
 
@@ -51,26 +49,22 @@ public sealed class LegacyTopicOutputAdapter : ILegacyTopicOutputAdapter
         private readonly string _topicId;
         private readonly Flow _flow;
         private readonly IConversationOutputDispatcher _dispatcher;
-        private readonly IHostInteractionCoordinator? _interactionCoordinator;
         private readonly ILogger _logger;
-        private readonly Channel<PendingDispatch> _pending;
+        private readonly Channel<ConversationOutput> _pending;
         private readonly HashSet<TopicFlowActivity> _activities = [];
-        private readonly Dictionary<EventTriggerActivity, IDisposable> _eventTriggerLeases = [];
         private readonly Task _pump;
         private string? _activeCardId;
         private int _disposed;
 
         public FlowLease(string conversationId, string topicId, Flow flow,
-            IConversationOutputDispatcher dispatcher, IHostInteractionCoordinator? interactionCoordinator,
-            ILogger logger)
+            IConversationOutputDispatcher dispatcher, ILogger logger)
         {
             _conversationId = conversationId;
             _topicId = topicId;
             _flow = flow;
             _dispatcher = dispatcher;
-            _interactionCoordinator = interactionCoordinator;
             _logger = logger;
-            _pending = Channel.CreateUnbounded<PendingDispatch>(new UnboundedChannelOptions
+            _pending = Channel.CreateUnbounded<ConversationOutput>(new UnboundedChannelOptions
             {
                 AllowSynchronousContinuations = false,
                 SingleReader = true,
@@ -126,80 +120,26 @@ public sealed class LegacyTopicOutputAdapter : ILegacyTopicOutputAdapter
                 activity.MessageEmitted += OnMessageEmitted;
                 if (activity is IAdaptiveCardActivity card)
                     card.CardJsonSent += OnCardJsonSent;
-                if (activity is EventTriggerActivity eventTrigger)
-                    _eventTriggerLeases.Add(eventTrigger,
-                        eventTrigger.AttachRuntimeHandler((eventName, data, waitForResponse, timeout, cancellationToken) =>
-                            RouteLegacyEventAsync(eventTrigger.Id, eventName, data, waitForResponse, timeout,
-                                cancellationToken)));
             }
-        }
-
-        private async Task<object?> RouteLegacyEventAsync(string activityId, string eventName, object? data,
-            bool waitForResponse, TimeSpan timeout, CancellationToken cancellationToken)
-        {
-            _logger.LogWarning(
-                "Legacy EventTriggerActivity {ActivityId} in topic {TopicId} used event {EventName}; " +
-                "replace it with a typed host contract",
-                activityId, _topicId, eventName);
-
-            var payload = LegacyEventTriggerPayload.Create(activityId, data);
-            if (!waitForResponse)
-            {
-                await PublishAsync(
-                    new HostNotification<LegacyEventTriggerPayload>(_conversationId, eventName, 1, payload),
-                    cancellationToken).ConfigureAwait(false);
-                return null;
-            }
-
-            if (_interactionCoordinator is null)
-                throw new InvalidOperationException(
-                    "Wait-for-response EventTriggerActivity compatibility requires IHostInteractionCoordinator.");
-
-            await FlushAsync(cancellationToken).ConfigureAwait(false);
-            return await _interactionCoordinator
-                .RequestAsync<LegacyEventTriggerPayload, JsonElement>(
-                    eventName, 1, payload, timeout, cancellationToken)
-                .ConfigureAwait(false);
         }
 
         private void Publish(ConversationOutput output)
         {
-            if (Volatile.Read(ref _disposed) == 0 && !_pending.Writer.TryWrite(new PendingDispatch(output)))
+            if (Volatile.Read(ref _disposed) == 0 && !_pending.Writer.TryWrite(output))
                 _logger.LogWarning("Legacy output for topic {TopicId} could not be queued", _topicId);
-        }
-
-        private Task PublishAsync(ConversationOutput output, CancellationToken cancellationToken) =>
-            QueueAndWaitAsync(output, cancellationToken);
-
-        private Task FlushAsync(CancellationToken cancellationToken) =>
-            QueueAndWaitAsync(null, cancellationToken);
-
-        private Task QueueAndWaitAsync(ConversationOutput? output, CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (!_pending.Writer.TryWrite(new PendingDispatch(output, completion, cancellationToken)))
-                throw new ObjectDisposedException(nameof(FlowLease));
-            return completion.Task;
         }
 
         private async Task PumpAsync()
         {
-            await foreach (var item in _pending.Reader.ReadAllAsync().ConfigureAwait(false))
+            await foreach (var output in _pending.Reader.ReadAllAsync().ConfigureAwait(false))
             {
                 try
                 {
-                    if (item.Output is not null)
-                        await _dispatcher.DispatchAsync(item.Output, item.CancellationToken).ConfigureAwait(false);
-                    item.Completion?.TrySetResult();
+                    await _dispatcher.DispatchAsync(output).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
-                    if (item.Completion is not null)
-                        item.Completion.TrySetException(ex);
-                    else
-                        _logger.LogError(ex, "Failed to dispatch legacy output for topic {TopicId}", _topicId);
+                    _logger.LogError(ex, "Failed to dispatch legacy output for topic {TopicId}", _topicId);
                 }
             }
         }
@@ -216,8 +156,6 @@ public sealed class LegacyTopicOutputAdapter : ILegacyTopicOutputAdapter
                 if (activity is IAdaptiveCardActivity card)
                     card.CardJsonSent -= OnCardJsonSent;
             }
-            foreach (var lease in _eventTriggerLeases.Values) lease.Dispose();
-            _eventTriggerLeases.Clear();
             _activities.Clear();
             _pending.Writer.TryComplete();
             await _pump.ConfigureAwait(false);
@@ -229,11 +167,6 @@ public sealed class LegacyTopicOutputAdapter : ILegacyTopicOutputAdapter
             Exception exception => exception.GetType().Name,
             _ => null
         };
-
-        private sealed record PendingDispatch(
-            ConversationOutput? Output,
-            TaskCompletionSource? Completion = null,
-            CancellationToken CancellationToken = default);
 
         private static ConversationTopicState Map(TopicLifecycleState state) => state switch
         {

@@ -14,7 +14,6 @@ using System.Threading.Tasks;
 using ConversaCore.Tools;
 using ConversaCore.Runtime;
 using InsuranceAgent.Tools;
-using InsuranceAgent.Activities;
 using InsuranceAgent.Contracts;
 using InsuranceSemanticV2.Core.DTO;
 
@@ -479,12 +478,12 @@ public class MarketingT1Topic : TopicFlow, IAsyncInitializable {
             return Task.FromResult<object?>(result.Value);
         });
 
-    private InsuranceHostNotificationActivity<TPayload> Notify<TPayload>(
+    private PublishHostNotificationActivity<TPayload> Notify<TPayload>(
         string activityId,
         string eventName,
         Func<TopicWorkflowContext, TPayload> payloadFactory)
         where TPayload : notnull =>
-        new(activityId, eventName, payloadFactory, _outputDispatcher, _conversationSession);
+        new(activityId, eventName, 1, payloadFactory, _outputDispatcher, _conversationSession);
 
     private static int GetLeadId(TopicWorkflowContext context) =>
         context.GetValue<ToolResult<CreateLeadResult>>("insurance.lead.create.result")?.Value?.LeadId

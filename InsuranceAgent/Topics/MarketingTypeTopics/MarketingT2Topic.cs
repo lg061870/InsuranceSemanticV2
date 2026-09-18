@@ -3,7 +3,6 @@ using ConversaCore.Models;
 using ConversaCore.Runtime;
 using ConversaCore.TopicFlow;
 using ConversaCore.TopicFlow.Activities;
-using InsuranceAgent.Activities;
 using InsuranceAgent.Contracts;
 
 namespace InsuranceAgent.Topics.MarketingTypeTopics {
@@ -176,12 +175,12 @@ namespace InsuranceAgent.Topics.MarketingTypeTopics {
             //};
         }
 
-        private InsuranceHostNotificationActivity<TPayload> Notify<TPayload>(
+        private PublishHostNotificationActivity<TPayload> Notify<TPayload>(
             string activityId,
             string eventName,
             Func<TopicWorkflowContext, TPayload> payloadFactory)
             where TPayload : notnull =>
-            new(activityId, eventName, payloadFactory, _outputDispatcher, _conversationSession);
+            new(activityId, eventName, 1, payloadFactory, _outputDispatcher, _conversationSession);
 
         public override Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default) {
             if (string.IsNullOrWhiteSpace(message)) return Task.FromResult(0f);

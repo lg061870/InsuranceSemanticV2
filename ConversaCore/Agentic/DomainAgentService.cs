@@ -480,25 +480,13 @@ public abstract class DomainAgentService {
     protected void OnCustomEventTriggered(object? sender, CustomEventTriggeredEventArgs e) =>
         ObserveLegacyCallback(OnCustomEventTriggeredAsync(sender, e), nameof(OnCustomEventTriggered));
 
-    private async Task OnCustomEventTriggeredAsync(object? sender, CustomEventTriggeredEventArgs e) {
+    private Task OnCustomEventTriggeredAsync(object? sender, CustomEventTriggeredEventArgs e) {
         LogInfo("EVT_CE_0001");
         _logger.LogWarning("[DEBUG] OnCustomEventTriggered called - EventName={EventName}, Sender={SenderType}, SubscriberCount={Count}",
             e.EventName, sender?.GetType().Name ?? "null", CustomEventTriggered?.GetInvocationList().Length ?? 0);
 
         CustomEventTriggered?.Invoke(this, e);
-
-        if (e.WaitForResponse && sender is EventTriggerActivity triggerActivity) {
-            await Task.Delay(100);
-
-            var response = new {
-                success = true,
-                message = $"Event '{e.EventName}' processed successfully",
-                timestamp = DateTime.UtcNow,
-                processedBy = "InsuranceAgentService"
-            };
-
-            triggerActivity.HandleUIResponse(e.Context, response);
-        }
+        return Task.CompletedTask;
     }
 
     protected void OnTopicLifecycleChanged(object? sender, TopicLifecycleEventArgs e) =>

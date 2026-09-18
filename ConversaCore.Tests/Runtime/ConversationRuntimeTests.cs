@@ -5,6 +5,7 @@ using ConversaCore.Models;
 using ConversaCore.Registration;
 using ConversaCore.Runtime;
 using ConversaCore.TopicFlow;
+using ConversaCore.TopicFlow.Activities;
 using ConversaCore.Topics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -196,17 +197,17 @@ public sealed class ConversationRuntimeTests
     }
 
     [Fact]
-    public async Task Reset_CancelsPendingLegacyInteractionDisposesItsLeaseAndRestarts()
+    public async Task Reset_CancelsPendingInteractionAndRestarts()
     {
         var activationCount = 0;
-        EventFlow? firstFlow = null;
+        HostInteractionFlow? firstFlow = null;
         var services = Services();
         new ConversaCoreBuilder(services)
-            .AddTopic<ITopic>("start", _ =>
+            .AddTopic<ITopic>("start", sp =>
             {
                 activationCount++;
                 if (activationCount == 1)
-                    return firstFlow = new EventFlow();
+                    return firstFlow = new HostInteractionFlow(sp.GetRequiredService<IHostInteractionCoordinator>());
                 return new ScriptedTopic("start", Waiting());
             })
             .AddConversationRuntime("start");
@@ -231,13 +232,17 @@ public sealed class ConversationRuntimeTests
     }
 
     [Fact]
-    public async Task EventTriggerDemoTopic_UsesNonBlockingNotificationsAndCorrelatedInteraction()
+    public async Task HostActivityDemoTopic_UsesNonBlockingNotificationsAndCorrelatedInteraction()
     {
         var services = Services();
         new ConversaCoreBuilder(services)
-            .AddTopic<EventTriggerDemoTopic>("event-trigger-demo", sp =>
-                new EventTriggerDemoTopic(sp.GetRequiredService<ILogger<EventTriggerDemoTopic>>()))
-            .AddConversationRuntime("event-trigger-demo");
+            .AddTopic<HostActivityDemoTopic>("host-demo", sp =>
+                new HostActivityDemoTopic(
+                    sp.GetRequiredService<IConversationOutputDispatcher>(),
+                    sp.GetRequiredService<IConversationSession>(),
+                    sp.GetRequiredService<IHostInteractionCoordinator>(),
+                    sp.GetRequiredService<ILogger<HostActivityDemoTopic>>()))
+            .AddConversationRuntime("host-demo");
 
         await using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
@@ -258,9 +263,9 @@ public sealed class ConversationRuntimeTests
 
         var completed = await ReadUntilAsync<TopicLifecycleOutput>(
             outputs,
-            output => output.TopicId == "event-trigger-demo" &&
+            output => output.TopicId == "host-demo" &&
                       output.State == ConversationTopicState.Completed);
-        Assert.Equal("event-trigger-demo", completed.TopicId);
+        Assert.Equal("host-demo", completed.TopicId);
     }
 
     private static ServiceCollection Services()
@@ -333,17 +338,19 @@ public sealed class ConversationRuntimeTests
             Task.FromResult(1f);
     }
 
-#pragma warning disable CS0618 // Intentional backward-compatibility tests for legacy EventTriggerActivity
-    private sealed class EventFlow : ConversaCore.TopicFlow.TopicFlow
+    private sealed class HostInteractionFlow : ConversaCore.TopicFlow.TopicFlow
     {
-        public EventFlow()
-            : base(new TopicWorkflowContext(), NullLogger.Instance, "Event flow")
+        public HostInteractionFlow(IHostInteractionCoordinator coordinator)
+            : base(new TopicWorkflowContext(), NullLogger.Instance, "Interaction flow")
         {
-            Add(EventTriggerActivity.CreateWaitForResponse(
+            Add(new InvokeHostInteractionActivity<string, string>(
                 "confirm",
                 "site.confirm",
-                "host_response",
-                responseTimeout: TimeSpan.FromSeconds(10)));
+                1,
+                TimeSpan.FromSeconds(10),
+                coordinator,
+                _ => "Continue?",
+                "host_response"));
         }
 
         public override Task<float> CanHandleAsync(string message, CancellationToken cancellationToken = default) =>
@@ -368,28 +375,35 @@ public sealed class ConversationRuntimeTests
             CancellationToken cancellationToken = default) => Task.FromResult(1f);
     }
 
-    /// <summary>
-    /// Framework-owned replacement for the historical EventTriggerDemoTopic sample.
-    /// It deliberately exercises both host-output paths without depending on a domain app.
-    /// </summary>
-    private sealed class EventTriggerDemoTopic : ConversaCore.TopicFlow.TopicFlow
+    private sealed record DemoProgress(string Step);
+    private sealed record DemoConfirm(string Prompt);
+
+    private sealed class HostActivityDemoTopic : ConversaCore.TopicFlow.TopicFlow
     {
-        public EventTriggerDemoTopic(ILogger<EventTriggerDemoTopic> logger)
-            : base(new TopicWorkflowContext(), logger, "event-trigger-demo")
+        public HostActivityDemoTopic(
+            IConversationOutputDispatcher dispatcher,
+            IConversationSession session,
+            IHostInteractionCoordinator coordinator,
+            ILogger<HostActivityDemoTopic> logger)
+            : base(new TopicWorkflowContext(), logger, "host-demo")
         {
-            Add(EventTriggerActivity.CreateFireAndForget(
+            Add(new PublishHostNotificationActivity<DemoProgress>(
+                "demo-progress",
                 "demo.progress",
-                new { Step = "notification" },
-                logger: logger));
-            Add(EventTriggerActivity.CreateWaitForResponse(
+                1,
+                _ => new DemoProgress("notification"),
+                dispatcher,
+                session));
+            Add(new InvokeHostInteractionActivity<DemoConfirm, string>(
                 "demo-confirm",
                 "demo.confirm",
-                "approval",
-                new { Prompt = "Approve the demo continuation?" },
-                responseTimeout: TimeSpan.FromSeconds(10),
-                logger: logger));
+                1,
+                TimeSpan.FromSeconds(10),
+                coordinator,
+                _ => new DemoConfirm("Approve the demo continuation?"),
+                "approval"));
             Add(new SimpleActivity("demo-complete", (context, _) =>
-                Task.FromResult<object?>(context.GetValue<object>("approval"))));
+                Task.FromResult<object?>(context.GetValue<string>("approval"))));
         }
 
         public override Task<float> CanHandleAsync(
@@ -397,7 +411,6 @@ public sealed class ConversationRuntimeTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(1f);
     }
-#pragma warning restore CS0618
 
     private sealed class AppointmentCardActivity(TopicWorkflowContext context)
         : AdaptiveCardActivity<AppointmentInput>(

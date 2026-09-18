@@ -193,15 +193,6 @@
                     Logger.LogInformation("[Home] Typed conversation navigation requested");
                     await InvokeAsync(() => Nav.NavigateTo(navigation.Payload.Url));
                     return;
-                case HostNotification<LegacyEventTriggerPayload> legacy:
-                    eventName = legacy.EventName;
-                    var migrated = JsonSerializer.Deserialize<InsuranceProgressNotification>(legacy.Payload.Data);
-                    if (migrated is not null)
-                        ApplyProgress(migrated);
-                    if (legacy.Payload.Data.ValueKind == JsonValueKind.Object &&
-                        legacy.Payload.Data.TryGetProperty("payload", out var rawPayload))
-                        customerPayload = JsonSerializer.Deserialize<QualifiedCarriers>(rawPayload.GetRawText());
-                    break;
                 default:
                     return;
             }
